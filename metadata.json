@@ -1,0 +1,6 @@
+{
+  "name": "MeuTreino Pro - Hipertrofia Individualizada",
+  "description": "Sistema avançado de periodização, cálculo de 6RM, sobrecarga progressiva e prescrição individualizada de musculação e cardio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
