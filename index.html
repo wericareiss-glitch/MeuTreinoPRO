@@ -1,25 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MeuTreino Pro</title>
-    <meta name="description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
+    <meta name="description" content="Plataforma avançada de periodização para hipertrofia individualizada." />
     <meta property="og:title" content="MeuTreino Pro" />
-    <meta property="og:description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
+    <meta property="og:description" content="Plataforma avançada de periodização para hipertrofia individualizada." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <script>
       (function() {
         try {
-          var saved = localStorage.getItem('meutreino_theme');
-          var theme = saved === 'light' ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', theme);
-          if (theme === 'light') {
-            document.documentElement.classList.add('theme-light');
-          } else {
-            document.documentElement.classList.add('dark');
-          }
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.classList.add('dark');
         } catch (e) {}
       })();
     </script>
@@ -29,4 +23,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
