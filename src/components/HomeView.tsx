@@ -22,7 +22,10 @@ import {
   Flame,
   Check,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  Plus,
+  Trash2,
+  MessageSquare
 } from 'lucide-react';
 import { 
   UserProfile, 
@@ -31,6 +34,10 @@ import {
 } from '../types/workout';
 import { VolumeDashboard } from './VolumeDashboard';
 import { HomeAnalyticsDashboard } from './HomeAnalyticsDashboard';
+import { WeeklyVolumeOverloadChart } from './WeeklyVolumeOverloadChart';
+import { TopLoadProgressComponent } from './TopLoadProgressComponent';
+import { MuscleSymmetryRadar } from './MuscleSymmetryRadar';
+import { DailyNutritionTrackerWidget } from './DailyNutritionTrackerWidget';
 import { MuscleRecoveryHeatmap } from './MuscleRecoveryHeatmap';
 import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { useI18n } from '../utils/i18n';
@@ -43,6 +50,8 @@ import {
   saveReminderConfig,
   checkAndTriggerScheduledNotification,
   getNotificationPermissionStatus,
+  normalizeReminderTimes,
+  getNextScheduledReminderInfo,
   DailyReminderConfig
 } from '../utils/notifications';
 
@@ -92,39 +101,69 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [permStatus, setPermStatus] = useState<NotificationPermission>(() => getNotificationPermissionStatus());
   const [showReminderSettings, setShowReminderSettings] = useState(false);
   const [testNotifSuccess, setTestNotifSuccess] = useState(false);
+  const [newTimeInput, setNewTimeInput] = useState('07:00');
 
   const [reminderConfig, setReminderConfig] = useState<DailyReminderConfig>(() => {
-    return user ? getReminderConfig(user.id) : { enabled: false, time: '18:00', days: [1, 2, 3, 4, 5] };
+    return user
+      ? getReminderConfig(user.id)
+      : { enabled: false, time: '18:00', times: ['18:00'], days: [1, 2, 3, 4, 5], customMessage: '' };
   });
 
-  // Atualiza permissão atual
+  // Sincroniza configuração quando o usuário ativo muda ou quando atualizada na aba Perfil
+  useEffect(() => {
+    if (user) {
+      setReminderConfig(getReminderConfig(user.id));
+    }
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent<{ userId: string; config: DailyReminderConfig }>;
+      if (user && customEvent.detail && customEvent.detail.userId === user.id) {
+        setReminderConfig(customEvent.detail.config);
+      }
+    };
+    window.addEventListener('meutreino:reminder-updated', handleSync);
+    return () => window.removeEventListener('meutreino:reminder-updated', handleSync);
+  }, [user?.id]);
+
+  // Atualiza permissão atual e escuta clique na notificação Push do Service Worker
   useEffect(() => {
     setPermStatus(getNotificationPermissionStatus());
-  }, []);
 
-  // Scheduler em segundo plano otimizado: verifica a cada 40s se é hora do treino
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const handleSwMessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === 'NOTIFICATION_CLICK_ACTION') {
+          onGoToWorkout();
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+      return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    }
+  }, [onGoToWorkout]);
+
+  // Lista normalizada de horários configurados
+  const configuredTimes = useMemo(() => normalizeReminderTimes(reminderConfig), [reminderConfig]);
+
+  // Próximo lembrete agendado (ex: "Hoje às 18:00 • em 2h 15m")
+  const nextReminderInfo = useMemo(
+    () => getNextScheduledReminderInfo(reminderConfig),
+    [reminderConfig]
+  );
+
+  // Verifica imediatamente ao alterar configurações de lembrete (o polling global de 25s e visibilitychange já roda em App.tsx)
   const userId = user?.id;
   const userName = user?.name;
   const reminderEnabled = reminderConfig.enabled;
-  const reminderTime = reminderConfig.time;
+  const reminderTimesKey = configuredTimes.join(',');
   const reminderDaysStr = reminderConfig.days.join(',');
 
   useEffect(() => {
     if (!userId || !reminderEnabled) return;
-
     checkAndTriggerScheduledNotification(userId, userName || 'Atleta');
-    const interval = setInterval(() => {
-      checkAndTriggerScheduledNotification(userId, userName || 'Atleta');
-    }, 40000);
-
-    return () => clearInterval(interval);
-  }, [userId, userName, reminderEnabled, reminderTime, reminderDaysStr]);
+  }, [userId, userName, reminderEnabled, reminderTimesKey, reminderDaysStr]);
 
   const handleToggleReminder = async () => {
     if (!user) return;
 
     if (!reminderConfig.enabled) {
-      // Solicita permissão opcional do navegador se ainda não concedida
       const currentPerm = getNotificationPermissionStatus();
       if (currentPerm !== 'granted') {
         const granted = await requestNotificationPermission();
@@ -135,10 +174,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
           return;
         }
       }
-      const nextConfig = { ...reminderConfig, enabled: true };
+      const times = normalizeReminderTimes(reminderConfig);
+      const nextConfig: DailyReminderConfig = {
+        ...reminderConfig,
+        enabled: true,
+        time: times[0],
+        times,
+      };
       setReminderConfig(nextConfig);
       saveReminderConfig(user.id, nextConfig);
-      sendAppNotification('MeuTreino Pro ⚡', `Lembrete diário ativado para as ${nextConfig.time}!`);
+      sendAppNotification(
+        'MeuTreino Pro ⚡ • Push Local Ativo',
+        `Lembretes agendados para: ${times.join(', ')} nos dias selecionados!`
+      );
       setNotifStatus('success');
       setTimeout(() => setNotifStatus('idle'), 3000);
     } else {
@@ -148,9 +196,52 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
   };
 
-  const handleUpdateReminderTime = (newTime: string) => {
+  const handleUpdatePrimaryTime = (index: number, newTime: string) => {
+    if (!user || !newTime) return;
+    const currentList = [...configuredTimes];
+    currentList[index] = newTime;
+    const nextTimes = Array.from(new Set(currentList)).sort();
+    const nextConfig: DailyReminderConfig = {
+      ...reminderConfig,
+      time: nextTimes[0] || '18:00',
+      times: nextTimes,
+    };
+    setReminderConfig(nextConfig);
+    saveReminderConfig(user.id, nextConfig);
+  };
+
+  const handleAddReminderTime = (timeToAdd?: string) => {
     if (!user) return;
-    const nextConfig = { ...reminderConfig, time: newTime };
+    const target = (timeToAdd || newTimeInput || '07:00').trim();
+    if (!/^\d{2}:\d{2}$/.test(target)) return;
+    const nextTimes = Array.from(new Set([...configuredTimes, target])).sort();
+    const nextConfig: DailyReminderConfig = {
+      ...reminderConfig,
+      time: nextTimes[0],
+      times: nextTimes,
+    };
+    setReminderConfig(nextConfig);
+    saveReminderConfig(user.id, nextConfig);
+  };
+
+  const handleRemoveReminderTime = (timeToRemove: string) => {
+    if (!user || configuredTimes.length <= 1) return;
+    const nextTimes = configuredTimes.filter((t) => t !== timeToRemove);
+    const nextConfig: DailyReminderConfig = {
+      ...reminderConfig,
+      time: nextTimes[0] || '18:00',
+      times: nextTimes,
+    };
+    setReminderConfig(nextConfig);
+    saveReminderConfig(user.id, nextConfig);
+  };
+
+  const handleUpdateCustomMessage = (msg: string) => {
+    if (!user) return;
+    const nextConfig: DailyReminderConfig = {
+      ...reminderConfig,
+      customMessage: msg,
+    };
     setReminderConfig(nextConfig);
     saveReminderConfig(user.id, nextConfig);
   };
@@ -174,10 +265,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
       setPermStatus(getNotificationPermissionStatus());
       if (!granted) return;
     }
-    const sent = sendAppNotification(
-      'MeuTreino Pro ⚡',
-      `Hora do treino! Lembrete programado para as ${reminderConfig.time} está funcionando perfeitamente 💪`
-    );
+    const msg =
+      reminderConfig.customMessage && reminderConfig.customMessage.trim().length > 0
+        ? reminderConfig.customMessage.trim()
+        : `Hora do treino! Seus horários definidos (${configuredTimes.join(', ')}) estão ativos via Push Local 💪`;
+    const sent = sendAppNotification('MeuTreino Pro ⚡ • Push de Teste', msg);
     if (sent) {
       setTestNotifSuccess(true);
       setTimeout(() => setTestNotifSuccess(false), 3000);
@@ -292,6 +384,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 💧🥩 RASTREADOR RÁPIDO DE ÁGUA & BATER META DE PROTEÍNA NO TOPO DA ABA INÍCIO */}
+      <DailyNutritionTrackerWidget user={user} />
 
       {/* Overview KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -426,7 +521,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </button>
         )}
 
-        {/* Card do Lembrete de Treino Agendado Diário */}
+        {/* Card do Sistema de Notificações Locais via Push */}
         <div className={`p-4 rounded-2xl border transition-all shadow-lg flex flex-col justify-between ${
           reminderConfig.enabled
             ? 'bg-gradient-to-br from-[#0f172a] via-[#101b33] to-[#0d162b] border-amber-500/40'
@@ -442,12 +537,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <Bell className="w-5 h-5" />
               </div>
 
-              <div className="flex items-center gap-1.5">
-                {reminderConfig.enabled && (
-                  <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30">
-                    {reminderConfig.time}
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                {reminderConfig.enabled && configuredTimes.map((tm) => (
+                  <span
+                    key={tm}
+                    className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30"
+                  >
+                    {tm}
                   </span>
-                )}
+                ))}
                 <button
                   type="button"
                   onClick={handleToggleReminder}
@@ -456,20 +554,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       ? 'bg-amber-400 text-slate-950 font-black shadow-md'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
                   }`}
-                  title={reminderConfig.enabled ? 'Desativar lembretes' : 'Ativar lembretes'}
+                  title={reminderConfig.enabled ? 'Desativar notificações Push locais' : 'Ativar notificações Push locais'}
                 >
-                  {reminderConfig.enabled ? 'Ativo' : 'Ativar'}
+                  {reminderConfig.enabled ? 'Push Ativo' : 'Ativar Push'}
                 </button>
               </div>
             </div>
 
             <strong className="text-xs sm:text-sm font-black text-white block">
-              Lembrete Diário de Treino
+              Notificações Locais via Push
             </strong>
             <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-              {reminderConfig.enabled
-                ? `Notificação agendada às ${reminderConfig.time} nos dias selecionados.`
-                : 'Receba um aviso no navegador na hora do seu treino diário.'}
+              {reminderConfig.enabled && nextReminderInfo
+                ? `Próximo lembrete: ${nextReminderInfo.dayLabel} às ${nextReminderInfo.nextTime} (${nextReminderInfo.countdownText}).`
+                : 'Agende um ou mais horários para receber alertas via Notification API.'}
             </p>
           </div>
 
@@ -480,7 +578,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               className="text-[11px] font-bold text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
             >
               <Clock className="w-3.5 h-3.5" />
-              <span>{showReminderSettings ? 'Ocultar Horário' : 'Ajustar Horário & Dias'}</span>
+              <span>{showReminderSettings ? 'Ocultar Agenda' : 'Horários & Mensagem'}</span>
             </button>
 
             {permStatus === 'denied' && (
@@ -488,114 +586,174 @@ export const HomeView: React.FC<HomeViewProps> = ({
             )}
             {permStatus === 'granted' && reminderConfig.enabled && (
               <span className="text-[10px] text-emerald-400 font-medium flex items-center gap-0.5">
-                <Check className="w-3 h-3" /> Conectado
+                <Check className="w-3 h-3" /> Push Conectado
               </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Painel Expansível de Configuração do Horário do Lembrete */}
+      {/* Painel Expansível de Configuração dos Horários de Push Local */}
       {showReminderSettings && (
         <div className="bg-[#0b1220] border border-amber-500/30 rounded-3xl p-4 sm:p-5 shadow-2xl animate-fadeIn space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-2">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <h3 className="text-xs sm:text-sm font-bold text-white">
-                Programação do Lembrete Diário (Notificação Web)
-              </h3>
+              <Bell className="w-4 h-4 text-amber-400" />
+              <div>
+                <h3 className="text-xs sm:text-sm font-bold text-white">
+                  Central de Notificações Locais via Push (Web Notification API & Service Worker)
+                </h3>
+                {nextReminderInfo && (
+                  <span className="text-[11px] font-mono text-emerald-400 block">
+                    ⏱️ Próximo disparo: {nextReminderInfo.dayLabel} às {nextReminderInfo.nextTime} ({nextReminderInfo.countdownText})
+                  </span>
+                )}
+              </div>
             </div>
             <button
               type="button"
               onClick={() => setShowReminderSettings(false)}
-              className="text-xs text-slate-400 hover:text-white cursor-pointer"
+              className="text-xs text-slate-400 hover:text-white cursor-pointer self-end sm:self-auto"
             >
               Fechar
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Escolha do Horário */}
-            <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Gerenciador de Horários Definidos */}
+            <div className="space-y-3">
               <label className="text-xs font-semibold text-slate-300 block">
-                Horário da Notificação:
+                Horários Definidos para Treinar ({configuredTimes.length}):
               </label>
-              <div className="flex items-center gap-2">
+
+              {/* Lista de horários ativos */}
+              <div className="flex flex-wrap items-center gap-2">
+                {configuredTimes.map((slot, idx) => (
+                  <div
+                    key={`${slot}-${idx}`}
+                    className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5"
+                  >
+                    <input
+                      type="time"
+                      value={slot}
+                      onChange={(e) => handleUpdatePrimaryTime(idx, e.target.value)}
+                      className="bg-transparent text-xs sm:text-sm font-mono font-bold text-amber-300 focus:outline-none cursor-pointer"
+                    />
+                    {configuredTimes.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveReminderTime(slot)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        title="Remover este horário"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Adicionar novo horário */}
+              <div className="flex items-center gap-2 pt-1">
                 <input
                   type="time"
-                  value={reminderConfig.time}
-                  onChange={(e) => handleUpdateReminderTime(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:border-amber-400"
+                  value={newTimeInput}
+                  onChange={(e) => setNewTimeInput(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-amber-400"
                 />
-                <span className="text-xs text-slate-400 font-mono">horário local</span>
+                <button
+                  type="button"
+                  onClick={() => handleAddReminderTime()}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar Horário</span>
+                </button>
               </div>
 
               {/* Presets Rápidos */}
               <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                <span className="text-[10px] text-slate-500 font-medium">Atalhos:</span>
-                {['06:30', '08:00', '12:30', '18:00', '19:30', '21:00'].map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => handleUpdateReminderTime(preset)}
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
-                      reminderConfig.time === preset
-                        ? 'bg-amber-400 text-slate-950 border-amber-300'
-                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                    }`}
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Dias da Semana */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300 block">
-                Dias de Treino para Lembrar:
-              </label>
-              <div className="grid grid-cols-7 gap-1">
-                {[
-                  { day: 0, label: 'D', full: 'Domingo' },
-                  { day: 1, label: 'S', full: 'Segunda' },
-                  { day: 2, label: 'T', full: 'Terça' },
-                  { day: 3, label: 'Q', full: 'Quarta' },
-                  { day: 4, label: 'Q', full: 'Quinta' },
-                  { day: 5, label: 'S', full: 'Sexta' },
-                  { day: 6, label: 'S', full: 'Sábado' },
-                ].map((item) => {
-                  const isDayActive = reminderConfig.days.includes(item.day);
+                <span className="text-[10px] text-slate-500 font-medium">Atalhos rápidos:</span>
+                {['06:30', '08:00', '12:30', '18:00', '19:30', '21:00'].map((preset) => {
+                  const isConfigured = configuredTimes.includes(preset);
                   return (
                     <button
-                      key={item.day}
+                      key={preset}
                       type="button"
-                      onClick={() => handleToggleDay(item.day)}
-                      className={`h-9 rounded-xl font-bold text-xs transition-all cursor-pointer flex flex-col items-center justify-center ${
-                        isDayActive
-                          ? 'bg-emerald-500 text-slate-950 font-black shadow-md'
-                          : 'bg-slate-900 text-slate-500 border border-slate-800 hover:text-slate-300'
+                      onClick={() => handleAddReminderTime(preset)}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                        isConfigured
+                          ? 'bg-amber-400 text-slate-950 border-amber-300'
+                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
                       }`}
-                      title={item.full}
                     >
-                      <span>{item.label}</span>
+                      {preset}
                     </button>
                   );
                 })}
               </div>
-              <p className="text-[10px] text-slate-500">
-                Toque nos dias para ativar ou desativar o lembrete específico.
-              </p>
+            </div>
+
+            {/* Dias da Semana & Mensagem Personalizada */}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-2">
+                  Dias de Treino para Lembrar:
+                </label>
+                <div className="grid grid-cols-7 gap-1">
+                  {[
+                    { day: 0, label: 'D', full: 'Domingo' },
+                    { day: 1, label: 'S', full: 'Segunda' },
+                    { day: 2, label: 'T', full: 'Terça' },
+                    { day: 3, label: 'Q', full: 'Quarta' },
+                    { day: 4, label: 'Q', full: 'Quinta' },
+                    { day: 5, label: 'S', full: 'Sexta' },
+                    { day: 6, label: 'S', full: 'Sábado' },
+                  ].map((item) => {
+                    const isDayActive = reminderConfig.days.includes(item.day);
+                    return (
+                      <button
+                        key={item.day}
+                        type="button"
+                        onClick={() => handleToggleDay(item.day)}
+                        className={`h-9 rounded-xl font-bold text-xs transition-all cursor-pointer flex flex-col items-center justify-center ${
+                          isDayActive
+                            ? 'bg-emerald-500 text-slate-950 font-black shadow-md'
+                            : 'bg-slate-900 text-slate-500 border border-slate-800 hover:text-slate-300'
+                        }`}
+                        title={item.full}
+                      >
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Mensagem Personalizada */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 mb-1.5">
+                  <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Mensagem Personalizada do Push (Opcional):</span>
+                </label>
+                <input
+                  type="text"
+                  value={reminderConfig.customMessage || ''}
+                  onChange={(e) => handleUpdateCustomMessage(e.target.value)}
+                  placeholder="Ex: Hora de esmagar o treino e bater PR hoje! 💪"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Testar Notificação & Status */}
+          {/* Testar Notificação Push & Status */}
           <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-slate-400">
               {permStatus === 'granted' ? (
                 <span className="text-emerald-400 font-bold flex items-center gap-1.5">
                   <Check className="w-3.5 h-3.5" />
-                  Permissão concedida no navegador. Lembretes ativos!
+                  API de Notification autorizada! Disparo local via Service Worker Push ativo.
                 </span>
               ) : permStatus === 'denied' ? (
                 <span className="text-rose-400 font-semibold">
@@ -603,7 +761,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </span>
               ) : (
                 <span className="text-slate-400">
-                  Permissão opcional do sistema solicitada ao ativar.
+                  Permissão da API Notification será solicitada ao ativar ou testar.
                 </span>
               )}
             </div>
@@ -615,13 +773,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
               >
                 <Bell className="w-3.5 h-3.5 text-amber-400" />
-                <span>Testar Notificação Agora</span>
+                <span>Disparar Push de Teste Agora</span>
               </button>
 
               {testNotifSuccess && (
                 <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 animate-fadeIn">
                   <Check className="w-3.5 h-3.5" />
-                  Enviada!
+                  Push Enviado!
                 </span>
               )}
             </div>
@@ -668,6 +826,25 @@ export const HomeView: React.FC<HomeViewProps> = ({
           {microcycle.statusMessage}
         </p>
       </div>
+
+      {/* 🏆 PROGRESSO DE CARGA: TOP 3 EXERCÍCIOS COM MAIOR AUMENTO DE 1RM (ÚLTIMAS 4 SEMANAS) */}
+      <TopLoadProgressComponent
+        sessions={sessions}
+        onOpenExerciseAnalytics={onOpenAnalytics}
+        onGoToWorkout={onGoToWorkout}
+      />
+
+      {/* 📊 VISUALIZAÇÃO DE DADOS RECHARTS: VOLUME TOTAL SEMANAL (KG) & SOBRECARGA PROGRESSIVA */}
+      <WeeklyVolumeOverloadChart
+        sessions={sessions}
+        onGoToWorkout={onGoToWorkout}
+      />
+
+      {/* ⚖️ RADAR DE SIMETRIA & PROPORÇÃO AGONISTA/ANTAGONISTA (RECHARTS RADARCHART) */}
+      <MuscleSymmetryRadar
+        sessions={sessions}
+        completedSetsByMuscle={completedSetsByMuscle}
+      />
 
       {/* 📅 CALENDÁRIO DE CONSISTÊNCIA & STREAK (Últimos 35 dias) */}
       <ConsistencyCalendar

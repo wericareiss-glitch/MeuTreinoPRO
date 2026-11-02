@@ -9,22 +9,16 @@ import {
   Copy, 
   Check, 
   X, 
-  Sparkles, 
-  Coffee, 
-  Flame, 
-  Trophy, 
   QrCode, 
-  ShieldCheck, 
-  ExternalLink 
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
+import { getProtectedCreatorKey, getMaskedCreatorKey, getMaskedCreatorName } from '../utils/privacy';
 
 interface DonationModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const PIX_KEY = 'alex.vieira.123@hotmail.com';
-const PIX_NAME = 'Alex Vieira';
 
 const SUGGESTIONS = [
   { value: '5', label: 'Café de Incentivo', icon: '☕', amount: 'R$ 5,00', desc: 'Um café expresso para manter o foco no código!' },
@@ -41,7 +35,7 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose })
 
   const handleCopyPix = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(PIX_KEY).then(() => {
+      navigator.clipboard.writeText(getProtectedCreatorKey()).then(() => {
         setCopied(true);
         if ('vibrate' in navigator) {
           try {
@@ -138,19 +132,22 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose })
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
                 <QrCode className="w-4 h-4" />
-                <span>Chave PIX Oficial (E-mail):</span>
+                <span>Chave PIX Oficial (Protegida):</span>
               </span>
               <span className="text-[10px] text-slate-400 font-mono">
-                Titular: <strong className="text-white">{PIX_NAME}</strong>
+                Destino: <strong className="text-white">{getMaskedCreatorName()}</strong>
               </span>
             </div>
 
-            {/* Chave em destaque com botão de copiar */}
+            {/* Chave mascarada com botão de copiar */}
             <div className="bg-slate-950 border border-slate-700/80 rounded-xl p-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <span className="text-[10px] text-slate-400 block font-semibold">Chave PIX:</span>
-                <span className="font-mono font-black text-sm text-white select-all truncate block">
-                  {PIX_KEY}
+                <span className="text-[10px] text-slate-400 flex items-center gap-1 font-semibold">
+                  <Lock className="w-3 h-3 text-emerald-400" />
+                  <span>Chave Oculta por Segurança:</span>
+                </span>
+                <span className="font-mono font-black text-sm text-slate-200 select-none truncate block mt-0.5">
+                  {getMaskedCreatorKey()}
                 </span>
               </div>
 

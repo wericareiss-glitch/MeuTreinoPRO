@@ -26,7 +26,9 @@ import {
   ArrowDownRight,
   Minus,
   Eye,
-  RefreshCw
+  RefreshCw,
+  Calculator,
+  Target
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -35,6 +37,9 @@ import {
   Line, 
   BarChart,
   Bar,
+  ScatterChart,
+  Scatter,
+  ZAxis,
   Area,
   XAxis, 
   YAxis, 
@@ -45,7 +50,7 @@ import {
 } from 'recharts';
 import { WorkoutSessionSummary, Exercise, rirToRpe } from '../types/workout';
 import { EXERCISE_DATABASE, MUSCLE_NAMES } from '../data/exerciseDatabase';
-import { calculate1RM } from '../utils/storage';
+import { calculate1RM, safeStorage } from '../utils/storage';
 
 interface ExerciseAnalyticsModalProps {
   isOpen: boolean;
@@ -180,8 +185,10 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
     }
   }, [initialExerciseName]);
 
-  // Active chart view tab: 'load_rpe' (Carga & RPE dual-axis) | 'estimated_1rm' (1RM) | 'volume' (Volume Load)
-  const [chartView, setChartView] = useState<'load_rpe' | 'estimated_1rm' | 'volume'>('load_rpe');
+  // Active chart view tab: 'load_rpe' | 'scatter_rpe_load' | 'estimated_1rm' | 'volume'
+  const [chartView, setChartView] = useState<'load_rpe' | 'scatter_rpe_load' | 'estimated_1rm' | 'volume'>('load_rpe');
+  const [scatterMetric, setScatterMetric] = useState<'rpe' | 'rir'>('rpe');
+  const [formula1RM, setFormula1RM] = useState<'epley' | 'brzycki'>('epley');
 
   // Demo / Simulation mode toggle for previewing overload curves
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
@@ -617,9 +624,19 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
               >
                 <TrendingUp className="w-3.5 h-3.5" />
                 <span>Carga (kg) & RPE</span>
-                <span className="text-[9px] bg-slate-950/20 text-slate-900 px-1 rounded font-black hidden sm:inline">
-                  Eixo Duplo
-                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setChartView('scatter_rpe_load')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  chartView === 'scatter_rpe_load'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span>Dispersão RPE × Carga</span>
               </button>
 
               <button
@@ -632,7 +649,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
                 }`}
               >
                 <Award className="w-3.5 h-3.5" />
-                <span>1RM Estimado</span>
+                <span>1RM & Calculadora Preditiva</span>
               </button>
 
               <button
@@ -869,112 +886,349 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
           )}
 
           {/* ============================================================== */}
-          {/* 2. VISUALIZAÇÃO: 1RM ESTIMADO AO LONGO DAS SESSÕES             */}
+          {/* 1.5 VISUALIZAÇÃO DE DISPERSÃO (SCATTER PLOT): RPE/RIR VS CARGA */}
           {/* ============================================================== */}
-          {chartView === 'estimated_1rm' && (
-            <div className="bg-[#090f1d] border border-slate-800 rounded-3xl p-4 sm:p-5 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
-                  <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
-                    Evolução do 1RM Estimado e Carga Real Levantada
-                  </h3>
-                </div>
-                <span className="text-[10px] font-mono text-cyan-400 font-bold bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                  Fórmula Epley/Brzycki + Ajuste de RPE/RIR
-                </span>
-              </div>
+          {chartView === 'scatter_rpe_load' && (() => {
+            const scatterPoints = chartData.map((pt, idx) => {
+              const rpeVal = pt.avgRpe ?? 8;
+              const rirVal = pt.estimatedRir ?? Math.max(0, +(10 - rpeVal).toFixed(1));
+              return {
+                ...pt,
+                xWeight: pt.maxWeight,
+                yEffort: scatterMetric === 'rpe' ? rpeVal : rirVal,
+                rpeVal,
+                rirVal,
+                weekNum: idx + 1,
+              };
+            });
 
-              {chartData.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="h-64 sm:h-72 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData} margin={{ top: 15, right: 20, left: -10, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2d47" opacity={0.6} />
-                        <XAxis 
-                          dataKey="displayDate" 
-                          stroke="#64748b" 
-                          fontSize={11} 
-                          tickLine={false} 
-                        />
-                        <YAxis 
-                          stroke="#64748b" 
-                          fontSize={11} 
-                          unit="kg"
-                          tickLine={false}
-                          domain={['dataMin - 5', 'dataMax + 10']}
-                        />
-                        <Tooltip content={<CustomLoadRpeTooltip />} />
-                        <Legend 
-                          verticalAlign="top" 
-                          height={36}
-                          formatter={(val) => {
-                            if (val === 'estimated1RM') return <span className="text-xs text-cyan-300 font-bold">1RM Estimado (kg)</span>;
-                            if (val === 'maxWeight') return <span className="text-xs text-emerald-300 font-bold">Carga Real Levantada (kg)</span>;
-                            return val;
-                          }}
-                        />
-                        {kpis.pr1RM > 0 && (
-                          <ReferenceLine 
-                            y={kpis.pr1RM} 
-                            stroke="#f59e0b" 
-                            strokeDasharray="4 4" 
-                            strokeWidth={1.5}
-                            label={{ 
-                              value: `Recorde 1RM: ${kpis.pr1RM}kg`, 
-                              fill: '#f59e0b', 
-                              fontSize: 10, 
-                              position: 'top' 
-                            }} 
-                          />
-                        )}
-                        <Line 
-                          type="monotone" 
-                          dataKey="estimated1RM" 
-                          stroke="#06b6d4" 
-                          strokeWidth={3} 
-                          dot={{ fill: '#06b6d4', r: 4, stroke: '#0891b2', strokeWidth: 2 }} 
-                          activeDot={{ r: 7, fill: '#06b6d4', stroke: '#fff', strokeWidth: 2 }} 
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="maxWeight" 
-                          stroke="#10b981" 
-                          strokeWidth={2} 
-                          strokeDasharray="5 5"
-                          dot={{ fill: '#10b981', r: 3 }} 
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+            return (
+              <div className="bg-[#090f1d] border border-slate-800 rounded-3xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                      <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
+                        Gráfico de Dispersão: Relação Esforço ({scatterMetric.toUpperCase()}) × Carga (kg)
+                      </h3>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Identifica como seu esforço percebido varia conforme a carga sobe ao longo das semanas.
+                    </p>
                   </div>
 
-                  <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-2">
-                      <Zap className="w-4 h-4 text-cyan-400 shrink-0" />
-                      <span className="text-slate-300">
-                        {kpis.growthPercent > 0 ? (
-                          <>Evolução de <strong>+{kpis.growthPercent}%</strong> no potencial máximo de força desde o primeiro registro.</>
-                        ) : (
-                          <>Registre cargas e repetições na reserva para afinar a curva de força máxima.</>
-                        )}
-                      </span>
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setScatterMetric('rpe')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        scatterMetric === 'rpe'
+                          ? 'bg-amber-500 text-slate-950 font-black'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Plotar RPE (6-10)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScatterMetric('rir')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        scatterMetric === 'rir'
+                          ? 'bg-emerald-500 text-slate-950 font-black'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Plotar RIR (0-4)
+                    </button>
+                  </div>
+                </div>
+
+                {scatterPoints.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="h-64 sm:h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ScatterChart margin={{ top: 15, right: 20, left: -5, bottom: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1f2d47" opacity={0.6} />
+                          <XAxis
+                            type="number"
+                            dataKey="xWeight"
+                            name="Carga"
+                            unit=" kg"
+                            stroke="#38bdf8"
+                            fontSize={11}
+                            domain={['dataMin - 5', 'dataMax + 5']}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="yEffort"
+                            name={scatterMetric === 'rpe' ? 'RPE' : 'RIR'}
+                            unit={scatterMetric === 'rpe' ? ' RPE' : ' RIR'}
+                            stroke={scatterMetric === 'rpe' ? '#f59e0b' : '#10b981'}
+                            fontSize={11}
+                            domain={scatterMetric === 'rpe' ? [5.5, 10.2] : [-0.2, 4.5]}
+                            tickLine={false}
+                          />
+                          <ZAxis type="number" dataKey="avgReps" range={[80, 260]} name="Repetições" />
+                          <Tooltip
+                            cursor={{ strokeDasharray: '3 3', stroke: '#475569' }}
+                            content={({ active, payload }) => {
+                              if (!active || !payload || !payload.length) return null;
+                              const pt = payload[0].payload;
+                              return (
+                                <div className="bg-[#0a101f]/95 border border-[#223354] rounded-2xl p-3 shadow-2xl text-xs text-white space-y-1.5">
+                                  <div className="font-bold text-sky-300 border-b border-slate-800 pb-1">
+                                    Semana/Sessão #{pt.sessionIndex} ({pt.displayDate})
+                                  </div>
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-slate-400">Carga Utilizada:</span>
+                                    <span className="font-mono font-black text-white">{pt.xWeight} kg</span>
+                                  </div>
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-slate-400">Esforço Reportado:</span>
+                                    <span className="font-mono font-bold text-amber-300">
+                                      RPE {pt.rpeVal} (RIR {pt.rirVal})
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-slate-400">Média de Reps:</span>
+                                    <span className="font-mono text-emerald-300">{pt.avgReps} reps</span>
+                                  </div>
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-slate-400">1RM Estimado:</span>
+                                    <span className="font-mono text-cyan-300">~{pt.estimated1RM} kg</span>
+                                  </div>
+                                </div>
+                              );
+                            }}
+                          />
+                          <ReferenceLine
+                            y={scatterMetric === 'rpe' ? 8.5 : 1.5}
+                            stroke="#10b981"
+                            strokeDasharray="4 4"
+                            label={{
+                              value: scatterMetric === 'rpe' ? 'Zona Ótima Hipertrofia (RPE 8-9)' : 'Zona Ótima Hipertrofia (RIR 1-2)',
+                              fill: '#10b981',
+                              fontSize: 10,
+                              position: 'insideTopRight',
+                            }}
+                          />
+                          <Scatter
+                            name={scatterMetric === 'rpe' ? 'Sessões (Carga × RPE)' : 'Sessões (Carga × RIR)'}
+                            data={scatterPoints}
+                            fill={scatterMetric === 'rpe' ? '#f59e0b' : '#10b981'}
+                          />
+                        </ScatterChart>
+                      </ResponsiveContainer>
                     </div>
 
-                    {kpis.pr1RM > 0 && (
-                      <span className="text-cyan-400 font-mono font-bold bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20 shrink-0">
-                        Potencial Máximo 1RM: ~{kpis.pr1RM}kg
-                      </span>
-                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                      <div className="bg-[#0b1322] border border-slate-800 rounded-xl p-2.5">
+                        <span className="text-[10px] font-bold uppercase text-sky-400 block">Leitura Diagonal Direita</span>
+                        <p className="text-[11px] text-slate-300 mt-0.5">
+                          Pontos mais à direita com mesmo RPE indicam ganho real de força neural sem aumento da fadiga.
+                        </p>
+                      </div>
+                      <div className="bg-[#0b1322] border border-slate-800 rounded-xl p-2.5">
+                        <span className="text-[10px] font-bold uppercase text-emerald-400 block">Zona Alvo (RPE 8-9 / RIR 1-2)</span>
+                        <p className="text-[11px] text-slate-300 mt-0.5">
+                          Melhor relação estímulo-fadiga para hipertrofia muscular e progressão sustentável.
+                        </p>
+                      </div>
+                      <div className="bg-[#0b1322] border border-slate-800 rounded-xl p-2.5">
+                        <span className="text-[10px] font-bold uppercase text-rose-400 block">Alerta de Fadiga (RPE 10 / RIR 0)</span>
+                        <p className="text-[11px] text-slate-300 mt-0.5">
+                          Se a carga estagnar no topo do eixo Y por 3 semanas, considere reduzir 10% (deload).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-14 text-center text-slate-500 text-xs">
+                    <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-400" />
+                    <p>Nenhuma sessão concluída ainda com este exercício.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ============================================================== */}
+          {/* 2. VISUALIZAÇÃO: 1RM ESTIMADO + CALCULADORA E META MENSAL      */}
+          {/* ============================================================== */}
+          {chartView === 'estimated_1rm' && (() => {
+            const goalKey = `meutreino_1rm_goal_${selectedExerciseName.toLowerCase().trim()}`;
+            const savedGoal = safeStorage.get<string>(goalKey, '');
+            const savedGoalNum = parseFloat(savedGoal) || 0;
+            const latestPt = chartData[chartData.length - 1];
+            const baseW = latestPt?.maxWeight || kpis.prWeight || 60;
+            const baseR = latestPt?.avgReps || 8;
+            const epley1RM = baseR === 1 ? baseW : Math.round(baseW * (1 + baseR / 30) * 10) / 10;
+            const brzycki1RM = baseR === 1 ? baseW : Math.round((baseW / (1.0278 - 0.0278 * Math.min(29, baseR))) * 10) / 10;
+            const activePred1RM = formula1RM === 'epley' ? epley1RM : brzycki1RM;
+
+            return (
+              <div className="bg-[#090f1d] border border-slate-800 rounded-3xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+                    <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
+                      Evolução do 1RM Estimado & Calculadora Preditiva
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setFormula1RM('epley')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        formula1RM === 'epley'
+                          ? 'bg-cyan-500 text-slate-950 font-black'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Fórmula Epley (~{epley1RM}kg)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormula1RM('brzycki')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                        formula1RM === 'brzycki'
+                          ? 'bg-cyan-500 text-slate-950 font-black'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Fórmula Brzycki (~{brzycki1RM}kg)
+                    </button>
                   </div>
                 </div>
-              ) : (
-                <div className="py-14 text-center text-slate-500 text-xs">
-                  <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-400" />
-                  <p>Nenhuma sessão concluída ainda com este exercício.</p>
-                </div>
-              )}
-            </div>
-          )}
+
+                {chartData.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="h-64 sm:h-72 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData} margin={{ top: 15, right: 20, left: -10, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1f2d47" opacity={0.6} />
+                          <XAxis 
+                            dataKey="displayDate" 
+                            stroke="#64748b" 
+                            fontSize={11} 
+                            tickLine={false} 
+                          />
+                          <YAxis 
+                            stroke="#64748b" 
+                            fontSize={11} 
+                            unit="kg"
+                            tickLine={false}
+                            domain={['dataMin - 5', 'dataMax + 12']}
+                          />
+                          <Tooltip content={<CustomLoadRpeTooltip />} />
+                          <Legend 
+                            verticalAlign="top" 
+                            height={36}
+                            formatter={(val) => {
+                              if (val === 'estimated1RM') return <span className="text-xs text-cyan-300 font-bold">1RM Estimado (kg)</span>;
+                              if (val === 'maxWeight') return <span className="text-xs text-emerald-300 font-bold">Carga Real Levantada (kg)</span>;
+                              return val;
+                            }}
+                          />
+                          {kpis.pr1RM > 0 && (
+                            <ReferenceLine 
+                              y={kpis.pr1RM} 
+                              stroke="#f59e0b" 
+                              strokeDasharray="4 4" 
+                              strokeWidth={1.5}
+                              label={{ 
+                                value: `Recorde 1RM: ${kpis.pr1RM}kg`, 
+                                fill: '#f59e0b', 
+                                fontSize: 10, 
+                                position: 'top' 
+                              }} 
+                            />
+                          )}
+                          {savedGoalNum > 0 && (
+                            <ReferenceLine 
+                              y={savedGoalNum} 
+                              stroke="#10b981" 
+                              strokeDasharray="3 3" 
+                              strokeWidth={2}
+                              label={{ 
+                                value: `Meta Próx. Mês: ${savedGoalNum}kg`, 
+                                fill: '#10b981', 
+                                fontSize: 10, 
+                                position: 'insideBottomRight' 
+                              }} 
+                            />
+                          )}
+                          <Line 
+                            type="monotone" 
+                            dataKey="estimated1RM" 
+                            stroke="#06b6d4" 
+                            strokeWidth={3} 
+                            dot={{ fill: '#06b6d4', r: 4, stroke: '#0891b2', strokeWidth: 2 }} 
+                            activeDot={{ r: 7, fill: '#06b6d4', stroke: '#fff', strokeWidth: 2 }} 
+                          />
+                          <Line 
+                            type="monotone" 
+                            dataKey="maxWeight" 
+                            stroke="#10b981" 
+                            strokeWidth={2} 
+                            strokeDasharray="5 5"
+                            dot={{ fill: '#10b981', r: 3 }} 
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Resumo Preditivo Epley vs Brzycki & Meta Mensal */}
+                    <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3.5 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <Calculator className="w-4 h-4 text-cyan-400 shrink-0" />
+                        <div>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                            1RM Preditivo ({formula1RM === 'epley' ? 'Epley' : 'Brzycki'})
+                          </span>
+                          <span className="font-mono font-black text-sm text-white">
+                            ~{activePred1RM} kg <span className="text-[11px] text-slate-400">({baseW}kg × {baseR} reps)</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5">
+                        <Target className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <div>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">
+                            Meta de 1RM (Próximo Mês)
+                          </span>
+                          <span className="font-mono font-black text-sm text-emerald-400">
+                            {savedGoalNum > 0 ? `${savedGoalNum} kg` : `Sugerida: ${Math.round(activePred1RM * 1.05 * 2) / 2} kg (+5%)`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextTarget = (Math.round(activePred1RM * 1.05 * 2) / 2).toString();
+                            safeStorage.set(goalKey, nextTarget);
+                            setFormula1RM((prev) => prev);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-bold text-xs cursor-pointer transition-colors"
+                        >
+                          Definir Meta +5% ({Math.round(activePred1RM * 1.05 * 2) / 2}kg)
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-14 text-center text-slate-500 text-xs">
+                    <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-400" />
+                    <p>Nenhuma sessão concluída ainda com este exercício.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ============================================================== */}
           {/* 3. VISUALIZAÇÃO: VOLUME DE CARGA TOTAL (KG)                     */}

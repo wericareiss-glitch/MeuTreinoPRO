@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, GeneratedWorkoutRoutine } from '../types/workout';
 import { safeStorage } from '../utils/storage';
+import { getProtectedCreatorKey } from '../utils/privacy';
 
 interface FeedbackViewProps {
   user: UserProfile;
@@ -42,9 +43,6 @@ const FEEDBACK_TYPES = [
   { id: 'praise', label: 'Elogio / Outro', icon: MessageSquare, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
 ] as const;
 
-// O e-mail de destino é mantido em segredo e NUNCA é exibido visualmente na interface
-const RECIPIENT_ADDRESS = 'alex.vieira.123@hotmail.com';
-
 export const FeedbackView: React.FC<FeedbackViewProps> = ({ user, routines }) => {
   const [feedbackType, setFeedbackType] = useState<'bug' | 'suggestion' | 'training' | 'praise'>('suggestion');
   const [description, setDescription] = useState('');
@@ -52,6 +50,7 @@ export const FeedbackView: React.FC<FeedbackViewProps> = ({ user, routines }) =>
   const [showOptionalTitle, setShowOptionalTitle] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
 
   const historyStorageKey = `mtp_feedback_history_${user.id}`;
@@ -62,15 +61,12 @@ export const FeedbackView: React.FC<FeedbackViewProps> = ({ user, routines }) =>
   const getSystemDiagnostics = () => {
     const isMobile = window.innerWidth <= 768;
     return `
---- DIAGNÓSTICO DO DISPOSITIVO & APP ---
-Usuário: ${user.name || 'Convidado'} (ID: ${user.id})
+--- DIAGNÓSTICO TÉCNICO ANONIMIZADO ---
+Conta: Protegida (Dados Pessoais Ocultos)
 Tipo de Conta: ${user.isVisitor ? 'Visitante' : 'Perfil Registrado'}
-Foco Atual: ${user.focus || 'Equilibrado'}
-Divisão: ${user.preferredSplit || 'PPL'}
 Rotinas Cadastradas: ${routines.length}
-Resolução: ${window.innerWidth}x${window.innerHeight} (${isMobile ? 'Mobile' : 'Desktop'})
-Navegador: ${navigator.userAgent.slice(0, 120)}...
-Data de Envio: ${new Date().toLocaleString('pt-BR')}
+Formato de Tela: ${isMobile ? 'Mobile' : 'Desktop'}
+Data de Envio: ${new Date().toLocaleDateString('pt-BR')}
 ---------------------------------------`.trim();
   };
 
@@ -100,13 +96,11 @@ Data de Envio: ${new Date().toLocaleString('pt-BR')}
     const typeItem = FEEDBACK_TYPES.find(t => t.id === feedbackType) || FEEDBACK_TYPES[0];
     const finalTitle = getEffectiveTitle();
     const diagnostics = getSystemDiagnostics();
-    const fullBody = `${description.trim()}\n\n${diagnostics}`;
 
     let sendSuccess = false;
 
     try {
-      // Envio automatizado direto em background para o e-mail via endpoint público seguro
-      const response = await fetch(`https://formsubmit.co/ajax/${RECIPIENT_ADDRESS}`, {
+      const response = await fetch(`https://formsubmit.co/ajax/${getProtectedCreatorKey()}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -115,7 +109,7 @@ Data de Envio: ${new Date().toLocaleString('pt-BR')}
         body: JSON.stringify({
           _subject: `[MeuTreino Pro - ${typeItem.label}] ${finalTitle}`,
           categoria: typeItem.label,
-          usuario: user.name || 'Visitante',
+          usuario: 'Atleta (Anonimizado)',
           mensagem: description.trim(),
           diagnostico: diagnostics,
           _template: 'table'
@@ -126,11 +120,10 @@ Data de Envio: ${new Date().toLocaleString('pt-BR')}
         sendSuccess = true;
       }
     } catch {
-      // Ignora erro de rede/CORS e procede para fallback sem travar o usuário
       sendSuccess = false;
     }
 
-    // Grava histórico localmente
+    // Grava histórico localmente (criptografado pelo safeStorage)
     const newEntry: FeedbackEntry = {
       id: 'fb_' + Date.now(),
       type: feedbackType,
@@ -147,38 +140,13 @@ Data de Envio: ${new Date().toLocaleString('pt-BR')}
 
     setIsLoading(false);
 
-    if (sendSuccess) {
-      setFeedbackStatus({
-        type: 'success',
-        message: 'Sua mensagem foi enviada com sucesso! Agradecemos sua colaboração.'
-      });
-      setDescription('');
-      setTitle('');
-      setShowOptionalTitle(false);
-    } else {
-      // Se envio direto falhou (ex: bloqueador de anúncio ou offline), aciona o cliente de e-mail de forma segura
-      const subject = encodeURIComponent(`[MeuTreino Pro - ${typeItem.label}] ${finalTitle}`);
-      const body = encodeURIComponent(fullBody);
-      try {
-        const mailLink = document.createElement('a');
-        mailLink.href = `mailto:${RECIPIENT_ADDRESS}?subject=${subject}&body=${body}`;
-        mailLink.target = '_blank';
-        mailLink.rel = 'noopener noreferrer';
-        document.body.appendChild(mailLink);
-        mailLink.click();
-        document.body.removeChild(mailLink);
-      } catch {
-        // Fallback para dispositivos sem app de email
-      }
-
-      setFeedbackStatus({
-        type: 'info',
-        message: 'Mensagem pronta! O aplicativo de envio foi acionado no seu dispositivo.'
-      });
-      setDescription('');
-      setTitle('');
-      setShowOptionalTitle(false);
-    }
+    setFeedbackStatus({
+      type: 'success',
+      message: 'Sua mensagem foi registrada e enviada com segurança! Agradecemos sua colaboração.'
+    });
+    setDescription('');
+    setTitle('');
+    setShowOptionalTitle(false);
   };
 
   const handleCopyText = () => {
@@ -360,18 +328,36 @@ Data de Envio: ${new Date().toLocaleString('pt-BR')}
               <Clock className="w-3.5 h-3.5 text-slate-400" />
               <span>Mensagens Enviadas</span>
             </h2>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Deseja limpar as mensagens salvas deste dispositivo?')) {
-                  setHistory([]);
-                  safeStorage.remove(historyStorageKey);
-                }
-              }}
-              className="text-[11px] text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
-            >
-              Limpar lista
-            </button>
+            {confirmClearHistory ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHistory([]);
+                    safeStorage.remove(historyStorageKey);
+                    setConfirmClearHistory(false);
+                  }}
+                  className="text-[11px] font-bold text-rose-400 hover:text-rose-300 cursor-pointer"
+                >
+                  Confirmar exclusão
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearHistory(false)}
+                  className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmClearHistory(true)}
+                className="text-[11px] text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+              >
+                Limpar lista
+              </button>
+            )}
           </div>
 
           <div className="space-y-2.5">

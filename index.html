@@ -1,19 +1,36 @@
 <!doctype html>
-<html lang="pt-BR" class="dark">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>MeuTreino Pro</title>
-    <meta name="description" content="Plataforma avançada de periodização para hipertrofia individualizada." />
+    <meta name="description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
     <meta property="og:title" content="MeuTreino Pro" />
-    <meta property="og:description" content="Plataforma avançada de periodização para hipertrofia individualizada." />
+    <meta property="og:description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <script>
       (function() {
         try {
-          document.documentElement.setAttribute('data-theme', 'dark');
-          document.documentElement.classList.add('dark');
+          var saved = localStorage.getItem('meutreino_theme');
+          var mode = localStorage.getItem('meutreino_theme_mode');
+          var systemPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+          var theme = 'dark';
+          if (mode === 'system' || (!saved && !mode)) {
+            theme = systemPrefersLight ? 'light' : 'dark';
+          } else if (saved === 'light' || saved === 'dark') {
+            theme = saved;
+          } else {
+            theme = systemPrefersLight ? 'light' : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+          if (theme === 'light') {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.classList.add('theme-light');
+          } else {
+            document.documentElement.classList.remove('theme-light');
+            document.documentElement.classList.add('dark');
+          }
         } catch (e) {}
       })();
     </script>
@@ -23,3 +40,4 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+

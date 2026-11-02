@@ -17,10 +17,12 @@ import {
   Trash2, 
   MoreVertical, 
   Share2, 
-  Zap 
+  Zap,
+  FileDown
 } from 'lucide-react';
 import { GeneratedWorkoutRoutine, UserProfile } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
+import { WorkoutPdfExportModal } from './WorkoutPdfExportModal';
 
 interface WorkoutListViewProps {
   user: UserProfile;
@@ -48,7 +50,9 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   onShareRoutine,
 }) => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [copiedToast, setCopiedToast] = useState(false);
+  const [pdfModalRoutine, setPdfModalRoutine] = useState<GeneratedWorkoutRoutine | null>(null);
 
   const handleShareClick = (routine: GeneratedWorkoutRoutine) => {
     if (onShareRoutine) {
@@ -294,6 +298,18 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                               type="button"
                               onClick={() => {
                                 setOpenMenuId(null);
+                                setPdfModalRoutine(routine);
+                              }}
+                              className="w-full px-3 py-2 text-left text-xs font-medium text-sky-300 hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                            >
+                              <FileDown className="w-3.5 h-3.5 text-sky-400" />
+                              <span>Exportar / Imprimir PDF</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenMenuId(null);
                                 handleShareClick(routine);
                               }}
                               className="w-full px-3 py-2 text-left text-xs font-medium text-slate-200 hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
@@ -303,19 +319,42 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                             </button>
 
                             {onDeleteRoutine && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenMenuId(null);
-                                  if (confirm(`Deseja realmente remover o "${routine.name}" da sua lista?`)) {
-                                    onDeleteRoutine(routine.id);
-                                  }
-                                }}
-                                className="w-full px-3 py-2 text-left text-xs font-medium text-rose-400 hover:bg-rose-950/30 flex items-center gap-2 cursor-pointer border-t border-slate-800 mt-1 pt-1"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span>Excluir Treino</span>
-                              </button>
+                              confirmDeleteId === routine.id ? (
+                                <div className="px-3 py-2 border-t border-slate-800 mt-1 pt-2 bg-rose-950/20 space-y-1.5">
+                                  <span className="text-[11px] font-bold text-rose-300 block">
+                                    Confirmar exclusão?
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConfirmDeleteId(null);
+                                        setOpenMenuId(null);
+                                        onDeleteRoutine(routine.id);
+                                      }}
+                                      className="flex-1 py-1 rounded-lg bg-rose-500 hover:bg-rose-400 text-slate-950 text-[11px] font-extrabold transition-colors cursor-pointer"
+                                    >
+                                      Excluir
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteId(null)}
+                                      className="flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition-colors cursor-pointer"
+                                    >
+                                      Não
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteId(routine.id)}
+                                  className="w-full px-3 py-2 text-left text-xs font-medium text-rose-400 hover:bg-rose-950/30 flex items-center gap-2 cursor-pointer border-t border-slate-800 mt-1 pt-1"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Excluir Treino</span>
+                                </button>
+                              )
                             )}
                           </div>
                         </>
@@ -377,12 +416,12 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                   </div>
                 </div>
 
-                {/* Ação: Iniciar Treino */}
-                <div className="pt-2 border-t border-slate-800/60">
+                {/* Ações: Iniciar Treino + Ficha PDF */}
+                <div className="pt-2 border-t border-slate-800/60 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onStartWorkout(routine)}
-                    className={`w-full py-3.5 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg active:scale-[0.98] ${
+                    className={`flex-1 py-3.5 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg active:scale-[0.98] ${
                       isActive
                         ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 ring-2 ring-emerald-400/40'
                         : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
@@ -391,12 +430,30 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                     <Play className="w-4 h-4 fill-slate-950" />
                     <span>{isActive ? 'Continuar Treino' : 'Iniciar Este Treino'}</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPdfModalRoutine(routine)}
+                    className="py-3.5 px-3.5 rounded-xl font-bold text-xs bg-slate-800/90 hover:bg-slate-700 text-sky-300 border border-sky-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-95"
+                    title="Exportar ficha de treino em PDF A4 ou imprimir"
+                  >
+                    <FileDown className="w-4 h-4 text-sky-400" />
+                    <span className="hidden xs:inline">PDF</span>
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Modal de Exportação e Impressão de Ficha A4 PDF */}
+      <WorkoutPdfExportModal
+        isOpen={Boolean(pdfModalRoutine)}
+        onClose={() => setPdfModalRoutine(null)}
+        routine={pdfModalRoutine}
+        user={user}
+      />
     </div>
   );
 };

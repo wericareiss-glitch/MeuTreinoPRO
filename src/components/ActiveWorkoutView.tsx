@@ -16,13 +16,35 @@ import {
   Disc,
   Check,
   MoreVertical,
-  Sparkles
+  Sparkles,
+  Link2,
+  FileDown,
+  BookOpen,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  Target,
+  Zap,
+  Dumbbell
 } from 'lucide-react';
-import { GeneratedWorkoutRoutine, WorkoutItem, WorkoutLogs, WorkoutSessionSummary, MuscleGroup } from '../types/workout';
+import {
+  GeneratedWorkoutRoutine,
+  WorkoutItem,
+  WorkoutLogs,
+  WorkoutSessionSummary,
+  MuscleGroup,
+  PeriodizationStrategy,
+  PERIODIZATION_PHASES,
+  FocusOption,
+} from '../types/workout';
 import { ExerciseCard } from './ExerciseCard';
 import { wakeLockManager } from '../utils/wakeLock';
 import { JointMobilityModal } from './JointMobilityModal';
 import { generateJointWarmupRoutine } from '../utils/jointMobilityEngine';
+import { safeStorage } from '../utils/storage';
+import { soundManager } from '../utils/audio';
+import { WorkoutPdfExportModal } from './WorkoutPdfExportModal';
+import { SmartTermTooltip } from './SmartTermTooltip';
 
 interface ActiveWorkoutViewProps {
   routine: GeneratedWorkoutRoutine;
@@ -34,12 +56,15 @@ interface ActiveWorkoutViewProps {
   workoutNotes: string;
   onUpdateWorkoutNotes: (notes: string) => void;
   muscleTargetRir?: Partial<Record<MuscleGroup, number>>;
+  periodizationStrategy?: PeriodizationStrategy;
+  userFocus?: FocusOption;
+  onSelectPeriodizationStrategy?: (phase: PeriodizationStrategy) => void;
 
   onOpenAddExercise: () => void;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onDeleteExercise: (index: number) => void;
-  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'rpe' | 'rir', val: string) => void;
+  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'rpe' | 'rir' | 'setType', val: string) => void;
   onToggleSet: (key: string, restSec: number) => void;
   onUpdateRest: (index: number, newRest: number) => void;
   onOpenWarmup: (name: string, weight: string) => void;
@@ -65,6 +90,9 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   workoutNotes,
   onUpdateWorkoutNotes,
   muscleTargetRir,
+  periodizationStrategy,
+  userFocus,
+  onSelectPeriodizationStrategy,
   onOpenAddExercise,
   onMoveUp,
   onMoveDown,
@@ -86,7 +114,95 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   const [isConfirmingCancel, setIsConfirmingCancel] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [isMobilityOpen, setIsMobilityOpen] = useState(false);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [hideCompletedExercises, setHideCompletedExercises] = useState(false);
+  const [isLegendsExpanded, setIsLegendsExpanded] = useState<boolean>(() =>
+    safeStorage.get<boolean>('meutreino_legends_expanded', false)
+  );
   const toolsMenuRef = useRef<HTMLDivElement>(null);
+
+  // Detecta dinamicamente a fase de periodização a partir da estratégia selecionada, foco ou faixa de repetições da rotina
+  const inferPhaseFromWorkout = React.useCallback((): PeriodizationStrategy => {
+    if (periodizationStrategy) return periodizationStrategy;
+    if (routine.periodizationStrategy) return routine.periodizationStrategy;
+
+    const storedPhase = safeStorage.get<PeriodizationStrategy | null>(
+      `meutreino_periodization_${routine.id}`,
+      null
+    );
+    if (storedPhase && PERIODIZATION_PHASES[storedPhase]) {
+      return storedPhase;
+    }
+
+    if (workoutItems.length > 0) {
+      let totalAvgReps = 0;
+      let validCount = 0;
+      workoutItems.forEach((it) => {
+        const matches = (it.reps || '').match(/\d+/g);
+        if (matches && matches.length > 0) {
+          const nums = matches.map((n) => parseInt(n, 10)).filter((n) => !isNaN(n));
+          if (nums.length > 0) {
+            const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+            totalAvgReps += avg;
+            validCount++;
+          }
+        }
+      });
+      if (validCount > 0) {
+        const meanReps = totalAvgReps / validCount;
+        if (meanReps <= 6) return 'strength';
+        if (meanReps >= 14.5) return 'metabolic';
+        return 'hypertrophy';
+      }
+    }
+
+    if (userFocus === 'strength') return 'strength';
+    return 'hypertrophy';
+  }, [periodizationStrategy, routine.id, routine.periodizationStrategy, workoutItems, userFocus]);
+
+  const [activePhase, setActivePhase] = useState<PeriodizationStrategy>(() => inferPhaseFromWorkout());
+
+  useEffect(() => {
+    if (periodizationStrategy && periodizationStrategy !== activePhase) {
+      setActivePhase(periodizationStrategy);
+    }
+  }, [periodizationStrategy, activePhase]);
+
+  const handleSelectPhase = (phase: PeriodizationStrategy) => {
+    setActivePhase(phase);
+    safeStorage.set(`meutreino_periodization_${routine.id}`, phase);
+    soundManager.vibrate(18);
+    if (onSelectPeriodizationStrategy) {
+      onSelectPeriodizationStrategy(phase);
+    }
+  };
+
+  const currentPhaseConfig = PERIODIZATION_PHASES[activePhase] || PERIODIZATION_PHASES.hypertrophy;
+
+  const toggleLegendsExpanded = () => {
+    setIsLegendsExpanded((prev) => {
+      const next = !prev;
+      safeStorage.set('meutreino_legends_expanded', next);
+      return next;
+    });
+  };
+
+  // Estado persistente de pares Bi-set / Super-série por rotina
+  const bisetStorageKey = `meutreino_bisets_${routine.id}`;
+  const [bisetPairs, setBisetPairs] = useState<Record<string, boolean>>(() => {
+    return safeStorage.get<Record<string, boolean>>(bisetStorageKey, {});
+  });
+
+  const handleToggleBisetWithNext = (index: number) => {
+    const currentItem = workoutItems[index];
+    if (!currentItem || index >= workoutItems.length - 1) return;
+    setBisetPairs((prev) => {
+      const next = { ...prev, [currentItem.id]: !prev[currentItem.id] };
+      safeStorage.set(bisetStorageKey, next);
+      return next;
+    });
+    soundManager.vibrate(20);
+  };
 
   // Gera rotina de aquecimento articular dinâmica baseada nos exercícios do treino ativo
   const mobilityRoutine = React.useMemo(() => {
@@ -271,8 +387,178 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
 
   const progressPercent = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
 
+  // Índices e status de conclusão por exercício para navegação rápida no mobile
+  const exerciseCompletionStats = React.useMemo(() => {
+    return workoutItems.map((item, idx) => {
+      let doneCount = 0;
+      for (let s = 1; s <= item.sets; s++) {
+        if (logs[`${item.exercise.id}_${s}`]?.done) {
+          doneCount++;
+        }
+      }
+      return {
+        index: idx,
+        doneCount,
+        totalSets: item.sets,
+        isComplete: doneCount === item.sets && item.sets > 0,
+      };
+    });
+  }, [workoutItems, logs]);
+
+  const nextIncompleteExerciseIndex = React.useMemo(() => {
+    const found = exerciseCompletionStats.find((st) => !st.isComplete);
+    return found ? found.index : -1;
+  }, [exerciseCompletionStats]);
+
+  const scrollToExercise = (idx: number) => {
+    const el = document.getElementById(`exercise-card-${idx}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      soundManager.vibrate(15);
+    }
+  };
+
   return (
-    <div className="space-y-4 animate-fadeIn pb-24 max-w-4xl mx-auto">
+    <div className="space-y-4 animate-fadeIn pb-28 max-w-4xl mx-auto">
+      {/* 0. Painel Centralizado no Topo — Legendas para Iniciantes e Consulta Rápida */}
+      <div className="bg-[#0f172a] border border-sky-500/30 rounded-2xl p-3 sm:p-4 shadow-lg text-center">
+        <div className="flex flex-col items-center justify-center">
+          <div className="inline-flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-sky-400 shrink-0" />
+            <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
+              Legendas:
+            </h2>
+            <button
+              type="button"
+              onClick={toggleLegendsExpanded}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 text-[10px] font-bold transition-colors cursor-pointer"
+              title={isLegendsExpanded ? 'Recolher detalhes das legendas' : 'Expandir explicação detalhada'}
+            >
+              <HelpCircle className="w-3 h-3 text-sky-400" />
+              <span>{isLegendsExpanded ? 'Recolher' : 'Ver Explicações'}</span>
+              {isLegendsExpanded ? (
+                <ChevronUp className="w-3 h-3" />
+              ) : (
+                <ChevronDown className="w-3 h-3" />
+              )}
+            </button>
+          </div>
+
+          {/* Resumo Rápido Sempre Visível e Centralizado com Tooltips Inteligentes */}
+          <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2">
+            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
+              <SmartTermTooltip term="SERIES" align="left">
+                <span>
+                  <strong className="text-emerald-400">Séries:</strong> rodadas do exercício
+                </span>
+              </SmartTermTooltip>
+            </span>
+
+            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-sky-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
+              <SmartTermTooltip term="REPS" align="center">
+                <span>
+                  <strong className="text-sky-400">Reps (Repetições):</strong> movimentos seguidos
+                </span>
+              </SmartTermTooltip>
+            </span>
+
+            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
+              <SmartTermTooltip term="RIR" align="center">
+                <span>
+                  <strong className="text-amber-400">RIR:</strong> repetições na reserva
+                </span>
+              </SmartTermTooltip>
+            </span>
+
+            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-sky-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
+              <SmartTermTooltip term="RPE" align="center">
+                <span>
+                  <strong className="text-amber-300">RPE (6–10):</strong> nota de esforço e falha
+                </span>
+              </SmartTermTooltip>
+            </span>
+
+            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-purple-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
+              <SmartTermTooltip term="1RM" align="right">
+                <span>
+                  <strong className="text-purple-400">1RM / 6RM:</strong> carga máxima estimada
+                </span>
+              </SmartTermTooltip>
+            </span>
+
+            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-rose-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
+              <SmartTermTooltip term="SET_TYPES" align="right">
+                <span>
+                  <strong className="text-rose-400">W/T/F/D/RP:</strong> tipos de série
+                </span>
+              </SmartTermTooltip>
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-500 mt-1">
+            💡 Passe o mouse ou toque em qualquer termo técnico (RPE, RIR, 1RM, etc.) durante o treino para ver como sentir a falha técnica.
+          </span>
+        </div>
+
+        {/* Grade Detalhada de Termos para Iniciantes (Expansível) */}
+        {isLegendsExpanded && (
+          <div className="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-left animate-fadeIn">
+            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
+              <div className="text-[11px] font-black text-emerald-400 mb-0.5">
+                📌 Séries & Repetições (Reps)
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                <strong>3 séries × 10 reps</strong> significa fazer 10 movimentos seguidos, descansar, e repetir esse bloco por 3 vezes no total.
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
+              <div className="text-[11px] font-black text-amber-400 mb-0.5">
+                🎯 RIR (Repetições na Reserva)
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Quantas repetições você <strong>ainda aguentaria fazer</strong> antes de travar. Ex: <strong>RIR 2</strong> = parou sentindo que cabiam mais 2. <strong>RIR 0</strong> = falha total.
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
+              <div className="text-[11px] font-black text-sky-400 mb-0.5">
+                🔥 RPE (Percepção de Esforço 6 a 10)
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Nota de quão difícil foi a série: <strong>RPE 10</strong> = limite máximo (0 sobrando); <strong>RPE 9</strong> = sobrou 1; <strong>RPE 8</strong> = sobraram 2; <strong>RPE 6–7</strong> = leve/moderado.
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
+              <div className="text-[11px] font-black text-purple-400 mb-0.5">
+                🏋️ 1RM e 6RM (Força Máxima)
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Cálculo automático de quanto peso você aguentaria levantar em <strong>1 repetição única (1RM)</strong> ou <strong>6 repetições (6RM)</strong>, usado para medir sua evolução.
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
+              <div className="text-[11px] font-black text-rose-400 mb-0.5">
+                ⚡ Tipos de Série (W, T, F, D, RP)
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                <strong>W:</strong> Aquecimento (peso leve) · <strong>T:</strong> Série principal · <strong>F:</strong> Até a falha · <strong>D (Drop-set):</strong> reduz 20% do peso sem descanso · <strong>RP:</strong> pausa 15s + reps extras.
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
+              <div className="text-[11px] font-black text-teal-400 mb-0.5">
+                🏆 PR & Bi-set (Super-série)
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                <strong>PR (Recorde Pessoal):</strong> quando você bate seu maior peso ou volume histórico. <strong>Bi-set:</strong> fazer 2 exercícios seguidos e só descansar após o segundo.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* 1. Header do Treino Ativo (Compacto & Minimalista) */}
       <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-xl">
         <div className="flex items-center justify-between gap-3">
@@ -323,6 +609,118 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
           />
         </div>
 
+        {/* Badge Dinâmico 'Rep-Target' de Periodização (Força 3-5 | Hipertrofia 8-12 | Metabólico 15+) */}
+        <div
+          className={`mt-3 p-2.5 sm:p-3 rounded-xl border transition-all duration-300 ${
+            activePhase === 'strength'
+              ? 'bg-amber-950/25 border-amber-500/35 shadow-sm shadow-amber-500/5'
+              : activePhase === 'metabolic'
+              ? 'bg-purple-950/25 border-purple-500/35 shadow-sm shadow-purple-500/5'
+              : 'bg-emerald-950/25 border-emerald-500/35 shadow-sm shadow-emerald-500/5'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            {/* Identificador principal do Rep-Target */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className={`px-2.5 py-1 rounded-lg border font-mono font-black text-xs flex items-center gap-1.5 shrink-0 shadow-inner ${
+                  activePhase === 'strength'
+                    ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
+                    : activePhase === 'metabolic'
+                    ? 'bg-purple-500/20 border-purple-400/50 text-purple-300'
+                    : 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
+                }`}
+              >
+                <Target className="w-3.5 h-3.5 shrink-0" />
+                <span>REP-TARGET: {currentPhaseConfig.repRange}</span>
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span
+                    className={`text-xs font-black tracking-tight ${
+                      activePhase === 'strength'
+                        ? 'text-amber-300'
+                        : activePhase === 'metabolic'
+                        ? 'text-purple-300'
+                        : 'text-emerald-300'
+                    }`}
+                  >
+                    {currentPhaseConfig.label} ({currentPhaseConfig.repBadge})
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900/90 border border-slate-700/80 text-slate-300">
+                    {currentPhaseConfig.intensityPct} · {currentPhaseConfig.rirTarget}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                  {currentPhaseConfig.stimulus} · Descanso ideal ~{currentPhaseConfig.restRecommended}s
+                </p>
+              </div>
+            </div>
+
+            {/* Pílulas de Destaque das 3 Fases de Periodização (Seleção/Destaque em 1 Toque) */}
+            <div
+              className="grid grid-cols-3 gap-1 bg-[#080d19] p-1 rounded-xl border border-slate-800 shrink-0"
+              role="group"
+              aria-label="Fase da Estratégia de Periodização (Rep-Target)"
+            >
+              {/* 1. FORÇA (3-5) */}
+              <button
+                type="button"
+                onClick={() => handleSelectPhase('strength')}
+                className={`px-2 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  activePhase === 'strength'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/25 scale-[1.02]'
+                    : 'text-slate-400 hover:text-amber-300 hover:bg-slate-800/70 font-semibold'
+                }`}
+                title="Fase de Força Pura: 3 a 5 repetições com alta carga neural (85-92% 1RM)"
+              >
+                <Dumbbell className="w-3 h-3 shrink-0" />
+                <span>Força</span>
+                <span className={activePhase === 'strength' ? 'text-slate-950 font-black' : 'text-amber-400/80'}>
+                  3-5
+                </span>
+              </button>
+
+              {/* 2. HIPERTROFIA (8-12) */}
+              <button
+                type="button"
+                onClick={() => handleSelectPhase('hypertrophy')}
+                className={`px-2 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  activePhase === 'hypertrophy'
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/25 scale-[1.02]'
+                    : 'text-slate-400 hover:text-emerald-300 hover:bg-slate-800/70 font-semibold'
+                }`}
+                title="Fase de Hipertrofia Mecânica: 8 a 12 repetições para volume e tensão mecânica (70-80% 1RM)"
+              >
+                <Flame className="w-3 h-3 shrink-0" />
+                <span>Hipertrofia</span>
+                <span className={activePhase === 'hypertrophy' ? 'text-slate-950 font-black' : 'text-emerald-400/80'}>
+                  8-12
+                </span>
+              </button>
+
+              {/* 3. METABÓLICO (15+) */}
+              <button
+                type="button"
+                onClick={() => handleSelectPhase('metabolic')}
+                className={`px-2 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  activePhase === 'metabolic'
+                    ? 'bg-purple-500 text-slate-950 font-black shadow-md shadow-purple-500/25 scale-[1.02]'
+                    : 'text-slate-400 hover:text-purple-300 hover:bg-slate-800/70 font-semibold'
+                }`}
+                title="Fase Metabólica: 15+ repetições para estresse metabólico, resistência e oclusão (55-65% 1RM)"
+              >
+                <Zap className="w-3 h-3 shrink-0" />
+                <span>Metabólico</span>
+                <span className={activePhase === 'metabolic' ? 'text-slate-950 font-black' : 'text-purple-400/80'}>
+                  15+
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Alerta Discreto de Recordes Batidos */}
         {beatenSetsCount > 0 && (
           <div className="mt-2.5 px-3 py-1.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between text-xs">
@@ -353,44 +751,141 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             </button>
           </div>
         )}
+
+        {/* Banner de Treino 100% Concluído (Acesso Rápido no Topo para Salvar sem precisar rolar a página) */}
+        {totalSets > 0 && completedSets === totalSets && (
+          <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/20 border border-emerald-400/50 flex flex-col sm:flex-row items-center justify-between gap-2.5 animate-fadeIn shadow-lg">
+            <div className="flex items-center gap-2 text-emerald-300 text-xs font-extrabold">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              <span>🎉 Parabéns! Todas as {totalSets} séries de hoje foram concluídas!</span>
+            </div>
+            <button
+              type="button"
+              onClick={onFinishSession}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95 shrink-0"
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>Concluir & Salvar Treino Agora</span>
+            </button>
+          </div>
+        )}
+
+        {/* Índice de Navegação Rápida por Exercício (1-Toque para Pular para o Exercício no Mobile) */}
+        {workoutItems.length > 1 && (
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Navegação Rápida ({workoutItems.length} exercícios):
+              </span>
+              <div className="flex items-center gap-1.5">
+                {nextIncompleteExerciseIndex !== -1 && completedSets > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => scrollToExercise(nextIncompleteExerciseIndex)}
+                    className="px-2 py-0.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[10px] font-bold cursor-pointer active:scale-95"
+                  >
+                    Ir p/ Próximo (#{nextIncompleteExerciseIndex + 1}) ➔
+                  </button>
+                )}
+                {exerciseCompletionStats.some((st) => st.isComplete) &&
+                  !exerciseCompletionStats.every((st) => st.isComplete) && (
+                    <button
+                      type="button"
+                      onClick={() => setHideCompletedExercises((prev) => !prev)}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer active:scale-95 ${
+                        hideCompletedExercises
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      {hideCompletedExercises ? 'Mostrar Todos' : 'Ocultar Concluídos'}
+                    </button>
+                  )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+              {workoutItems.map((it, idx) => {
+                const st = exerciseCompletionStats[idx];
+                const isNextTarget = idx === nextIncompleteExerciseIndex;
+                return (
+                  <button
+                    key={it.id}
+                    type="button"
+                    onClick={() => {
+                      if (hideCompletedExercises && st?.isComplete) {
+                        setHideCompletedExercises(false);
+                        setTimeout(() => scrollToExercise(idx), 60);
+                      } else {
+                        scrollToExercise(idx);
+                      }
+                    }}
+                    className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border flex items-center gap-1.5 shrink-0 transition-all cursor-pointer active:scale-95 ${
+                      st?.isComplete
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                        : isNextTarget
+                        ? 'bg-sky-500/20 text-white border-sky-400/60 ring-1 ring-sky-400/30'
+                        : 'bg-[#080d19] text-slate-300 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="font-mono font-black text-[10px] px-1.5 py-0.2 rounded bg-slate-900 text-sky-400">
+                      #{idx + 1}
+                    </span>
+                    <span className="max-w-[115px] sm:max-w-[150px] truncate">
+                      {it.exercise.name}
+                    </span>
+                    <span
+                      className={`text-[10px] font-mono font-extrabold ${
+                        st?.isComplete ? 'text-emerald-400' : 'text-slate-400'
+                      }`}
+                    >
+                      {st?.isComplete ? '✓' : `${st?.doneCount || 0}/${it.sets}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 2. Barra de Controle e Adição (Layout Espaçoso e Otimizado para Mobile) */}
-      <div className="flex items-center justify-between px-1 gap-2">
-        <span className="text-xs text-slate-400 font-medium truncate">
-          {workoutItems.length} {workoutItems.length === 1 ? 'exercício' : 'exercícios'} programados
-        </span>
+      {/* 2. Barra de Controle e Ferramentas Rápidas (Deslizável no Mobile para 1-Toque) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-1 gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-slate-400 font-medium truncate">
+            {workoutItems.length} {workoutItems.length === 1 ? 'exercício' : 'exercícios'} programados
+          </span>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Botão Primário no Mobile: Adicionar Exercício */}
+          <button
+            type="button"
+            onClick={onOpenAddExercise}
+            className="sm:hidden py-1.5 px-3 rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/35 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5 text-emerald-400" />
+            <span>+ Exercício</span>
+          </button>
+        </div>
+
+        {/* Faixa de Ferramentas Rápidas Deslizável no Mobile + Visível no Desktop */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 shrink-0">
           {/* Botão de Aquecimento Articular Específico */}
           <button
             type="button"
             onClick={() => setIsMobilityOpen(true)}
-            className="hidden sm:flex py-1.5 px-2.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+            className="flex py-1.5 px-2.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
             title="Rotina de Aquecimento Articular Específica (3-5 min)"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Mobilidade (3-5 min)</span>
+            <span>Mobilidade</span>
           </button>
 
-          {/* Desktop Direct Tool Shortcuts */}
-          {onOpenCadence && (
-            <button
-              type="button"
-              onClick={onOpenCadence}
-              className="hidden sm:flex py-1.5 px-2.5 rounded-xl text-xs font-bold bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
-              title="Metrônomo de Cadência & TUT (3-0-1-0)"
-            >
-              <Activity className="w-3.5 h-3.5 text-purple-400" />
-              <span>Metrônomo</span>
-            </button>
-          )}
-
+          {/* Atalhos Rápidos de Ferramentas (Mobile & Desktop) */}
           {onOpenPlateCalc && (
             <button
               type="button"
               onClick={() => onOpenPlateCalc()}
-              className="hidden sm:flex py-1.5 px-2.5 rounded-xl text-xs font-bold bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+              className="flex py-1.5 px-2.5 rounded-xl text-xs font-bold bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
               title="Calculadora de Anilhas na Barra"
             >
               <Disc className="w-3.5 h-3.5 text-sky-400" />
@@ -398,11 +893,34 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             </button>
           )}
 
-          {/* Primary Action: Add Exercise */}
+          {onOpenCadence && (
+            <button
+              type="button"
+              onClick={onOpenCadence}
+              className="flex py-1.5 px-2.5 rounded-xl text-xs font-bold bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+              title="Metrônomo de Cadência & TUT (3-0-1-0)"
+            >
+              <Activity className="w-3.5 h-3.5 text-purple-400" />
+              <span>Metrônomo</span>
+            </button>
+          )}
+
+          {/* Exportar Ficha PDF */}
+          <button
+            type="button"
+            onClick={() => setIsPdfModalOpen(true)}
+            className="flex py-1.5 px-2.5 rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+            title="Exportar ou imprimir Ficha de Treino em PDF A4"
+          >
+            <FileDown className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Ficha PDF</span>
+          </button>
+
+          {/* Primary Action on Desktop: Add Exercise */}
           <button
             type="button"
             onClick={onOpenAddExercise}
-            className="py-1.5 px-3 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+            className="hidden sm:flex py-1.5 px-3 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
           >
             <Plus className="w-3.5 h-3.5 text-emerald-400" />
             <span>Adicionar Exercício</span>
@@ -469,6 +987,20 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
                     </div>
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowToolsMenu(false);
+                    setIsPdfModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-emerald-300 hover:bg-emerald-950/40 text-left transition-colors cursor-pointer"
+                >
+                  <FileDown className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="block font-bold">Exportar Ficha PDF</span>
+                    <span className="block text-[10px] text-slate-400">Folha A4 imprimível de academia</span>
+                  </div>
+                </button>
               </div>
             )}
           </div>
@@ -477,31 +1009,60 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
 
       {/* 3. Lista de Exercícios Ativos */}
       <div className="space-y-3">
-        {workoutItems.map((item, index) => (
-          <ExerciseCard
-            key={item.id}
-            item={item}
-            index={index}
-            logs={logs}
-            history={history}
-            sessions={sessions}
-            canMoveUp={index > 0}
-            canMoveDown={index < workoutItems.length - 1}
-            onMoveUp={onMoveUp}
-            onMoveDown={onMoveDown}
-            onDeleteExercise={onDeleteExercise}
-            onUpdateLog={onUpdateLog}
-            onToggleSet={onToggleSet}
-            onUpdateRest={onUpdateRest}
-            onOpenWarmup={onOpenWarmup}
-            onOpenSwap={onOpenSwap}
-            onAddSet={onAddSet}
-            onRemoveSet={onRemoveSet}
-            onOpenAnalytics={onOpenAnalytics}
-            onOpenPlateCalc={onOpenPlateCalc}
-            targetMuscleRir={muscleTargetRir?.[item.muscleKey as MuscleGroup]}
-          />
-        ))}
+        {workoutItems.map((item, index) => {
+          const isExComplete = exerciseCompletionStats[index]?.isComplete;
+          if (hideCompletedExercises && isExComplete) {
+            return null;
+          }
+
+          const isBisetFirst = Boolean(bisetPairs[item.id] && index < workoutItems.length - 1);
+          const prevItem = index > 0 ? workoutItems[index - 1] : undefined;
+          const nextItem = index < workoutItems.length - 1 ? workoutItems[index + 1] : undefined;
+          const isSecondInBiset = Boolean(prevItem && bisetPairs[prevItem.id]);
+
+          return (
+            <React.Fragment key={item.id}>
+              <ExerciseCard
+                item={item}
+                index={index}
+                logs={logs}
+                history={history}
+                sessions={sessions}
+                canMoveUp={index > 0}
+                canMoveDown={index < workoutItems.length - 1}
+                onMoveUp={onMoveUp}
+                onMoveDown={onMoveDown}
+                onDeleteExercise={onDeleteExercise}
+                onUpdateLog={onUpdateLog}
+                onToggleSet={onToggleSet}
+                onUpdateRest={onUpdateRest}
+                onOpenWarmup={onOpenWarmup}
+                onOpenSwap={onOpenSwap}
+                onAddSet={onAddSet}
+                onRemoveSet={onRemoveSet}
+                onOpenAnalytics={onOpenAnalytics}
+                onOpenPlateCalc={onOpenPlateCalc}
+                targetMuscleRir={muscleTargetRir?.[item.muscleKey as MuscleGroup]}
+                isBisetWithNext={isBisetFirst}
+                isSecondInBiset={isSecondInBiset}
+                nextExerciseName={nextItem?.exercise.name}
+                prevExerciseName={prevItem?.exercise.name}
+                onToggleBisetWithNext={handleToggleBisetWithNext}
+              />
+
+              {isBisetFirst && nextItem && (
+                <div className="flex items-center justify-center -my-1.5 relative z-10">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-950/90 border border-purple-500/50 text-purple-200 text-[11px] font-black shadow-lg">
+                    <Link2 className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                    <span>
+                      SUPER-SÉRIE / BI-SET: Alterne sem descanso para {nextItem.exercise.name} (Descanso dispara após o 2º)
+                    </span>
+                  </div>
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
 
       {/* 4. Anotações do Treino com Auto-Save Debounced */}
@@ -594,6 +1155,13 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
         onClose={() => setIsMobilityOpen(false)}
         routine={mobilityRoutine}
         routineTitle={routine.name}
+      />
+
+      {/* Modal de Exportação de Ficha PDF A4 */}
+      <WorkoutPdfExportModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        routine={{ ...routine, items: workoutItems }}
       />
     </div>
   );

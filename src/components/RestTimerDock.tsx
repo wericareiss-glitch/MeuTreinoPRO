@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { soundManager } from '../utils/audio';
 import { wakeLockManager } from '../utils/wakeLock';
+import { sendAppNotification, requestNotificationPermission } from '../utils/notifications';
 
 interface RestTimerDockProps {
   initialSeconds: number;
@@ -66,11 +67,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
   // Request notification permission once timer starts or mounts
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      try {
-        Notification.requestPermission();
-      } catch {
-        // ignore
-      }
+      requestNotificationPermission().catch(() => {});
     }
   }, []);
 
@@ -90,16 +87,11 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
     soundManager.playTimerFinish();
     soundManager.vibrate([300, 150, 300, 150, 500]);
 
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification('⏰ Descanso Concluído — MeuTreino Pro', {
-          body: 'Seu tempo de descanso acabou! Hora da próxima série, foco!',
-          tag: 'rest-timer-alert',
-        });
-      } catch (err) {
-        console.warn('Erro ao disparar notificação:', err);
-      }
-    }
+    sendAppNotification(
+      'Descanso finalizado! Hora da próxima série 🔥',
+      'Seu tempo de recuperação terminou. Volte para a próxima série com foco máximo!',
+      'rest-timer-alert'
+    );
   };
 
   // Sync remaining time whenever the app wakes up (screen unlocked, tab visible, window focused)
@@ -202,8 +194,8 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
   // 1. MODO ULTRA-COMPACTO (Mini Pill / Pip Flutuante)
   if (isPip) {
     return (
-      <div className="fixed bottom-16 sm:bottom-4 left-1/2 -translate-x-1/2 z-30 animate-fadeIn">
-        <div className="bg-[#0b1220]/95 backdrop-blur-xl border border-sky-500/40 rounded-full px-3 py-1.5 shadow-2xl shadow-black/80 flex items-center gap-2 ring-1 ring-sky-400/20">
+      <div className="fixed bottom-[76px] md:bottom-5 left-1/2 -translate-x-1/2 z-30 animate-fadeIn">
+        <div className="bg-[#0b1220]/95 backdrop-blur-xl border border-sky-500/40 rounded-full px-3.5 py-2 shadow-2xl shadow-black/80 flex items-center gap-2.5 ring-1 ring-sky-400/20">
           <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
           <span className="text-xs font-mono font-black text-sky-400 tracking-tight">
             {formattedTime}
@@ -212,21 +204,21 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
           <button
             type="button"
             onClick={handleToggleRunning}
-            className={`w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            className={`w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 ${
               isRunning ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-slate-950'
             }`}
             title={isRunning ? 'Pausar' : 'Retomar'}
           >
-            {isRunning ? <Pause className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current ml-0.5" />}
+            {isRunning ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
           </button>
 
           <button
             type="button"
             onClick={() => setIsPip(false)}
-            className="p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer"
             title="Expandir barra"
           >
-            <Maximize2 className="w-3 h-3" />
+            <Maximize2 className="w-3.5 h-3.5" />
           </button>
 
           <button
@@ -235,10 +227,10 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
               setIsRunning(false);
               setHasStartedEver(false);
             }}
-            className="p-1 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
             title="Fechar descanso"
           >
-            <X className="w-3 h-3" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -247,7 +239,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
 
   // 2. MODO PADRÃO COMPACTO & RESPONSIVO (Capsule Moderna)
   return (
-    <div className="fixed bottom-16 sm:bottom-4 left-1/2 -translate-x-1/2 z-30 w-auto min-w-[290px] max-w-[92vw] sm:max-w-md animate-fadeIn">
+    <div className="fixed bottom-[76px] md:bottom-5 left-1/2 -translate-x-1/2 z-30 w-auto min-w-[300px] max-w-[94vw] sm:max-w-md animate-fadeIn">
       <div className="bg-[#0b1220]/95 backdrop-blur-xl border border-sky-500/30 rounded-2xl p-2.5 sm:p-3 shadow-2xl shadow-black/80 ring-1 ring-sky-400/20 transition-all">
         {/* Barra de Progresso Fina no Topo */}
         <div className="w-full h-1 bg-slate-800/90 rounded-full overflow-hidden mb-2">
@@ -263,8 +255,8 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
         <div className="flex items-center justify-between gap-2.5">
           {/* Esquerda: Indicador & Relógio */}
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center shrink-0">
-              <Clock className="w-3.5 h-3.5 text-sky-400" />
+            <div className="w-8 h-8 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center shrink-0">
+              <Clock className="w-4 h-4 text-sky-400" />
             </div>
 
             <div className="flex flex-col">
@@ -282,11 +274,11 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
           </div>
 
           {/* Centro / Ajustes Rápidos */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => handleAdjust(-15)}
-              className="px-2 py-1 bg-slate-800/90 hover:bg-slate-700 text-slate-300 font-mono text-[11px] font-bold rounded-lg border border-slate-700 transition-colors active:scale-95 cursor-pointer"
+              className="min-h-[36px] px-2.5 py-1 bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-mono text-xs font-bold rounded-xl border border-slate-700 transition-colors active:scale-95 cursor-pointer"
               title="Menos 15s"
             >
               -15s
@@ -294,7 +286,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
             <button
               type="button"
               onClick={() => handleAdjust(30)}
-              className="px-2 py-1 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 font-mono text-[11px] font-bold rounded-lg border border-sky-500/30 transition-colors active:scale-95 cursor-pointer"
+              className="min-h-[36px] px-2.5 py-1 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 font-mono text-xs font-bold rounded-xl border border-sky-500/30 transition-colors active:scale-95 cursor-pointer"
               title="Mais 30s"
             >
               +30s
@@ -306,14 +298,14 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
             <button
               type="button"
               onClick={handleToggleRunning}
-              className={`w-8 h-8 rounded-xl font-bold flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-95 ${
+              className={`w-9 h-9 rounded-xl font-bold flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-95 ${
                 isRunning
                   ? 'bg-amber-500 text-slate-950 hover:bg-amber-400 shadow-amber-500/20'
                   : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/20'
               }`}
               title={isRunning ? 'Pausar Cronômetro' : 'Continuar Cronômetro'}
             >
-              {isRunning ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+              {isRunning ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
             </button>
 
             {/* Alternar Mini-Pip */}

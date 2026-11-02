@@ -17,7 +17,8 @@ import {
   CheckCircle2,
   RefreshCw,
   ArrowUpRight,
-  Info
+  Info,
+  Activity
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -25,6 +26,10 @@ import {
   Line, 
   BarChart, 
   Bar, 
+  ScatterChart,
+  Scatter,
+  ZAxis,
+  ReferenceLine,
   XAxis, 
   YAxis, 
   Tooltip, 
@@ -89,8 +94,8 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
     }
   }, [loggedExercises, selectedExercise, showDemoData]);
 
-  // Tipo de gráfico ativo: 'progression' (1RM e Cargas) | 'monthly' (Volume Mensal)
-  const [activeChartType, setActiveChartType] = useState<'progression' | 'monthly'>('progression');
+  // Tipo de gráfico ativo: 'progression' (1RM e Cargas) | 'scatter' (Dispersão RPE x Carga) | 'monthly' (Volume Mensal)
+  const [activeChartType, setActiveChartType] = useState<'progression' | 'scatter' | 'monthly'>('progression');
 
   // Dados sintéticos de demonstração para quando o app ainda está vazio
   const demoProgressionData: ProgressionPoint[] = useMemo(() => [
@@ -385,7 +390,7 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
         </div>
 
         {/* Toggle Tipo de Gráfico */}
-        <div className="flex items-center gap-1 bg-[#090f1d] p-1 rounded-2xl border border-slate-800 self-start sm:self-end">
+        <div className="flex flex-wrap items-center gap-1 bg-[#090f1d] p-1 rounded-2xl border border-slate-800 self-start sm:self-end">
           <button
             type="button"
             onClick={() => setActiveChartType('progression')}
@@ -397,6 +402,19 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
           >
             <TrendingUp className="w-3.5 h-3.5" />
             <span>Cargas & 1RM</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveChartType('scatter')}
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeChartType === 'scatter'
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            <span>Dispersão RPE × Carga</span>
           </button>
 
           <button
@@ -559,12 +577,14 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
               <span className="font-bold text-white">
                 {activeChartType === 'progression'
                   ? `Curva de Evolução: ${selectedExercise}`
+                  : activeChartType === 'scatter'
+                  ? `Dispersão Esforço (RPE/RIR) × Carga (kg): ${selectedExercise}`
                   : `Volume Total Mensal (kg): ${selectedExercise}`}
               </span>
               <span>
-                {activeChartType === 'progression'
-                  ? `${progressionData.length} pontos de dados`
-                  : `${monthlyData.length} meses registrados`}
+                {activeChartType === 'monthly'
+                  ? `${monthlyData.length} meses registrados`
+                  : `${progressionData.length} pontos de dados`}
               </span>
             </div>
 
@@ -638,6 +658,73 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
                       activeDot={{ r: 6, fill: '#7dd3fc' }}
                     />
                   </LineChart>
+                </ResponsiveContainer>
+              ) : activeChartType === 'scatter' ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1f293d" />
+                    <XAxis
+                      type="number"
+                      dataKey="maxWeight"
+                      name="Carga"
+                      unit=" kg"
+                      stroke="#38bdf8"
+                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                      domain={['dataMin - 5', 'dataMax + 5']}
+                    />
+                    <YAxis
+                      type="number"
+                      dataKey="rpeNum"
+                      name="RPE"
+                      unit=" RPE"
+                      stroke="#f59e0b"
+                      tick={{ fill: '#94a3b8', fontSize: 11 }}
+                      domain={[5.5, 10.2]}
+                    />
+                    <ZAxis type="number" dataKey="reps" range={[90, 260]} name="Repetições" />
+                    <Tooltip
+                      cursor={{ strokeDasharray: '3 3', stroke: '#475569' }}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-[#0b1220] border border-slate-700 p-3 rounded-xl shadow-2xl text-xs font-mono space-y-1">
+                              <span className="text-slate-400 block mb-1 font-sans">{data.fullDate}</span>
+                              <div className="text-sky-400 font-bold">Carga: {data.maxWeight} kg ({data.reps} reps)</div>
+                              <div className="text-amber-400 font-bold">
+                                Esforço: RPE {data.rpeNum} (RIR {Math.max(0, +(10 - data.rpeNum).toFixed(1))})
+                              </div>
+                              <div className="text-emerald-400">1RM Est.: ~{data.max1RM} kg</div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend
+                      wrapperStyle={{ paddingTop: 10, fontSize: 12 }}
+                      formatter={(val) => <span className="text-slate-300 font-bold">{val}</span>}
+                    />
+                    <ReferenceLine
+                      y={8.5}
+                      stroke="#10b981"
+                      strokeDasharray="4 4"
+                      label={{
+                        value: 'Zona Ótima (RPE 8-9 / RIR 1-2)',
+                        fill: '#10b981',
+                        fontSize: 10,
+                        position: 'insideTopRight',
+                      }}
+                    />
+                    <Scatter
+                      name="Relação Esforço (RPE) × Carga (kg)"
+                      data={progressionData.map((d) => ({
+                        ...d,
+                        rpeNum: parseFloat(d.avgRpe || '8') || 8,
+                      }))}
+                      fill="#f59e0b"
+                    />
+                  </ScatterChart>
                 </ResponsiveContainer>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">

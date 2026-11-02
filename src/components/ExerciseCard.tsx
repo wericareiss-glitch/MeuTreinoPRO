@@ -29,15 +29,23 @@ import {
   BookOpen,
   Sparkles,
   Copy,
-  Trophy
+  Trophy,
+  Calculator,
+  Link2,
+  Unlink,
+  Video,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
-import { WorkoutItem, WorkoutLogs, WorkoutSessionSummary } from '../types/workout';
+import { WorkoutItem, WorkoutLogs, WorkoutSessionSummary, SET_INTENSITY_TYPES, SetIntensityType } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { calculate1RM, calculate6RM, estimateNextSetWeight, safeStorage } from '../utils/storage';
 import { authStorage } from '../utils/auth';
 import { getOptimalProgressionSuggestion } from '../utils/progressiveOverload';
 import { soundManager } from '../utils/audio';
-import { getExerciseHistoricalPR, checkSetPR, PRCheckResult } from '../utils/prEngine';
+import { getExerciseHistoricalPR, checkSetPR } from '../utils/prEngine';
+import { ExerciseExecutionDemo } from './ExerciseExecutionDemo';
+import { SmartTermTooltip } from './SmartTermTooltip';
 
 interface ExerciseCardProps {
   item: WorkoutItem;
@@ -45,7 +53,7 @@ interface ExerciseCardProps {
   logs: WorkoutLogs;
   history: WorkoutLogs;
   sessions?: WorkoutSessionSummary[];
-  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'rpe' | 'rir', val: string) => void;
+  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'rpe' | 'rir' | 'setType', val: string) => void;
   onToggleSet: (key: string, restSec: number) => void;
   onOpenWarmup: (name: string, targetWeight: string) => void;
   onOpenSwap: (index: number) => void;
@@ -60,6 +68,11 @@ interface ExerciseCardProps {
   onMoveDown?: (index: number) => void;
   onDeleteExercise?: (index: number) => void;
   targetMuscleRir?: number;
+  isBisetWithNext?: boolean;
+  isSecondInBiset?: boolean;
+  nextExerciseName?: string;
+  prevExerciseName?: string;
+  onToggleBisetWithNext?: (index: number) => void;
 }
 
 // RPE de 6 a 10 com cálculo automático de RIR (RIR = 10 - RPE)
@@ -92,10 +105,18 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onMoveDown,
   onDeleteExercise,
   targetMuscleRir,
+  isBisetWithNext = false,
+  isSecondInBiset = false,
+  nextExerciseName,
+  prevExerciseName,
+  onToggleBisetWithNext,
 }) => {
   const [expandedSets, setExpandedSets] = useState<Record<string, boolean>>({});
+  const [isCardCollapsed, setIsCardCollapsed] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [show1RMCalculator, setShow1RMCalculator] = useState(false);
+  const [formula1RM, setFormula1RM] = useState<'epley' | 'brzycki'>('epley');
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -164,6 +185,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   });
   const autoRestAppliedSetsRef = useRef<Set<string>>(new Set());
 
+  // Estado para abrir/fechar tooltip de Smart RIR Suggestion no mobile/touch
+  const [activeRirTooltipKey, setActiveRirTooltipKey] = useState<string | null>(null);
+
   // Sincroniza estado local quando as logs dos props mudarem externamente
   useEffect(() => {
     if (autoSaveStatus === 'saving') return;
@@ -209,7 +233,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   // Helper de persistência imediata no storage isolado
   const persistLogsToStorageDirectly = (
     logKey: string,
-    partial: Partial<{ weight: string; reps: string; rpe: string; rir: string; done: boolean }>
+    partial: Partial<{ weight: string; reps: string; rpe: string; rir: string; setType: SetIntensityType; done: boolean }>
   ) => {
     try {
       const activeUser = authStorage.getActiveUser();
@@ -226,7 +250,18 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
     }
   };
 
-  // Digitação de peso / reps
+  const handleUpdateSetType = (logKey: string, newType: SetIntensityType) => {
+    onUpdateLog(logKey, 'setType', newType);
+    persistLogsToStorageDirectly(logKey, { setType: newType });
+    if (newType === 'F') {
+      handleUpdateRpe(logKey, 10);
+    } else if (newType === 'W') {
+      handleUpdateRpe(logKey, 6);
+    }
+    soundManager.vibrate(20);
+  };
+
+  // Digitação de peso / reps com persistência instantânea e feedback visual
   const handleInputChange = (logKey: string, field: 'weight' | 'reps', value: string) => {
     setLocalLogs((prev) => ({
       ...prev,
@@ -236,6 +271,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       },
     }));
 
+    // Atualiza estado pai e storage imediatamente para evitar perda de dados ao concluir sessão rapidamente
+    onUpdateLog(logKey, field, value);
+    persistLogsToStorageDirectly(logKey, { [field]: value });
     setAutoSaveStatus('saving');
 
     if (debounceTimerRef.current) {
@@ -243,13 +281,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
     }
 
     debounceTimerRef.current = setTimeout(() => {
-      onUpdateLog(logKey, field, value);
-      persistLogsToStorageDirectly(logKey, { [field]: value });
       setAutoSaveStatus('saved');
       setTimeout(() => {
         setAutoSaveStatus((curr) => (curr === 'saved' ? 'idle' : curr));
       }, 1500);
-    }, 350);
+    }, 300);
   };
 
   // Analisador Inteligente de Sobrecarga Progressiva
@@ -272,6 +308,75 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const historicalPR = useMemo(() => {
     return getExerciseHistoricalPR(ex.name, sessions, history);
   }, [ex.name, sessions, history]);
+
+  // Base consolidada de séries anteriores com RPE/RIR para calibrar o Smart RIR Suggestion
+  const historicalExerciseSets = useMemo(() => {
+    const records: Array<{
+      weight: number;
+      reps: number;
+      rpe: number;
+      rir: number;
+      setIndex: number;
+      dateLabel: string;
+    }> = [];
+
+    // 1. Sessões concluídas (da mais recente para a mais antiga)
+    for (const sess of sessions) {
+      const match = sess.completedExercises.find(
+        (ce) => ce.name.toLowerCase() === ex.name.toLowerCase()
+      );
+      if (match && match.sets.length > 0) {
+        const dLabel = new Date(sess.date).toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+        });
+        match.sets.forEach((s, idx) => {
+          if (s.weight > 0 && s.reps > 0) {
+            const parsedRpe = s.rpe
+              ? Math.min(10, Math.max(6, Math.round(parseFloat(s.rpe))))
+              : s.rir !== undefined
+              ? Math.min(10, Math.max(6, 10 - (parseInt(s.rir, 10) || 2)))
+              : 8;
+            records.push({
+              weight: s.weight,
+              reps: s.reps,
+              rpe: parsedRpe,
+              rir: 10 - parsedRpe,
+              setIndex: idx,
+              dateLabel: dLabel,
+            });
+          }
+        });
+      }
+    }
+
+    // 2. Complemento com o mapa `history` persistido para este ID de exercício
+    for (let s = 1; s <= 10; s++) {
+      const hk = `${ex.id}_${s}`;
+      const hEntry = history[hk];
+      if (hEntry && hEntry.weight && hEntry.reps) {
+        const w = parseFloat(hEntry.weight) || 0;
+        const r = parseInt(hEntry.reps, 10) || 0;
+        if (w > 0 && r > 0) {
+          const parsedRpe = hEntry.rpe
+            ? Math.min(10, Math.max(6, Math.round(parseFloat(hEntry.rpe))))
+            : hEntry.rir
+            ? Math.min(10, Math.max(6, 10 - (parseInt(hEntry.rir, 10) || 2)))
+            : 8;
+          records.push({
+            weight: w,
+            reps: r,
+            rpe: parsedRpe,
+            rir: 10 - parsedRpe,
+            setIndex: s - 1,
+            dateLabel: 'Último treino',
+          });
+        }
+      }
+    }
+
+    return records;
+  }, [sessions, history, ex.name, ex.id]);
 
   // Função para replicar a série anterior imediatamente acima com 1 toque
   const handleReplicateSet = (targetSetNum: number, sourceSetNum: number) => {
@@ -423,20 +528,131 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   const firstSetKey = `${ex.id}_1`;
   const firstSetWeight = localLogs[firstSetKey]?.weight || logs[firstSetKey]?.weight || '60';
 
+  // Meta de 1RM para o próximo mês (persistida por exercício)
+  const goalStorageKey = `meutreino_1rm_goal_${ex.name.toLowerCase().trim()}`;
+  const [monthly1RMGoal, setMonthly1RMGoal] = useState<string>(() => {
+    return safeStorage.get<string>(goalStorageKey, '');
+  });
+  const [goalSavedToast, setGoalSavedToast] = useState(false);
+
+  // Inputs da Calculadora Preditiva de 1RM (pré-preenchidos com a melhor série registrada)
+  const bestRecordedSet = useMemo(() => {
+    let bestW = 0;
+    let bestR = 8;
+    for (let s = 1; s <= item.sets; s++) {
+      const k = `${ex.id}_${s}`;
+      const w = parseFloat(localLogs[k]?.weight || logs[k]?.weight || '0');
+      const r = parseInt(localLogs[k]?.reps || logs[k]?.reps || '0', 10);
+      if (w > bestW && r > 0) {
+        bestW = w;
+        bestR = r;
+      }
+    }
+    if (bestW === 0 && prevSessionExercise && prevSessionExercise.sets.length > 0) {
+      for (const s of prevSessionExercise.sets) {
+        if (s.weight > bestW && s.reps > 0) {
+          bestW = s.weight;
+          bestR = s.reps;
+        }
+      }
+    }
+    if (bestW === 0 && historicalPR.maxWeight > 0) {
+      bestW = historicalPR.maxWeight;
+      bestR = 8;
+    }
+    return { weight: bestW || 40, reps: bestR || 8 };
+  }, [ex.id, item.sets, localLogs, logs, prevSessionExercise, historicalPR]);
+
+  const [calcWeightInput, setCalcWeightInput] = useState<string>(() => bestRecordedSet.weight.toString());
+  const [calcRepsInput, setCalcRepsInput] = useState<string>(() => bestRecordedSet.reps.toString());
+
+  useEffect(() => {
+    if (bestRecordedSet.weight > 0) {
+      setCalcWeightInput(bestRecordedSet.weight.toString());
+      setCalcRepsInput(bestRecordedSet.reps.toString());
+    }
+  }, [bestRecordedSet.weight, bestRecordedSet.reps]);
+
+  const predictive1RMStats = useMemo(() => {
+    const w = parseFloat(calcWeightInput) || 0;
+    const r = Math.max(1, Math.min(30, parseInt(calcRepsInput, 10) || 1));
+    if (w <= 0) return { epley: 0, brzycki: 0, active1RM: 0 };
+    const epley = r === 1 ? w : Math.round(w * (1 + r / 30) * 10) / 10;
+    const brzycki = r === 1 ? w : Math.round((w / (1.0278 - 0.0278 * Math.min(29, r))) * 10) / 10;
+    const active1RM = formula1RM === 'epley' ? epley : brzycki;
+    return { epley, brzycki, active1RM };
+  }, [calcWeightInput, calcRepsInput, formula1RM]);
+
+  const handleSaveMonthly1RMGoal = (val: string) => {
+    setMonthly1RMGoal(val);
+    safeStorage.set(goalStorageKey, val);
+    setGoalSavedToast(true);
+    soundManager.vibrate(20);
+    setTimeout(() => setGoalSavedToast(false), 2000);
+  };
+
+  // Topo da faixa de repetições (ex: "8-10" -> 10)
+  const targetMaxReps = useMemo(() => {
+    const nums = item.reps.match(/\d+/g)?.map(Number) || [10];
+    return Math.max(...nums);
+  }, [item.reps]);
+
+  // Contagem de séries concluídas neste exercício
+  const completedSetsForEx = useMemo(() => {
+    let count = 0;
+    for (let s = 1; s <= item.sets; s++) {
+      if (logs[`${ex.id}_${s}`]?.done) count++;
+    }
+    return count;
+  }, [logs, ex.id, item.sets]);
+
+  const isAllSetsDone = completedSetsForEx === item.sets && item.sets > 0;
+
   return (
-    <div className="active-workout-card bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg transition-all hover:border-slate-700/80">
-      {/* 1. Header do Exercício */}
+    <div
+      id={`exercise-card-${index}`}
+      className={`active-workout-card bg-slate-900 border rounded-2xl overflow-hidden shadow-lg transition-all scroll-mt-20 ${
+        isAllSetsDone
+          ? 'border-emerald-500/45 ring-1 ring-emerald-500/15'
+          : isBisetWithNext || isSecondInBiset
+          ? 'border-purple-500/50 ring-1 ring-purple-500/20'
+          : 'border-slate-800 hover:border-slate-700/80'
+      }`}
+    >
       {/* 1. Header do Exercício (Layout Espaçoso & Otimizado para Mobile) */}
       <div className="p-3 sm:p-3.5 bg-slate-950/80 border-b border-slate-800 flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           {/* Título & Músculo */}
-          <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-            <span className="text-[11px] font-black uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/20 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 flex-wrap">
+            <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/20 shrink-0">
               {muscleName}
             </span>
-            <h3 className="text-sm sm:text-base font-bold text-white tracking-tight truncate">
+            <h3 className="text-sm sm:text-base font-bold text-white tracking-tight truncate max-w-full">
               {ex.name}
             </h3>
+
+            {/* Badge de Progresso de Séries do Exercício */}
+            <button
+              type="button"
+              onClick={() => setIsCardCollapsed((prev) => !prev)}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-extrabold border transition-all cursor-pointer shrink-0 active:scale-95 ${
+                isAllSetsDone
+                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
+                  : completedSetsForEx > 0
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+                  : 'bg-slate-800/90 text-slate-300 border-slate-700'
+              }`}
+              title={isCardCollapsed ? 'Expandir séries deste exercício' : 'Recolher séries deste exercício'}
+            >
+              <span>
+                {isAllSetsDone ? '✓ Concluído' : `${completedSetsForEx}/${item.sets} séries`}
+              </span>
+              {isCardCollapsed ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronUp className="w-3 h-3" />
+              )}
+            </button>
 
             {/* Badge de 6RM histórico */}
             {historical6RMSuggestion && (
@@ -451,18 +667,17 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               </button>
             )}
 
-            {/* Badge de RIR Alvo configurado no perfil */}
+            {/* Badge de RIR Alvo configurado no perfil com Smart Tooltip */}
             {targetMuscleRir !== undefined && (
-              <div 
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0"
-                title={`RIR Alvo personalizado para ${MUSCLE_NAMES[item.muscleKey] || ex.name}: ${targetMuscleRir} repetições na reserva (RPE ${10 - targetMuscleRir})`}
-              >
+              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
                 <Target className="w-3 h-3 text-amber-400" />
-                <span>RIR Alvo: {targetMuscleRir}</span>
+                <SmartTermTooltip term="RIR" align="left">
+                  <span>RIR Alvo: {targetMuscleRir}</span>
+                </SmartTermTooltip>
               </div>
             )}
 
-            {/* Botão Dica de Execução */}
+            {/* Botão Demo 5s & Dica de Execução */}
             <button
               type="button"
               onClick={() => setShowExecutionTip((prev) => !prev)}
@@ -471,10 +686,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   ? 'bg-sky-500 text-slate-950 border-sky-400 font-black shadow-sm'
                   : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border-sky-500/30'
               }`}
-              title="Dica de execução e biomecânica do movimento"
+              title="Ver animação biomecânica 5s e dicas de execução do movimento"
             >
-              <HelpCircle className="w-3 h-3 text-sky-400" />
-              <span>Dica de Execução</span>
+              <Video className="w-3 h-3 text-sky-400" />
+              <span>Demo 5s & Execução</span>
             </button>
           </div>
 
@@ -501,8 +716,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   }}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-sky-300 hover:bg-sky-950/40 transition-colors text-left cursor-pointer"
                 >
-                  <HelpCircle className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>Dica de Execução</span>
+                  <Video className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>Demo 5s & Dica de Execução</span>
                 </button>
 
                 <button
@@ -653,13 +868,24 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           </div>
         </div>
 
-        {/* Sub-header com Smart Rest e Status do Auto-save */}
-        <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
-          <div className="flex items-center gap-2">
+        {/* Sub-header com Ações Rápidas Deslizáveis no Mobile (1-Toque sem precisar abrir menu) */}
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-1">
+            {/* Atalho Rápido 1-Toque: Trocar Exercício / Aparelho Ocupado */}
+            <button
+              type="button"
+              onClick={() => onOpenSwap(index)}
+              className="h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border-sky-500/30 shrink-0 active:scale-95"
+              title="Trocar exercício ou substituir aparelho ocupado"
+            >
+              <RefreshCw className="w-3 h-3 text-sky-400" />
+              <span>Trocar</span>
+            </button>
+
             <button
               type="button"
               onClick={handleToggleSmartRest}
-              className={`h-6 px-2.5 rounded-md text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 active:scale-95 ${
                 isSmartRestEnabled
                   ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                   : 'bg-slate-800 text-slate-400 border-slate-700'
@@ -667,8 +893,65 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               title="Smart Rest: adiciona +30s de descanso quando atingir RPE 9 ou 10"
             >
               <Zap className={`w-3 h-3 ${isSmartRestEnabled ? 'fill-emerald-400 text-emerald-400' : 'text-slate-500'}`} />
-              <span>Smart Rest {isSmartRestEnabled ? 'ON (+30s no RPE 9/10)' : 'OFF'}</span>
+              <span>Smart Rest {isSmartRestEnabled ? 'ON' : 'OFF'}</span>
             </button>
+
+            {/* Botão Calculadora Preditiva 1RM + Meta do Próximo Mês */}
+            <button
+              type="button"
+              onClick={() => setShow1RMCalculator((prev) => !prev)}
+              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 active:scale-95 ${
+                show1RMCalculator
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-sm'
+                  : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
+              }`}
+              title="Abrir Calculadora Preditiva de 1RM (Epley / Brzycki) e Meta do Próximo Mês"
+            >
+              <Calculator className="w-3 h-3" />
+              <span>
+                1RM {predictive1RMStats.active1RM > 0 ? `(~${predictive1RMStats.active1RM}kg)` : 'Preditivo'}
+              </span>
+              {monthly1RMGoal && (
+                <span className="px-1 rounded bg-slate-950/40 text-[10px]">
+                  Meta: {monthly1RMGoal}kg
+                </span>
+              )}
+            </button>
+
+            {/* Botão de Aquecimento Rápido */}
+            <button
+              type="button"
+              onClick={() => onOpenWarmup(ex.name, firstSetWeight)}
+              className="h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border bg-orange-500/10 hover:bg-orange-500/20 text-orange-300 border-orange-500/30 shrink-0 active:scale-95"
+              title="Calcular séries de aquecimento para este exercício"
+            >
+              <Flame className="w-3 h-3 text-orange-400" />
+              <span>Aquecer</span>
+            </button>
+
+            {/* Botão de Agrupar Bi-set / Super-série com o próximo exercício */}
+            {canMoveDown && onToggleBisetWithNext && (
+              <button
+                type="button"
+                onClick={() => onToggleBisetWithNext(index)}
+                className={`h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 active:scale-95 ${
+                  isBisetWithNext
+                    ? 'bg-purple-500 text-white border-purple-400 font-black shadow-sm'
+                    : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border-purple-500/30'
+                }`}
+                title="Agrupar este exercício em Bi-set / Super-série com o próximo exercício (alterna o cronômetro apenas após o 2º exercício)"
+              >
+                {isBisetWithNext ? <Unlink className="w-3 h-3" /> : <Link2 className="w-3 h-3" />}
+                <span>{isBisetWithNext ? 'Bi-set Ativo' : 'Bi-set'}</span>
+              </button>
+            )}
+
+            {isSecondInBiset && (
+              <span className="h-7 px-2.5 rounded-lg text-[11px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/40 inline-flex items-center gap-1 shrink-0">
+                <Link2 className="w-3 h-3" />
+                <span>2º Ex. Bi-set {prevExerciseName ? `(c/ ${prevExerciseName})` : ''}</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -686,6 +969,176 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             )}
           </div>
         </div>
+
+        {/* Painel Expansível: Calculadora Preditiva de 1RM (Epley & Brzycki) + Meta do Próximo Mês */}
+        {show1RMCalculator && (
+          <div className="mt-1 p-3.5 rounded-2xl bg-slate-900/95 border border-amber-500/40 space-y-3 animate-fadeIn">
+            <div className="flex items-center justify-between gap-2 flex-wrap border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-black uppercase tracking-wider text-white">
+                  Calculadora Preditiva de 1RM & Meta Mensal
+                </span>
+              </div>
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setFormula1RM('epley')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    formula1RM === 'epley'
+                      ? 'bg-amber-500 text-slate-950 font-black'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Epley
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormula1RM('brzycki')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    formula1RM === 'brzycki'
+                      ? 'bg-amber-500 text-slate-950 font-black'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Brzycki
+                </button>
+              </div>
+            </div>
+
+            {/* Simulador de Carga x Reps e Resultado Preditivo */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center">
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5">
+                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                  Carga Base (kg)
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={calcWeightInput}
+                  onChange={(e) => setCalcWeightInput(e.target.value)}
+                  className="w-full bg-transparent font-mono font-black text-white text-sm focus:outline-none"
+                />
+              </div>
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5">
+                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                  Repetições Máximas
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={calcRepsInput}
+                  onChange={(e) => setCalcRepsInput(e.target.value)}
+                  className="w-full bg-transparent font-mono font-black text-white text-sm focus:outline-none"
+                />
+              </div>
+              <div className="bg-amber-500/15 border border-amber-500/40 rounded-xl p-2.5 text-center">
+                <span className="text-[10px] font-black uppercase text-amber-300 block">
+                  1RM Preditivo ({formula1RM === 'epley' ? 'Epley' : 'Brzycki'})
+                </span>
+                <span className="text-lg font-mono font-black text-white">
+                  {predictive1RMStats.active1RM} kg
+                </span>
+                <span className="block text-[10px] text-slate-400 font-mono">
+                  Epley: {predictive1RMStats.epley}kg · Brzycki: {predictive1RMStats.brzycki}kg
+                </span>
+              </div>
+            </div>
+
+            {/* Zonas de Intensidade (% de 1RM) com 1-Toque para Aplicar */}
+            {predictive1RMStats.active1RM > 0 && (
+              <div className="grid grid-cols-4 gap-1.5 text-center">
+                {[
+                  { pct: 0.9, label: '90% (3-4 reps)' },
+                  { pct: 0.85, label: '85% (5-6 reps)' },
+                  { pct: 0.8, label: '80% (7-8 reps)' },
+                  { pct: 0.75, label: '75% (10-12 reps)' },
+                ].map((zone) => {
+                  const zoneKg = Math.round(predictive1RMStats.active1RM * zone.pct * 2) / 2;
+                  return (
+                    <button
+                      key={zone.label}
+                      type="button"
+                      onClick={() => handleApply6RM(zoneKg)}
+                      className="p-1.5 rounded-xl bg-slate-950/90 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer"
+                      title="Toque para aplicar esta carga nas séries pendentes"
+                    >
+                      <span className="block text-[10px] text-slate-400">{zone.label}</span>
+                      <span className="font-mono font-black text-xs text-sky-400">{zoneKg} kg</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Meta de 1RM para o Próximo Mês */}
+            <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-xs font-bold text-white">
+                    Meta de 1RM para o Próximo Mês:
+                  </span>
+                  {goalSavedToast && (
+                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded">
+                      ✓ Meta salva!
+                    </span>
+                  )}
+                </div>
+                {monthly1RMGoal && parseFloat(monthly1RMGoal) > 0 && predictive1RMStats.active1RM > 0 && (
+                  <div className="mt-1.5">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                      <span>Progresso atual: {predictive1RMStats.active1RM} kg / {monthly1RMGoal} kg</span>
+                      <span className="font-bold text-emerald-400">
+                        {Math.min(100, Math.round((predictive1RMStats.active1RM / parseFloat(monthly1RMGoal)) * 100))}%
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(100, Math.round((predictive1RMStats.active1RM / parseFloat(monthly1RMGoal)) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  step="0.5"
+                  placeholder={predictive1RMStats.active1RM > 0 ? `${Math.round((predictive1RMStats.active1RM * 1.05) * 2) / 2}` : 'Ex: 100'}
+                  value={monthly1RMGoal}
+                  onChange={(e) => setMonthly1RMGoal(e.target.value)}
+                  className="w-24 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 font-mono font-bold text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSaveMonthly1RMGoal(monthly1RMGoal)}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer transition-colors"
+                >
+                  Salvar Meta
+                </button>
+                {predictive1RMStats.active1RM > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const suggested = (Math.round(predictive1RMStats.active1RM * 1.05 * 2) / 2).toString();
+                      handleSaveMonthly1RMGoal(suggested);
+                    }}
+                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] border border-amber-500/30 cursor-pointer"
+                    title="Sugerir +5% de evolução sobre o 1RM atual para o próximo mês"
+                  >
+                    +5%
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Banner Preditivo de Sobrecarga Progressiva */}
         {progression && progression.status === 'progress' && (
@@ -726,11 +1179,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         )}
       </div>
 
-      {/* Popover Biomecânico de Dica de Execução */}
+      {/* Popover Biomecânico de Dica de Execução + Demo Animada 5s */}
       {showExecutionTip && (
         <div
           ref={executionTipRef}
-          className="m-3 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-[#0c1424] via-[#090f1d] to-[#060a14] border border-sky-500/40 shadow-2xl animate-fadeIn space-y-2.5 relative"
+          className="m-3 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-[#0c1424] via-[#090f1d] to-[#060a14] border border-sky-500/40 shadow-2xl animate-fadeIn space-y-3 relative"
         >
           <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2">
             <div className="flex items-center gap-2">
@@ -739,7 +1192,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               </div>
               <div>
                 <h4 className="text-xs sm:text-sm font-black text-white">{ex.name}</h4>
-                <span className="text-[10px] text-sky-300 font-mono">Dica de Execução & Biomecânica</span>
+                <span className="text-[10px] text-sky-300 font-mono">Animação Biomecânica 5s & Guia de Execução</span>
               </div>
             </div>
             <button
@@ -751,6 +1204,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               <X className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Componente de Vídeo Curto (GIF 5s) / Animação Cinemática estilo Lottie */}
+          <ExerciseExecutionDemo exercise={ex} />
 
           {/* Badges de Anatomia, Estabilidade e Perfil */}
           <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
@@ -806,16 +1262,41 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
         </div>
       )}
 
-      {/* 2. Lista de Séries */}
+      {/* 2. Lista de Séries (Ocultável quando o card está recolhido no mobile) */}
+      {isCardCollapsed ? (
+        <div className="px-3.5 py-2.5 bg-slate-950/50 flex items-center justify-between gap-2 text-xs">
+          <span className="text-slate-400">
+            {isAllSetsDone
+              ? `✓ Todas as ${item.sets} séries concluídas neste exercício.`
+              : `${completedSetsForEx} de ${item.sets} séries concluídas (${item.sets - completedSetsForEx} pendentes).`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setIsCardCollapsed(false)}
+            className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 font-bold text-xs flex items-center gap-1 cursor-pointer active:scale-95"
+          >
+            <span>Expandir Séries</span>
+            <ChevronDown className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+      <>
       <div className="p-3 sm:p-4 space-y-3">
         {/* Barra Superior da Seção de Séries: Recorde (PR) Histórico & Replicação Rápida */}
         <div className="flex items-center justify-between gap-2 px-1 text-xs flex-wrap pb-1 border-b border-slate-800/60">
           <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
             <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             {historicalPR.maxWeight > 0 ? (
-              <span>
-                Recorde Pessoal (PR): <strong className="text-amber-300 font-mono">{historicalPR.maxWeight}kg</strong>
-                {historicalPR.best1RM > 0 && <span> (1RM ~{historicalPR.best1RM}kg)</span>}
+              <span className="inline-flex items-center gap-1 flex-wrap">
+                <SmartTermTooltip term="PR" align="left">
+                  <span>Recorde Pessoal (PR):</span>
+                </SmartTermTooltip>{' '}
+                <strong className="text-amber-300 font-mono">{historicalPR.maxWeight}kg</strong>
+                {historicalPR.best1RM > 0 && (
+                  <SmartTermTooltip term="1RM" align="left" showIcon={false}>
+                    <span className="text-sky-300/90 hover:text-sky-200">(1RM ~{historicalPR.best1RM}kg)</span>
+                  </SmartTermTooltip>
+                )}
               </span>
             ) : (
               <span className="text-slate-500 italic">Primeiro registro deste exercício</span>
@@ -850,6 +1331,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           const currRepsVal = localLog.reps !== undefined ? localLog.reps : setLog.reps;
           const currentRpeNum = parseInt(localLog.rpe || setLog.rpe || '6', 10) || 6;
           const currentRirNum = 10 - currentRpeNum;
+          const currentSetType: SetIntensityType = setLog.setType || 'T';
+          const setTypeMeta = SET_INTENSITY_TYPES.find((t) => t.code === currentSetType) || SET_INTENSITY_TYPES[1];
 
           // Histórico comparativo da série específica no treino anterior
           const prevSetRecord = prevSessionExercise?.sets?.[sIdx]
@@ -866,6 +1349,31 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               }
             : null;
 
+          // SUGESTÃO AUTOMÁTICA DE CARGA NA SÉRIE (AUTO-PROGRESSÃO INTELIGENTE)
+          // Se no último treino atingiu o topo da faixa de repetições com RIR >= 2 (RPE <= 8), ou se progression.status === 'progress'
+          const setAutoProgression = (() => {
+            if (progression && progression.status === 'progress' && progression.suggestedWeight > 0) {
+              const inc = Math.round((progression.suggestedWeight - (progression.currentWeight || 0)) * 10) / 10;
+              return {
+                suggestedKg: progression.suggestedWeight,
+                incrementKg: inc > 0 ? inc : 2.5,
+              };
+            }
+            if (prevSetRecord) {
+              const pw = parseFloat(prevSetRecord.weight) || 0;
+              const pr = parseInt(prevSetRecord.reps, 10) || 0;
+              const prpe = prevSetRecord.rpe ? parseFloat(prevSetRecord.rpe) : 8;
+              if (pw > 0 && pr >= targetMaxReps && prpe <= 8) {
+                const inc = pw >= 40 ? 2.5 : 2;
+                return {
+                  suggestedKg: Math.round((pw + inc) * 10) / 10,
+                  incrementKg: inc,
+                };
+              }
+            }
+            return null;
+          })();
+
           // CÁLCULO DE 1RM E 6RM COM O RPE/RIR DA SÉRIE
           const est1RM = calculate1RM(currWeightVal, currRepsVal, currentRpeNum.toString());
           const est6RM = calculate6RM(currWeightVal, currRepsVal, currentRpeNum.toString());
@@ -881,6 +1389,95 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           const nextSetSuggestedWeight = (prevW > 0 && prevR > 0)
             ? estimateNextSetWeight(prevW, prevR, currentRpeNum, prevR, 8)
             : null;
+
+          // SMART RIR SUGGESTION: Calibração preditiva de RIR quando o peso digitado alinha com dados históricos de RPE/RIR
+          const smartRirSuggestion = (() => {
+            if (setWeightNum <= 0) return null;
+
+            // Combina histórico de sessões anteriores + séries anteriores já concluídas hoje neste exercício
+            const intraSessionRecords: Array<{
+              weight: number;
+              reps: number;
+              rpe: number;
+              rir: number;
+              setIndex: number;
+              dateLabel: string;
+            }> = [];
+
+            for (let prevS = 1; prevS < setNum; prevS++) {
+              const pk = `${ex.id}_${prevS}`;
+              const pLog = logs[pk];
+              if (pLog?.done) {
+                const pw = parseFloat(pLog.weight || '0') || 0;
+                const pr = parseInt(pLog.reps || '0', 10) || 0;
+                if (pw > 0 && pr > 0) {
+                  const prpe = Math.min(10, Math.max(6, parseInt(pLog.rpe || '8', 10) || 8));
+                  intraSessionRecords.push({
+                    weight: pw,
+                    reps: pr,
+                    rpe: prpe,
+                    rir: 10 - prpe,
+                    setIndex: prevS - 1,
+                    dateLabel: `Série #${prevS} de hoje`,
+                  });
+                }
+              }
+            }
+
+            const allCandidates = [...historicalExerciseSets, ...intraSessionRecords];
+            if (allCandidates.length === 0) return null;
+
+            // Filtra registros com carga alinhada (dentro de ±15% ou ±5 kg da carga inserida)
+            const maxToleranceKg = Math.max(5, setWeightNum * 0.15);
+            const alignedCandidates = allCandidates.filter(
+              (c) => Math.abs(c.weight - setWeightNum) <= maxToleranceKg
+            );
+
+            if (alignedCandidates.length === 0) return null;
+
+            // Ordena pela menor diferença de peso (priorizando mesma série e registros mais recentes)
+            const sorted = [...alignedCandidates].sort((a, b) => {
+              const diffA = Math.abs(a.weight - setWeightNum);
+              const diffB = Math.abs(b.weight - setWeightNum);
+              if (Math.abs(diffA - diffB) > 0.25) return diffA - diffB;
+              const sameSetA = a.setIndex === sIdx ? 0 : 1;
+              const sameSetB = b.setIndex === sIdx ? 0 : 1;
+              return sameSetA - sameSetB;
+            });
+
+            const bestMatch = sorted[0];
+            const isExactWeight = Math.abs(bestMatch.weight - setWeightNum) <= 0.5;
+            const expectedReps = setRepsNum > 0 ? setRepsNum : bestMatch.reps || targetMaxReps;
+
+            // Estima o 1RM efetivo a partir do registro histórico (Epley com RIR embutido)
+            const effectiveHistorical1RM =
+              bestMatch.weight * (1 + (bestMatch.reps + bestMatch.rir) / 30);
+
+            let predictedRir: number;
+            if (isExactWeight && expectedReps === bestMatch.reps) {
+              predictedRir = bestMatch.rir;
+            } else {
+              // Quantas repetições totais até a falha (RIR 0) são possíveis com setWeightNum?
+              const maxTotalRepsAtEnteredWeight =
+                30 * (effectiveHistorical1RM / setWeightNum - 1);
+              const rawRir = Math.round(maxTotalRepsAtEnteredWeight - expectedReps);
+              predictedRir = Math.max(0, Math.min(4, rawRir));
+            }
+
+            const predictedRpe = 10 - predictedRir;
+
+            return {
+              predictedRir,
+              predictedRpe,
+              expectedReps,
+              matchedWeight: bestMatch.weight,
+              matchedReps: bestMatch.reps,
+              matchedRpe: bestMatch.rpe,
+              matchedRir: bestMatch.rir,
+              matchedDateLabel: bestMatch.dateLabel,
+              isExactWeight,
+            };
+          })();
 
           const isExpanded = !!expandedSets[logKey];
 
@@ -912,6 +1509,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                         <span className="font-mono font-bold text-white text-xs sm:text-sm">Série #{setNum}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border ${setTypeMeta.badgeClass}`}>
+                          {setTypeMeta.label}
+                        </span>
                         <span className="font-mono font-extrabold text-emerald-400 text-sm sm:text-base">{currWeightVal || '0'} kg</span>
                         <span className="font-mono text-slate-300 text-xs sm:text-sm">× {currRepsVal || '0'} reps</span>
                         <span className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-amber-400/15 border border-amber-400/30 text-amber-300 font-mono">
@@ -943,7 +1543,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onToggleSet(logKey, item.rest)}
+                      onClick={() => onToggleSet(logKey, isBisetWithNext ? 0 : item.rest)}
                       className="h-8 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-300 text-xs font-semibold transition-colors cursor-pointer"
                       title="Desmarcar conclusão"
                     >
@@ -979,9 +1579,53 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                     </div>
                   </div>
 
-                  <span className="text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                    RIR {currentRirNum} ({currentRirNum === 0 ? 'falha total' : `${currentRirNum} reps na reserva`})
-                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {smartRirSuggestion && (
+                      <div className="relative group/smartrirdone">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleUpdateRpe(logKey, smartRirSuggestion.predictedRpe);
+                            soundManager.vibrate(20);
+                          }}
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                            currentRirNum === smartRirSuggestion.predictedRir
+                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                              : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border-sky-500/40'
+                          }`}
+                          title={`Smart RIR Suggestion: Baseado em ${smartRirSuggestion.matchedWeight}kg × ${smartRirSuggestion.matchedReps} (@RPE ${smartRirSuggestion.matchedRpe} / RIR ${smartRirSuggestion.matchedRir} em ${smartRirSuggestion.matchedDateLabel}), o RIR previsto para ${setWeightNum}kg × ${smartRirSuggestion.expectedReps} reps é RIR ${smartRirSuggestion.predictedRir} (RPE ${smartRirSuggestion.predictedRpe}). Clique para calibrar.`}
+                        >
+                          <Sparkles className="w-3 h-3 text-sky-400 shrink-0" />
+                          <span>
+                            {currentRirNum === smartRirSuggestion.predictedRir
+                              ? `Smart RIR Calibrado (${smartRirSuggestion.predictedRir})`
+                              : `Sugestão Smart RIR: ${smartRirSuggestion.predictedRir} (@RPE ${smartRirSuggestion.predictedRpe})`}
+                          </span>
+                        </button>
+
+                        {/* Subtle Hover Tooltip */}
+                        <div className="pointer-events-none opacity-0 group-hover/smartrirdone:opacity-100 transition-opacity duration-200 absolute bottom-full right-0 mb-1.5 w-64 p-2.5 rounded-xl bg-[#070c18] border border-sky-500/40 shadow-2xl text-[10px] text-slate-200 z-30 leading-relaxed">
+                          <div className="font-black text-sky-300 mb-0.5 flex items-center justify-between">
+                            <span>🎯 Smart RIR Suggestion</span>
+                            <span className="font-mono text-emerald-400">
+                              RIR {smartRirSuggestion.predictedRir} · RPE {smartRirSuggestion.predictedRpe}
+                            </span>
+                          </div>
+                          <p className="text-slate-300">
+                            Alinhado com seu histórico de{' '}
+                            <strong className="text-white font-mono">
+                              {smartRirSuggestion.matchedWeight}kg × {smartRirSuggestion.matchedReps}
+                            </strong>{' '}
+                            (RIR {smartRirSuggestion.matchedRir} / RPE {smartRirSuggestion.matchedRpe} · {smartRirSuggestion.matchedDateLabel}).
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <span className="text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      RIR {currentRirNum} ({currentRirNum === 0 ? 'falha total' : `${currentRirNum} reps na reserva`})
+                    </span>
+                  </div>
                 </div>
               </div>
             );
@@ -997,103 +1641,299 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                   : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
               }`}
             >
-              {/* Linha Principal de Entrada */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center font-mono font-bold text-sky-400 text-sm shrink-0">
-                    #{setNum}
-                  </div>
-
-                  {/* Input Carga */}
-                  <div className="flex-1 sm:w-36 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 flex items-center justify-between focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      step="0.5"
-                      placeholder="0"
-                      value={currWeightVal}
-                      onChange={(e) => handleInputChange(logKey, 'weight', e.target.value)}
-                      className="w-full bg-transparent font-mono font-black text-white text-base focus:outline-none"
-                    />
-                    {onOpenPlateCalc ? (
+              {/* Seletor de Técnica Avançada de Intensidade (W, T, F, D, RP) */}
+              <div className="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-800/70 flex-wrap">
+                <div className="flex items-center gap-1 flex-wrap">
+                  <SmartTermTooltip
+                    term="SET_TYPES"
+                    align="left"
+                    className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1"
+                  >
+                    <span>Tipo de Série:</span>
+                  </SmartTermTooltip>
+                  {SET_INTENSITY_TYPES.map((opt) => {
+                    const isActive = currentSetType === opt.code;
+                    return (
                       <button
+                        key={opt.code}
                         type="button"
-                        onClick={() => onOpenPlateCalc(parseFloat(currWeightVal) || (prevSetRecord ? parseFloat(prevSetRecord.weight) : 0) || 0)}
-                        className="text-xs font-bold text-sky-400 hover:text-sky-300 font-mono ml-1 px-1.5 py-0.5 rounded hover:bg-sky-500/20 transition-colors cursor-pointer shrink-0"
-                        title="Calcular anilhas para esta carga"
+                        onClick={() => handleUpdateSetType(logKey, opt.code)}
+                        title={`${opt.label}: ${opt.description}`}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-black border transition-all cursor-pointer ${
+                          isActive
+                            ? `${opt.badgeClass} ring-1 ring-current scale-105`
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
                       >
-                        kg ⟳
+                        {opt.code === 'T' ? 'T · Trabalho' : opt.code === 'W' ? 'W · Aquec.' : opt.code === 'F' ? 'F · Falha' : opt.code === 'D' ? 'D · Drop-set' : 'RP · Myo/Rest-Pause'}
                       </button>
-                    ) : (
-                      <span className="text-xs font-bold text-slate-400 font-mono ml-1">kg</span>
-                    )}
-                  </div>
-
-                  {/* Input Repetições */}
-                  <div className="flex-1 sm:w-32 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 flex items-center justify-between focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500">
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={currRepsVal}
-                      onChange={(e) => handleInputChange(logKey, 'reps', e.target.value)}
-                      className="w-full bg-transparent font-mono font-black text-white text-base focus:outline-none"
-                    />
-                    <span className="text-xs font-bold text-slate-400 font-mono ml-1">reps</span>
-                  </div>
+                    );
+                  })}
                 </div>
 
-                {/* Botão de Conclusão */}
-                <div className="flex items-center gap-2">
+                {/* Dica rápida da técnica selecionada */}
+                {currentSetType === 'D' && (
+                  <span className="text-[10px] text-purple-300 font-semibold">
+                    💡 Drop-set: reduza 20-30% da carga imediatamente sem descanso
+                  </span>
+                )}
+                {currentSetType === 'RP' && (
+                  <span className="text-[10px] text-amber-300 font-semibold">
+                    💡 Rest-Pause / Myo-Reps: respire 15s após a falha e faça +3 a 5 reps
+                  </span>
+                )}
+              </div>
+
+              {/* Linha Principal de Entrada (Otimizada para Uso com 1 Mão no Mobile) */}
+              {(() => {
+                // Calcula valores de fallback inteligentes caso o usuário toque em +/- ou Concluir com o campo vazio
+                const prevSessionSet = sIdx > 0 ? (localLogs[`${ex.id}_${setNum - 1}`] || logs[`${ex.id}_${setNum - 1}`]) : null;
+                const smartFallbackWeight =
+                  (prevSessionSet?.weight && parseFloat(prevSessionSet.weight) > 0 ? prevSessionSet.weight : '') ||
+                  (prevSetRecord?.weight && parseFloat(prevSetRecord.weight) > 0 ? prevSetRecord.weight : '') ||
+                  (setAutoProgression?.suggestedKg ? setAutoProgression.suggestedKg.toString() : '') ||
+                  (historical6RMSuggestion?.rawWeight ? historical6RMSuggestion.rawWeight.toString() : '');
+
+                const smartFallbackReps =
+                  (prevSessionSet?.reps && parseInt(prevSessionSet.reps, 10) > 0 ? prevSessionSet.reps : '') ||
+                  (prevSetRecord?.reps && parseInt(prevSetRecord.reps, 10) > 0 ? prevSetRecord.reps : '') ||
+                  targetMaxReps.toString();
+
+                const adjustWeightByStep = (delta: number) => {
+                  const baseW = parseFloat(currWeightVal) || parseFloat(smartFallbackWeight) || 20;
+                  const nextW = Math.max(0, Math.round((baseW + delta) * 10) / 10);
+                  handleInputChange(logKey, 'weight', nextW.toString());
+                  soundManager.vibrate(15);
+                };
+
+                const adjustRepsByStep = (delta: number) => {
+                  const baseR = parseInt(currRepsVal, 10) || parseInt(smartFallbackReps, 10) || targetMaxReps;
+                  const nextR = Math.max(1, baseR + delta);
+                  handleInputChange(logKey, 'reps', nextR.toString());
+                  soundManager.vibrate(15);
+                };
+
+                return (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
+                    <div className="grid grid-cols-2 sm:flex items-center gap-2 sm:gap-2.5 flex-1">
+                      {/* Input Carga (kg) com Steppers Rápidos -2.5 / +2.5 para 1 Mão */}
+                      <div className="col-span-1 sm:w-48 bg-slate-900 border border-slate-700/80 rounded-xl p-1.5 flex items-center justify-between focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500">
+                        <button
+                          type="button"
+                          onClick={() => adjustWeightByStep(-2.5)}
+                          className="w-8 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+                          title="Diminuir 2.5 kg"
+                          aria-label="Diminuir peso em 2.5 kg"
+                        >
+                          -
+                        </button>
+
+                        <div className="flex-1 min-w-0 px-1 text-center">
+                          <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 leading-none mb-0.5">
+                            Série #{setNum} · Carga (kg)
+                          </span>
+                          <div className="flex items-center justify-center gap-0.5">
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              step="0.5"
+                              placeholder={smartFallbackWeight || '0'}
+                              value={currWeightVal}
+                              onFocus={(e) => e.currentTarget.select()}
+                              onChange={(e) => handleInputChange(logKey, 'weight', e.target.value)}
+                              className="w-full bg-transparent font-mono font-black text-white text-center text-base focus:outline-none"
+                            />
+                            {onOpenPlateCalc && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onOpenPlateCalc(
+                                    parseFloat(currWeightVal) ||
+                                      parseFloat(smartFallbackWeight) ||
+                                      0
+                                  )
+                                }
+                                className="text-[10px] font-bold text-sky-400 hover:text-sky-300 font-mono px-1 py-0.5 rounded hover:bg-sky-500/20 transition-colors cursor-pointer shrink-0"
+                                title="Calcular anilhas para esta carga"
+                              >
+                                ⟳
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => adjustWeightByStep(2.5)}
+                          className="w-8 h-9 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 active:bg-sky-500/40 text-sky-300 border border-sky-500/30 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+                          title="Aumentar 2.5 kg"
+                          aria-label="Aumentar peso em 2.5 kg"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      {/* Input Repetições (reps) com Steppers Rápidos -1 / +1 para 1 Mão */}
+                      <div className="col-span-1 sm:w-44 bg-slate-900 border border-slate-700/80 rounded-xl p-1.5 flex items-center justify-between focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500">
+                        <button
+                          type="button"
+                          onClick={() => adjustRepsByStep(-1)}
+                          className="w-8 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+                          title="Menos 1 repetição"
+                          aria-label="Diminuir 1 repetição"
+                        >
+                          -
+                        </button>
+
+                        <div className="flex-1 min-w-0 px-1 text-center">
+                          <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 leading-none mb-0.5">
+                            Meta: {item.reps} reps
+                          </span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            placeholder={smartFallbackReps || '10'}
+                            value={currRepsVal}
+                            onFocus={(e) => e.currentTarget.select()}
+                            onChange={(e) => handleInputChange(logKey, 'reps', e.target.value)}
+                            className="w-full bg-transparent font-mono font-black text-white text-center text-base focus:outline-none"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => adjustRepsByStep(1)}
+                          className="w-8 h-9 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 active:bg-emerald-500/40 text-emerald-300 border border-emerald-500/30 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+                          title="Mais 1 repetição"
+                          aria-label="Aumentar 1 repetição"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Botão de Conclusão (Touch Target >= 46px + Auto-Preenchimento Inteligente se vazio) */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (debounceTimerRef.current) {
+                            clearTimeout(debounceTimerRef.current);
+                            debounceTimerRef.current = null;
+                          }
+                          const finalWeight =
+                            currWeightVal && parseFloat(currWeightVal) > 0
+                              ? currWeightVal
+                              : smartFallbackWeight || currWeightVal;
+                          const finalReps =
+                            currRepsVal && parseInt(currRepsVal, 10) > 0
+                              ? currRepsVal
+                              : smartFallbackReps || currRepsVal;
+
+                          if (finalWeight !== currWeightVal) {
+                            setLocalLogs((prev) => ({
+                              ...prev,
+                              [logKey]: {
+                                ...(prev[logKey] || { weight: '', reps: '', rpe: '6', rir: '4' }),
+                                weight: finalWeight,
+                              },
+                            }));
+                          }
+                          if (finalReps !== currRepsVal) {
+                            setLocalLogs((prev) => ({
+                              ...prev,
+                              [logKey]: {
+                                ...(prev[logKey] || { weight: '', reps: '', rpe: '6', rir: '4' }),
+                                reps: finalReps,
+                              },
+                            }));
+                          }
+
+                          onUpdateLog(logKey, 'weight', finalWeight);
+                          onUpdateLog(logKey, 'reps', finalReps);
+                          onUpdateLog(logKey, 'rpe', currentRpeNum.toString());
+                          onUpdateLog(logKey, 'rir', currentRirNum.toString());
+                          onUpdateLog(logKey, 'setType', currentSetType);
+                          persistLogsToStorageDirectly(logKey, {
+                            weight: finalWeight,
+                            reps: finalReps,
+                            rpe: currentRpeNum.toString(),
+                            rir: currentRirNum.toString(),
+                            setType: currentSetType,
+                            done: !setLog.done,
+                          });
+
+                          if (isSmartRestEnabled && currentRpeNum >= 9) {
+                            if (!autoRestAppliedSetsRef.current.has(logKey)) {
+                              autoRestAppliedSetsRef.current.add(logKey);
+                              if (onUpdateRest) {
+                                onUpdateRest(index, item.rest + 30);
+                              }
+                            }
+                          }
+
+                          // Comemoração especial se for Novo Recorde Pessoal (PR)
+                          const checkFinalPR = checkSetPR(
+                            ex.name,
+                            parseFloat(finalWeight) || 0,
+                            parseInt(finalReps, 10) || 0,
+                            historicalPR
+                          );
+                          if (prResult || checkFinalPR) {
+                            soundManager.playPRCelebration();
+                          } else {
+                            soundManager.vibrateSetComplete();
+                          }
+
+                          onToggleSet(logKey, isBisetWithNext ? 0 : item.rest);
+                          setExpandedSets((prev) => ({ ...prev, [logKey]: false }));
+                        }}
+                        className={`flex-1 sm:flex-initial min-h-[46px] px-5 rounded-xl flex items-center justify-center font-bold text-sm tracking-wide transition-all cursor-pointer gap-2 touch-manipulation shadow-md ${
+                          setLog.done
+                            ? 'bg-emerald-500 text-slate-950 font-black'
+                            : isBisetWithNext
+                            ? 'bg-purple-600 hover:bg-purple-500 text-white active:scale-95'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
+                        }`}
+                      >
+                        <Check className="w-4 h-4 stroke-[3] shrink-0" />
+                        <span>
+                          {isBisetWithNext
+                            ? 'Concluir (Ir p/ 2º Ex. Bi-set)'
+                            : !currWeightVal && smartFallbackWeight
+                            ? `Concluir Série (${smartFallbackWeight}kg × ${currRepsVal || smartFallbackReps})`
+                            : 'Concluir Série'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Badge Piscante de Auto-Progressão Inteligente na Série (1-Toque) */}
+              {setAutoProgression && parseFloat(currWeightVal || '0') !== setAutoProgression.suggestedKg && (
+                <div className="mt-2.5 flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 animate-pulse">
+                  <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-emerald-300">
+                    <Zap className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
+                    <span>
+                      Sugestão Hoje: <strong className="font-mono text-white">{setAutoProgression.suggestedKg} kg</strong> (+{setAutoProgression.incrementKg} kg)
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
-                      if (debounceTimerRef.current) {
-                        clearTimeout(debounceTimerRef.current);
-                        debounceTimerRef.current = null;
+                      handleInputChange(logKey, 'weight', setAutoProgression.suggestedKg.toString());
+                      if (!currRepsVal) {
+                        handleInputChange(logKey, 'reps', targetMaxReps.toString());
                       }
-                      onUpdateLog(logKey, 'weight', currWeightVal);
-                      onUpdateLog(logKey, 'reps', currRepsVal);
-                      onUpdateLog(logKey, 'rpe', currentRpeNum.toString());
-                      onUpdateLog(logKey, 'rir', currentRirNum.toString());
-                      persistLogsToStorageDirectly(logKey, { 
-                        weight: currWeightVal, 
-                        reps: currRepsVal, 
-                        rpe: currentRpeNum.toString(),
-                        rir: currentRirNum.toString(),
-                        done: !setLog.done 
-                      });
-
-                      if (isSmartRestEnabled && currentRpeNum >= 9) {
-                        if (!autoRestAppliedSetsRef.current.has(logKey)) {
-                          autoRestAppliedSetsRef.current.add(logKey);
-                          if (onUpdateRest) {
-                            onUpdateRest(index, item.rest + 30);
-                          }
-                        }
-                      }
-
-                      // Comemoração especial se for Novo Recorde Pessoal (PR)
-                      if (prResult) {
-                        soundManager.playPRCelebration();
-                      } else {
-                        soundManager.vibrateSetComplete();
-                      }
-
-                      onToggleSet(logKey, item.rest);
-                      setExpandedSets((prev) => ({ ...prev, [logKey]: false }));
+                      soundManager.vibrate(20);
                     }}
-                    className={`flex-1 sm:flex-initial h-11 px-5 rounded-xl flex items-center justify-center font-bold text-sm tracking-wide transition-all cursor-pointer gap-2 touch-manipulation shadow-md ${
-                      setLog.done
-                        ? 'bg-emerald-500 text-slate-950 font-black'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
-                    }`}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[10px] uppercase tracking-wider shrink-0 cursor-pointer transition-all active:scale-95"
                   >
-                    <Check className="w-4 h-4 stroke-[3]" />
-                    <span>Concluir Série</span>
+                    Aplicar 1-Toque
                   </button>
                 </div>
-              </div>
+              )}
 
               {/* Badge de Novo Recorde Pessoal em Tempo Real */}
               {prResult && (
@@ -1157,18 +1997,22 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                 )}
               </div>
 
-              {/* Informações de 1RM e Carga Sugerida */}
+              {/* Informações de 1RM e Carga Sugerida com Smart Tooltips */}
               <div className="flex items-center justify-between gap-2 mt-2 px-1 text-xs text-slate-400 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   {est1RM && (
-                    <span className="text-sky-400 font-mono font-medium">
-                      1RM est.: <strong>~{est1RM}kg</strong>
-                    </span>
+                    <SmartTermTooltip term="1RM" align="left" className="text-sky-400 font-mono font-medium">
+                      <span>
+                        1RM est.: <strong>~{est1RM}kg</strong>
+                      </span>
+                    </SmartTermTooltip>
                   )}
                   {est6RM && (
-                    <span className="text-amber-400 font-mono font-medium">
-                      · 6RM: <strong>~{est6RM}kg</strong>
-                    </span>
+                    <SmartTermTooltip term="6RM" align="left" className="text-amber-400 font-mono font-medium">
+                      <span>
+                        · 6RM: <strong>~{est6RM}kg</strong>
+                      </span>
+                    </SmartTermTooltip>
                   )}
                   {nextSetSuggestedWeight && sIdx < item.sets - 1 && (
                     <span className="text-emerald-400 font-medium">
@@ -1180,10 +2024,112 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 
               {/* Controle de RPE de 6 a 10 com + e - e cálculo automático de RIR */}
               <div className="mt-3 pt-2.5 border-t border-slate-800">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-slate-300">Intensidade (RPE de 6 a 10):</span>
+                <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <SmartTermTooltip term="RPE" align="left" className="text-xs font-semibold text-slate-300">
+                      <span>Intensidade (RPE de 6 a 10):</span>
+                    </SmartTermTooltip>
+
+                    {/* Smart RIR Suggestion Badge with Subtle Interactive Tooltip */}
+                    {smartRirSuggestion && (
+                      <div className="relative group/smartrir inline-flex items-center">
+                        <div
+                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+                            currentRirNum === smartRirSuggestion.predictedRir
+                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+                              : 'bg-sky-500/15 text-sky-300 border-sky-500/40 shadow-sm'
+                          }`}
+                        >
+                          <Sparkles className="w-3 h-3 text-sky-400 shrink-0" />
+                          <span>
+                            Smart RIR:{' '}
+                            <strong className="font-mono text-white">
+                              RIR {smartRirSuggestion.predictedRir}
+                            </strong>{' '}
+                            <span className="text-[10px] opacity-85 font-mono">
+                              (RPE {smartRirSuggestion.predictedRpe})
+                            </span>
+                          </span>
+
+                          {currentRirNum !== smartRirSuggestion.predictedRir ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleUpdateRpe(logKey, smartRirSuggestion.predictedRpe);
+                                soundManager.vibrate(20);
+                              }}
+                              className="ml-0.5 px-1.5 py-0.2 rounded bg-sky-400 hover:bg-sky-300 text-slate-950 font-black text-[9px] uppercase tracking-wider cursor-pointer transition-colors active:scale-95"
+                              title="Aplicar RIR sugerido pelo histórico"
+                            >
+                              Calibrar
+                            </button>
+                          ) : (
+                            <span className="text-[9px] font-mono uppercase tracking-wider text-emerald-400 font-black">
+                              ✓ Calibrado
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActiveRirTooltipKey((prev) => (prev === logKey ? null : logKey))
+                            }
+                            className="text-slate-400 hover:text-white cursor-pointer ml-0.5"
+                            title="Ver explicação da previsão de RIR"
+                            aria-label="Detalhes da sugestão de RIR"
+                          >
+                            <HelpCircle className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Subtle Tooltip (Hover on Desktop or Tap on Mobile) */}
+                        <div
+                          className={` left-0 bottom-full mb-2 w-72 sm:w-80 p-3 rounded-xl bg-[#070c18] border border-sky-500/40 shadow-2xl text-[11px] text-slate-200 z-30 leading-relaxed transition-all duration-200 ${
+                            activeRirTooltipKey === logKey
+                              ? 'block absolute animate-fadeIn'
+                              : 'hidden group-hover/smartrir:block absolute pointer-events-none'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5 mb-1.5">
+                            <span className="font-black text-sky-300 flex items-center gap-1">
+                              <Target className="w-3.5 h-3.5 text-sky-400" />
+                              <span>Calibração de Intensidade (Smart RIR)</span>
+                            </span>
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                              {smartRirSuggestion.isExactWeight ? 'Carga Idêntica' : 'Carga Alinhada'}
+                            </span>
+                          </div>
+
+                          <p className="text-slate-300 text-[10px] sm:text-[11px]">
+                            Com base no seu registro anterior de{' '}
+                            <strong className="text-white font-mono">
+                              {smartRirSuggestion.matchedWeight}kg × {smartRirSuggestion.matchedReps} reps
+                            </strong>{' '}
+                            reportado com{' '}
+                            <strong className="text-amber-300 font-mono">
+                              RIR {smartRirSuggestion.matchedRir} (RPE {smartRirSuggestion.matchedRpe})
+                            </strong>{' '}
+                            ({smartRirSuggestion.matchedDateLabel}), para{' '}
+                            <strong className="text-white font-mono">
+                              {setWeightNum}kg × {smartRirSuggestion.expectedReps} reps
+                            </strong>{' '}
+                            sua reserva estimada hoje é{' '}
+                            <strong className="text-emerald-300 font-mono">
+                              RIR {smartRirSuggestion.predictedRir} (RPE {smartRirSuggestion.predictedRpe})
+                            </strong>
+                            .
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                    RPE {currentRpeNum} ➔ RIR {currentRirNum} {currentRirNum === 0 ? '(falha)' : `(${currentRirNum} sobram)`}
+                    <SmartTermTooltip term="RIR" align="right">
+                      <span>
+                        RPE {currentRpeNum} ➔ RIR {currentRirNum} {currentRirNum === 0 ? '(falha)' : `(${currentRirNum} sobram)`}
+                      </span>
+                    </SmartTermTooltip>
                   </span>
                 </div>
 
@@ -1218,6 +2164,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                       {RPE_PRESETS.map((p) => {
                         const isSelected = currentRpeNum === p.rpe;
                         const isTarget = targetMuscleRir !== undefined && p.rir === targetMuscleRir;
+                        const isSmartPredicted =
+                          smartRirSuggestion !== undefined &&
+                          smartRirSuggestion !== null &&
+                          smartRirSuggestion.predictedRpe === p.rpe;
                         return (
                           <button
                             key={p.rpe}
@@ -1226,13 +2176,21 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                             className={`flex-1 py-2 px-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer relative ${
                               isSelected
                                 ? 'bg-amber-400 text-slate-950 font-black shadow-md ring-2 ring-amber-300 scale-105'
+                                : isSmartPredicted
+                                ? 'bg-sky-500/20 border-2 border-sky-400/70 text-sky-200 hover:bg-sky-500/30'
                                 : isTarget
                                 ? 'bg-amber-500/15 border-2 border-amber-500/60 text-amber-300 hover:bg-amber-500/25'
                                 : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
                             }`}
-                            title={`RPE ${p.rpe} = RIR ${p.rir}${isTarget ? ' (Meta configurada para este músculo)' : ''}`}
+                            title={`RPE ${p.rpe} = RIR ${p.rir}${isSmartPredicted ? ` (Sugestão Smart RIR: RIR ${p.rir})` : ''}${isTarget ? ' (Meta configurada para este músculo)' : ''}`}
                           >
                             <span>{p.rpe}</span>
+                            {isSmartPredicted && !isSelected && (
+                              <span
+                                className="absolute -top-1 -left-1 w-2 h-2 rounded-full bg-sky-400 animate-ping"
+                                title="RIR previsto pelo histórico"
+                              />
+                            )}
                             {isTarget && !isSelected && (
                               <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400" />
                             )}
@@ -1314,6 +2272,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           </button>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

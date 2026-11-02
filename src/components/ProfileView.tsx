@@ -55,6 +55,17 @@ import { WorkoutConfig } from './WorkoutConfig';
 import { PWAInstallButton } from './PWAInstallButton';
 import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { ThemeToggle } from './ThemeToggle';
+import { ProfilePushNotificationManager } from './ProfilePushNotificationManager';
+import { PrivacyShieldControl } from './PrivacyShieldControl';
+import {
+  usePrivacyMode,
+  maskSensitiveValue,
+  maskUsername,
+  maskDisplayName,
+  getProtectedCreatorKey,
+  getMaskedCreatorKey,
+  getMaskedCreatorName,
+} from '../utils/privacy';
 
 interface ProfileViewProps {
   user: UserProfile;
@@ -117,6 +128,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onOpenDonation,
 }) => {
   const { t, language } = useI18n();
+  const { isPrivacyHidden } = usePrivacyMode();
 
   // Personal data editing state
   const [name, setName] = useState(user.name);
@@ -149,6 +161,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   const handleExportCSV = () => {
@@ -220,6 +234,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showProfileMenu]);
+
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
 
   // IMC (BMI) calculation
   const imcNum = heightM > 0 ? weightKg / (heightM * heightM) : 0;
@@ -342,18 +358,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                  {user.name}
+                  {maskDisplayName(user.name, isPrivacyHidden)}
                 </h1>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                   {t.badgePro}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-mono mt-0.5">@{user.username}</p>
+              <p className="text-xs text-slate-400 font-mono mt-0.5">
+                {maskUsername(user.username, isPrivacyHidden)}
+              </p>
             </div>
           </div>
 
-          {/* Action Zone: 3-Dots Menu on Mobile & Clean Desktop Actions */}
-          <div className="flex items-center gap-2 self-start sm:self-auto">
+          {/* Action Zone: Theme Toggle, 3-Dots Menu on Mobile & Clean Desktop Actions */}
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <ThemeToggle variant="segmented" />
+
             {/* Desktop Quick Buttons */}
             {onSwitchProfile && (
               <button
@@ -473,103 +493,136 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         )}
 
+        {/* Central de Privacidade & Proteção de Dados Sensíveis */}
+        <div className="mt-5">
+          <PrivacyShieldControl user={user} variant="banner" />
+        </div>
+
         {/* Edit Body Metrics Form */}
         <form onSubmit={handleSaveProfile} className="mt-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {/* Full Name */}
-            <div className="sm:col-span-2 lg:col-span-1">
-              <label className="text-xs font-semibold text-slate-300 block mb-1">
-                {t.nameLabel}
-              </label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
-              />
+          {isPrivacyHidden ? (
+            <div className="p-4 rounded-2xl bg-[#0a101d] border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 flex-1">
+                <div className="p-2.5 rounded-xl bg-[#0f172a] border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{t.nameLabel}</span>
+                  <span className="text-xs font-mono font-bold text-slate-300">{maskDisplayName(name, true)}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#0f172a] border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{t.weightLabel}</span>
+                  <span className="text-xs font-mono font-bold text-emerald-400">{maskSensitiveValue(weightKg, 'kg', true)}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#0f172a] border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{t.heightLabel}</span>
+                  <span className="text-xs font-mono font-bold text-sky-400">{maskSensitiveValue(heightM, 'm', true)}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#0f172a] border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Idade</span>
+                  <span className="text-xs font-mono font-bold text-amber-400">{maskSensitiveValue(age, 'anos', true)}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#0f172a] border border-slate-800 col-span-2 sm:col-span-1">
+                  <span className="text-[10px] text-slate-400 block">% Gordura & IMC</span>
+                  <span className="text-xs font-mono font-bold text-rose-400">{maskSensitiveValue(bodyFatPercent, '%', true)}</span>
+                </div>
+              </div>
+              <PrivacyShieldControl user={user} variant="inline" />
             </div>
-
-            {/* Body Weight */}
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
-                <Scale className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{t.weightLabel}</span>
-              </label>
-              <div className="relative flex items-center">
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {/* Full Name */}
+              <div className="sm:col-span-2 lg:col-span-1">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  {t.nameLabel}
+                </label>
                 <input
-                  type="number"
-                  step="0.5"
-                  value={weightKg}
-                  onChange={(e) => setWeightKg(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
                 />
-                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">kg</span>
+              </div>
+
+              {/* Body Weight */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
+                  <Scale className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{t.weightLabel}</span>
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={weightKg}
+                    onChange={(e) => setWeightKg(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="absolute right-2.5 text-xs text-slate-500 font-mono">kg</span>
+                </div>
+              </div>
+
+              {/* Height */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
+                  <Ruler className="w-3.5 h-3.5 text-sky-400" />
+                  <span>{t.heightLabel}</span>
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={heightM}
+                    onChange={(e) => setHeightM(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="absolute right-2.5 text-xs text-slate-500 font-mono">m</span>
+                </div>
+              </div>
+
+              {/* Idade */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Idade</span>
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="number"
+                    step="1"
+                    min="12"
+                    max="100"
+                    value={age}
+                    onChange={(e) => setAge(parseInt(e.target.value, 10) || 25)}
+                    className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-10 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="absolute right-2.5 text-xs text-slate-500 font-mono">anos</span>
+                </div>
+              </div>
+
+              {/* % Gordura Corporal (Opcional) */}
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Flame className="w-3.5 h-3.5 text-rose-400" />
+                    <span>% Gordura</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500">Opcional</span>
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="3"
+                    max="60"
+                    placeholder="Ex: 14"
+                    value={bodyFatPercent !== undefined ? bodyFatPercent : ''}
+                    onChange={(e) => setBodyFatPercent(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="absolute right-2.5 text-xs text-slate-500 font-mono">%</span>
+                </div>
               </div>
             </div>
-
-            {/* Height */}
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
-                <Ruler className="w-3.5 h-3.5 text-sky-400" />
-                <span>{t.heightLabel}</span>
-              </label>
-              <div className="relative flex items-center">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={heightM}
-                  onChange={(e) => setHeightM(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
-                />
-                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">m</span>
-              </div>
-            </div>
-
-            {/* Idade */}
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                <span>Idade</span>
-              </label>
-              <div className="relative flex items-center">
-                <input
-                  type="number"
-                  step="1"
-                  min="12"
-                  max="100"
-                  value={age}
-                  onChange={(e) => setAge(parseInt(e.target.value, 10) || 25)}
-                  className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-10 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
-                />
-                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">anos</span>
-              </div>
-            </div>
-
-            {/* % Gordura Corporal (Opcional) */}
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center justify-between">
-                <span className="flex items-center gap-1">
-                  <Flame className="w-3.5 h-3.5 text-rose-400" />
-                  <span>% Gordura</span>
-                </span>
-                <span className="text-[10px] text-slate-500">Opcional</span>
-              </label>
-              <div className="relative flex items-center">
-                <input
-                  type="number"
-                  step="0.5"
-                  min="3"
-                  max="60"
-                  placeholder="Ex: 14"
-                  value={bodyFatPercent !== undefined ? bodyFatPercent : ''}
-                  onChange={(e) => setBodyFatPercent(e.target.value ? parseFloat(e.target.value) : undefined)}
-                  className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
-                />
-                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">%</span>
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* 1. SELEÇÃO DE SEXO */}
           <div className="bg-[#0b1220] p-3.5 rounded-2xl border border-slate-800">
@@ -765,8 +818,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
             <div className="bg-[#0a101d] px-3.5 py-2 rounded-xl border border-slate-800 flex items-center gap-2 text-xs">
               <span className="text-slate-400">{t.bmiLabel}:</span>
-              <span className="font-mono font-bold text-white">{imcStr}</span>
-              <span className={`font-semibold ${bmiCat.color}`}>({bmiCat.label})</span>
+              <span className="font-mono font-bold text-white">
+                {isPrivacyHidden ? '••••' : imcStr}
+              </span>
+              {!isPrivacyHidden && (
+                <span className={`font-semibold ${bmiCat.color}`}>({bmiCat.label})</span>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -1225,70 +1282,85 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* Resumo do Plano Nutricional Atual se existir */}
         {user.nutritionPlan ? (
-          <div className="mt-5 space-y-4 relative z-10">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta Calórica</span>
-                <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400 block mt-0.5">
-                  {user.nutritionPlan.targetCalories.toLocaleString('pt-BR')} <span className="text-xs font-normal text-slate-400">kcal</span>
+          isPrivacyHidden ? (
+            <div className="mt-4 p-4 rounded-2xl bg-[#080d19] border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+              <div>
+                <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5 mb-0.5">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Plano Nutricional & Taxa Metabólica Ocultos</span>
                 </span>
-                <span className="text-[11px] font-semibold text-emerald-300 block mt-0.5">
-                  {user.nutritionPlan.goal === 'cutting' ? '🔥 Cutting Moderado'
-                    : user.nutritionPlan.goal === 'cutting_aggressive' ? '⚡ Cutting Agressivo'
-                    : user.nutritionPlan.goal === 'bulking_clean' ? '💪 Bulking Limpo'
-                    : user.nutritionPlan.goal === 'bulking_aggressive' ? '🚀 Bulking Agressivo'
-                    : '⚖️ Manutenção'}
-                </span>
+                <p className="text-[11px] text-slate-400">
+                  Calorias diárias, TMB, GET e distribuição de macronutrientes estão protegidos pelo Escudo de Privacidade.
+                </p>
+              </div>
+              <PrivacyShieldControl user={user} variant="inline" />
+            </div>
+          ) : (
+            <div className="mt-5 space-y-4 relative z-10">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta Calórica</span>
+                  <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400 block mt-0.5">
+                    {user.nutritionPlan.targetCalories.toLocaleString('pt-BR')} <span className="text-xs font-normal text-slate-400">kcal</span>
+                  </span>
+                  <span className="text-[11px] font-semibold text-emerald-300 block mt-0.5">
+                    {user.nutritionPlan.goal === 'cutting' ? '🔥 Cutting Moderado'
+                      : user.nutritionPlan.goal === 'cutting_aggressive' ? '⚡ Cutting Agressivo'
+                      : user.nutritionPlan.goal === 'bulking_clean' ? '💪 Bulking Limpo'
+                      : user.nutritionPlan.goal === 'bulking_aggressive' ? '🚀 Bulking Agressivo'
+                      : '⚖️ Manutenção'}
+                  </span>
+                </div>
+
+                <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Proteína</span>
+                  <span className="text-xl sm:text-2xl font-black font-mono text-sky-400 block mt-0.5">
+                    {user.nutritionPlan.proteinGrams}g
+                  </span>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    {user.nutritionPlan.proteinPerKg.toFixed(1)} g/kg corporal
+                  </span>
+                </div>
+
+                <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Carboidratos</span>
+                  <span className="text-xl sm:text-2xl font-black font-mono text-amber-400 block mt-0.5">
+                    {user.nutritionPlan.carbsGrams}g
+                  </span>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    {(user.nutritionPlan.carbsGrams / (user.weightKg || 70)).toFixed(1)} g/kg corporal
+                  </span>
+                </div>
+
+                <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Gorduras & Água</span>
+                  <span className="text-xl sm:text-2xl font-black font-mono text-rose-400 block mt-0.5">
+                    {user.nutritionPlan.fatsGrams}g
+                  </span>
+                  <span className="text-[11px] text-sky-400 font-semibold block mt-0.5">
+                    💧 {((user.nutritionPlan.waterMl || 3000) / 1000).toFixed(1)}L de água/dia
+                  </span>
+                </div>
               </div>
 
-              <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Proteína</span>
-                <span className="text-xl sm:text-2xl font-black font-mono text-sky-400 block mt-0.5">
-                  {user.nutritionPlan.proteinGrams}g
-                </span>
-                <span className="text-[11px] text-slate-400 block mt-0.5">
-                  {user.nutritionPlan.proteinPerKg.toFixed(1)} g/kg corporal
-                </span>
-              </div>
-
-              <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Carboidratos</span>
-                <span className="text-xl sm:text-2xl font-black font-mono text-amber-400 block mt-0.5">
-                  {user.nutritionPlan.carbsGrams}g
-                </span>
-                <span className="text-[11px] text-slate-400 block mt-0.5">
-                  {(user.nutritionPlan.carbsGrams / (user.weightKg || 70)).toFixed(1)} g/kg corporal
-                </span>
-              </div>
-
-              <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Gorduras & Água</span>
-                <span className="text-xl sm:text-2xl font-black font-mono text-rose-400 block mt-0.5">
-                  {user.nutritionPlan.fatsGrams}g
-                </span>
-                <span className="text-[11px] text-sky-400 font-semibold block mt-0.5">
-                  💧 {((user.nutritionPlan.waterMl || 3000) / 1000).toFixed(1)}L de água/dia
-                </span>
+              <div className="bg-[#080d19] border border-slate-800/90 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
+                <div className="flex items-center gap-3">
+                  <span>TMB Basal: <strong className="text-white font-mono">{user.nutritionPlan.tmb} kcal</strong></span>
+                  <span>•</span>
+                  <span>Gasto Total (GET): <strong className="text-white font-mono">{user.nutritionPlan.tdee} kcal</strong></span>
+                  <span>•</span>
+                  {(() => {
+                    const balance = user.nutritionPlan.targetCalories - user.nutritionPlan.tdee;
+                    return (
+                      <span>Balanço: <strong className={`font-mono font-bold ${balance < 0 ? 'text-emerald-400' : balance > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
+                        {balance > 0 ? `+${balance}` : balance} kcal
+                      </strong></span>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
-
-            <div className="bg-[#080d19] border border-slate-800/90 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
-              <div className="flex items-center gap-3">
-                <span>TMB Basal: <strong className="text-white font-mono">{user.nutritionPlan.tmb} kcal</strong></span>
-                <span>•</span>
-                <span>Gasto Total (GET): <strong className="text-white font-mono">{user.nutritionPlan.tdee} kcal</strong></span>
-                <span>•</span>
-                {(() => {
-                  const balance = user.nutritionPlan.targetCalories - user.nutritionPlan.tdee;
-                  return (
-                    <span>Balanço: <strong className={`font-mono font-bold ${balance < 0 ? 'text-emerald-400' : balance > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
-                      {balance > 0 ? `+${balance}` : balance} kcal
-                    </strong></span>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
+          )
         ) : (
           <div className="mt-4 p-4 rounded-2xl bg-[#080d19] border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
             <div>
@@ -1296,7 +1368,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 Nenhum plano calórico calculado ainda
               </span>
               <p className="text-[11px] text-slate-400">
-                Utilize seu peso atual ({user.weightKg}kg), altura ({user.heightM}m) e idade ({user.age || 28} anos) para descobrir seu gasto calórico exato e gramas de proteína recomendadas.
+                Utilize suas métricas corporais para descobrir seu gasto calórico exato e gramas de proteína recomendadas.
               </p>
             </div>
             {onOpenNutrition && (
@@ -1349,21 +1421,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           )}
         </div>
 
-        {/* Chave PIX Rápida com 1-Clique */}
+        {/* Chave PIX Rápida com 1-Clique (Mascarada) */}
         <div className="mt-5 p-4 rounded-2xl bg-[#0a0817] border border-rose-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
           <div>
             <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">
-              Chave PIX E-mail (Titular: Alex Vieira)
+              Chave PIX Oficial Protegida ({getMaskedCreatorName()})
             </span>
-            <span className="font-mono font-bold text-white text-sm sm:text-base select-all block mt-0.5">
-              alex.vieira.123@hotmail.com
+            <span className="font-mono font-bold text-slate-200 text-sm sm:text-base select-none block mt-0.5">
+              {getMaskedCreatorKey()}
             </span>
           </div>
 
           <button
             type="button"
             onClick={() => {
-              navigator.clipboard.writeText('alex.vieira.123@hotmail.com');
+              navigator.clipboard.writeText(getProtectedCreatorKey());
               if (onOpenDonation) {
                 onOpenDonation();
               }
@@ -1377,25 +1449,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
-      {/* 🎨 Aparência & Tema Visual */}
-      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-6 shadow-2xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* 🎨 Aparência & Tema Visual (Alternância Dark / Light Forçada) */}
+      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-extrabold text-white">
-                Aparência & Tema Visual
+                Aparência & Modo de Visualização (Dark / Light)
               </h2>
               <p className="text-xs text-slate-400">
-                Alterne entre Modo Escuro de alto contraste e Modo Claro de alta legibilidade.
+                Force o Modo Escuro ou Modo Claro, salvando sua preferência no localStorage e desativando a detecção automática do sistema.
               </p>
             </div>
           </div>
           <ThemeToggle variant="segmented" />
         </div>
+
+        <ThemeToggle variant="profile-card" />
       </div>
+
+      {/* 🔔 Gerenciador de Permissões e Lembretes Personalizados via Notificações Push */}
+      <ProfilePushNotificationManager
+        userId={user.id}
+        userName={user.name}
+      />
 
       {/* Organizar Treinos & Ferramentas */}
       <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl">
@@ -1545,14 +1625,37 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
 
           {sessions.length > 0 && (
-            <button
-              type="button"
-              onClick={onClearHistory}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-950/30 border border-rose-900/40 flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>{t.clearHistoryBtn}</span>
-            </button>
+            confirmClearHistory ? (
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="text-[11px] font-bold text-rose-400">Apagar tudo?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClearHistory();
+                    setConfirmClearHistory(false);
+                  }}
+                  className="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-rose-500 hover:bg-rose-400 text-slate-950 transition-colors cursor-pointer"
+                >
+                  Sim, apagar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearHistory(false)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmClearHistory(true)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-950/30 border border-rose-900/40 flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{t.clearHistoryBtn}</span>
+              </button>
+            )
           )}
         </div>
 
@@ -1697,7 +1800,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       )}
 
-      {/* Modal Seguro de Confirmação para Exclusão de Perfil */}
+      {/* Modal Seguro de Confirmação para Exclusão de Perfil (Exige Senha para Contas Registradas) */}
       {showDeleteConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
           <div className="bg-[#101828] border border-rose-500/40 rounded-3xl w-full max-w-sm p-6 shadow-2xl relative">
@@ -1705,17 +1808,42 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30">
                 <Trash2 className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-black text-white">Excluir Perfil?</h3>
+              <h3 className="text-base font-black text-white">Excluir Perfil Protegido?</h3>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed mb-5">
-              Tem certeza que deseja apagar permanentemente o perfil de <strong className="text-white">"{user.name}"</strong>? Todos os treinos gerados, histórico e notas serão excluídos. Esta ação não pode ser desfeita.
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              Tem certeza que deseja apagar permanentemente este perfil? Todos os treinos gerados, histórico e registros serão excluídos. Esta ação não pode ser desfeita.
             </p>
+
+            {!user.isVisitor && (
+              <div className="mb-4 space-y-2">
+                <label className="text-[11px] font-bold text-slate-400 block">
+                  Confirme sua senha para autorizar a exclusão:
+                </label>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => {
+                    setDeletePassword(e.target.value);
+                    setDeleteError(null);
+                  }}
+                  placeholder="Digite sua senha atual"
+                  className="w-full bg-[#0a101d] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500"
+                />
+                {deleteError && (
+                  <p className="text-[11px] font-bold text-rose-400">{deleteError}</p>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-2.5">
               <button
                 type="button"
-                onClick={() => setShowDeleteConfirmModal(false)}
+                onClick={() => {
+                  setShowDeleteConfirmModal(false);
+                  setDeletePassword('');
+                  setDeleteError(null);
+                }}
                 className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
               >
                 Cancelar
@@ -1723,7 +1851,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  if (!user.isVisitor && !authStorage.verifyUserPassword(user.id, deletePassword)) {
+                    setDeleteError('Senha incorreta. Exclusão bloqueada.');
+                    return;
+                  }
                   setShowDeleteConfirmModal(false);
+                  setDeletePassword('');
+                  setDeleteError(null);
                   onDeleteProfile?.(user.id);
                 }}
                 className="px-4 py-2.5 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-900/30 transition-all cursor-pointer active:scale-95"

@@ -34,6 +34,8 @@ import { TabType } from '../types/navigation';
 import { useI18n } from '../utils/i18n';
 import { PWAInstallButton } from './PWAInstallButton';
 import { ThemeToggle } from './ThemeToggle';
+import { PrivacyShieldControl } from './PrivacyShieldControl';
+import { usePrivacyMode, getProtectedCreatorKey, getMaskedCreatorKey, maskDisplayName } from '../utils/privacy';
 
 interface HeaderProps {
   user: UserProfile | null;
@@ -81,6 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
   hasActiveWorkout = false,
 }) => {
   const { t } = useI18n();
+  const { isPrivacyHidden } = usePrivacyMode();
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [pixCopied, setPixCopied] = useState(false);
@@ -138,7 +141,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const handleCopyPix = () => {
-    navigator.clipboard.writeText('alex.vieira.123@hotmail.com');
+    navigator.clipboard.writeText(getProtectedCreatorKey());
     setPixCopied(true);
     setTimeout(() => setPixCopied(false), 2500);
     if (onOpenDonation) {
@@ -253,6 +256,9 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
+          {/* Escudo de Privacidade (Ocultar/Proteger Dados Sensíveis) */}
+          <PrivacyShieldControl user={user} variant="compact" />
+
           {/* Botão de Tema (Sempre visível para 1-clique rápido) */}
           <ThemeToggle variant="compact" />
 
@@ -264,7 +270,7 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={onOpenDonation}
                 className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 rounded-xl text-xs font-bold bg-gradient-to-r from-rose-500/20 via-pink-500/20 to-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
-                title="Apoiar com PIX (Incentivar o Criador Alex Vieira)"
+                title="Apoiar o projeto com PIX"
               >
                 <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
                 <span>Apoiar PIX</span>
@@ -277,10 +283,10 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={() => onSelectTab('perfil')}
                 className="flex items-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-bold bg-[#141f36] hover:bg-[#1a2947] text-emerald-300 border border-emerald-500/35 transition-all cursor-pointer shrink-0 max-w-[130px]"
-                title={`Perfil do Atleta: ${user.name}`}
+                title="Acessar Perfil Protegido"
               >
                 <User className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="truncate">{user.name.split(' ')[0]}</span>
+                <span className="truncate">{maskDisplayName(user.name.split(' ')[0], isPrivacyHidden)}</span>
               </button>
             )}
 
@@ -567,13 +573,15 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                   <div className="min-w-0">
                     <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
-                      Atleta Cadastrado
+                      {isPrivacyHidden ? 'Perfil Protegido 🔒' : 'Atleta Cadastrado'}
                     </span>
                     <h3 className="font-extrabold text-sm text-white truncate">
-                      {user.name}
+                      {maskDisplayName(user.name, isPrivacyHidden)}
                     </h3>
                     <p className="text-[11px] text-slate-400 truncate">
-                      {user.focus === 'glutes' ? '🍑 Foco em Glúteos' : user.focus === 'strength' ? '🏋️ Foco em Força' : user.focus === 'v_taper' ? '🔱 Shape V-Taper' : '⚖️ Foco Equilibrado'} · {user.frequency || 4}x/sem
+                      {isPrivacyHidden
+                        ? 'Dados pessoais ocultos'
+                        : `${user.focus === 'glutes' ? '🍑 Foco em Glúteos' : user.focus === 'strength' ? '🏋️ Foco em Força' : user.focus === 'v_taper' ? '🔱 Shape V-Taper' : '⚖️ Foco Equilibrado'} · ${user.frequency || 4}x/sem`}
                     </p>
                   </div>
                 </div>
@@ -872,7 +880,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
                   <Heart className="w-4 h-4 fill-rose-400 text-rose-400" />
-                  <span>Apoie o Criador Alex Vieira</span>
+                  <span>Apoie o Projeto MeuTreino Pro</span>
                 </div>
                 <span className="text-[10px] font-mono text-rose-400 font-bold bg-rose-500/15 px-2 py-0.5 rounded-full border border-rose-500/30">
                   PIX
@@ -882,8 +890,8 @@ export const Header: React.FC<HeaderProps> = ({
                 Gostou do aplicativo? Qualquer contribuição voluntária ajuda a manter a plataforma rápida, sem anúncios e com atualizações contínuas!
               </p>
               <div className="flex items-center gap-2 pt-1">
-                <div className="flex-1 font-mono text-[11px] font-bold text-white bg-slate-900/90 px-3 py-2 rounded-xl border border-slate-750 truncate select-all">
-                  alex.vieira.123@hotmail.com
+                <div className="flex-1 font-mono text-[11px] font-bold text-slate-300 bg-slate-900/90 px-3 py-2 rounded-xl border border-slate-750 truncate select-none">
+                  {getMaskedCreatorKey()}
                 </div>
                 <button
                   type="button"

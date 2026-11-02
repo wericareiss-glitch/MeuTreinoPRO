@@ -3,311 +3,415 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { MuscleGroup, UserProfile, LevelOption, GenderOption, FocusOption, SplitOption } from '../types/workout';
+import { UserProfile, MuscleGroup, GenderOption, LevelOption, FocusOption } from '../types/workout';
 import { safeStorage } from './storage';
+import { setPrivacyShieldState } from './privacy';
+
+const USERS_KEY = 'alex_all_users';
+const ACTIVE_USER_KEY = 'alex_active_user_id';
+const HASH_PREFIX = 'mtp_hash_v1$';
 
 export const ALL_MUSCLE_GROUPS: MuscleGroup[] = [
-  'quadriceps',
-  'hamstrings',
-  'glutes',
-  'calves',
   'chest',
   'back',
+  'quadriceps',
+  'hamstrings',
   'shoulders',
   'rear_delts',
-  'triceps',
   'biceps',
+  'triceps',
+  'glutes',
+  'calves',
   'abs',
 ];
 
-export const BUDGET_PRESETS: Record<
-  string,
-  { name: string; icon: string; desc: string; weights: Record<MuscleGroup, number> }
-> = {
-  glutes: {
-    name: 'Foco Glúteos & Pernas',
-    icon: '🍑',
-    desc: 'Prioridade máxima para Glúteos, Isquiotibiais e Quadríceps.',
-    weights: {
-      quadriceps: 13,
-      hamstrings: 13,
-      glutes: 16,
-      calves: 8,
-      chest: 5,
-      back: 7,
-      shoulders: 6,
-      rear_delts: 5,
-      triceps: 5,
-      biceps: 5,
-      abs: 7,
-    },
-  },
-  strength: {
-    name: 'Foco Força & Cargas',
-    icon: '🏋️',
-    desc: 'Grandes exercícios compostos para ganho acelerado de força e densidade.',
-    weights: {
-      quadriceps: 11,
-      hamstrings: 10,
-      glutes: 7,
-      calves: 6,
-      chest: 12,
-      back: 12,
-      shoulders: 10,
-      rear_delts: 7,
-      triceps: 8,
-      biceps: 8,
-      abs: 6,
-    },
-  },
-  v_taper: {
-    name: 'Foco Shape em V',
-    icon: '🔱',
-    desc: 'Prioridade para Dorsal, Deltoide Lateral, Peitoral Superior e Braços.',
-    weights: {
-      quadriceps: 7,
-      hamstrings: 7,
-      glutes: 5,
-      calves: 6,
-      chest: 11,
-      back: 14,
-      shoulders: 13,
-      rear_delts: 8,
-      triceps: 9,
-      biceps: 9,
-      abs: 6,
-    },
-  },
-  balanced: {
-    name: 'Equilíbrio Total',
-    icon: '⚖️',
-    desc: 'Distribuição simétrica e harmônica para o corpo todo.',
-    weights: {
-      quadriceps: 8,
-      hamstrings: 8,
-      glutes: 6,
-      calves: 8,
-      chest: 9,
-      back: 9,
-      shoulders: 8,
-      rear_delts: 7,
-      triceps: 8,
-      biceps: 8,
-      abs: 6,
-    },
-  },
-};
+function computeSaltedDigest(password: string, salt: string): string {
+  const input = `${salt}::MTP_PEPPER_2026::${password}`;
+  let h1 = 0xdeadbeef ^ input.length;
+  let h2 = 0x41c6ce57 ^ input.length;
+  for (let round = 0; round < 64; round++) {
+    for (let i = 0; i < input.length; i++) {
+      const ch = input.charCodeAt(i) + round;
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  }
+  const part1 = (h1 >>> 0).toString(16).padStart(8, '0');
+  const part2 = (h2 >>> 0).toString(16).padStart(8, '0');
+  const part3 = ((h1 ^ h2) >>> 0).toString(16).padStart(8, '0');
+  return `${part1}${part2}${part3}`;
+}
+
+export function hashPassword(plainPassword: string, existingSalt?: string): string {
+  if (!plainPassword) return '';
+  if (plainPassword.startsWith(HASH_PREFIX)) return plainPassword;
+  const salt = existingSalt || Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+  const digest = computeSaltedDigest(plainPassword, salt);
+  return `${HASH_PREFIX}${salt}$${digest}`;
+}
+
+export function verifyPasswordHash(inputPassword: string, storedPassword: string): boolean {
+  if (!storedPassword) return inputPassword === '';
+  if (storedPassword.startsWith(HASH_PREFIX)) {
+    const parts = storedPassword.split('$');
+    const salt = parts[1] || '';
+    const expected = parts[2] || '';
+    const actual = computeSaltedDigest(inputPassword, salt);
+    return actual === expected;
+  }
+  // Legacy fallback for pre-existing plaintext passwords
+  return storedPassword === inputPassword;
+}
+
+function sanitizeUserProfile(user: UserProfile): UserProfile {
+  return {
+    ...user,
+    password: '', // Never expose password or hash in runtime memory or exports
+  };
+}
 
 /**
- * Calcula o total padrão de séries semanais baseado no nível do atleta:
- * - Iniciante: 80 séries totais semanais
- * - Intermediário: 120 séries totais semanais
- * - Avançado: 160 séries totais semanais
+ * Calcula as séries semanais totais recomendadas com base no nível e sexo
  */
-export function calculateDefaultBudget(
-  level: LevelOption = 'beginner',
-  gender: GenderOption = 'male'
-): number {
-  if (level === 'advanced') return 160;
-  if (level === 'intermediate') return 120;
-  return 80;
+export function calculateDefaultBudget(level: LevelOption = 'beginner', gender: GenderOption = 'male'): number {
+  const baseByLevel: Record<LevelOption, number> = {
+    beginner: 60,
+    intermediate: 85,
+    advanced: 110,
+  };
+  let base = baseByLevel[level] || 75;
+  if (gender === 'female') {
+    base = Math.round(base * 1.05);
+  }
+  return base;
 }
 
-export function getPresetWeights(focus: FocusOption = 'balanced'): Record<MuscleGroup, number> {
-  if (focus === 'glutes') return BUDGET_PRESETS.glutes.weights;
-  if (focus === 'strength') return BUDGET_PRESETS.strength.weights;
-  if (focus === 'v_taper') return BUDGET_PRESETS.v_taper.weights;
-  return BUDGET_PRESETS.balanced.weights;
+/**
+ * Pesos proporcionais de distribuição conforme o foco escolhido pelo atleta
+ */
+export function getPresetWeights(focus: FocusOption = 'v_taper'): Record<MuscleGroup, number> {
+  if (focus === 'glutes') {
+    return {
+      glutes: 20,
+      hamstrings: 14,
+      quadriceps: 15,
+      back: 9,
+      shoulders: 8,
+      chest: 5,
+      rear_delts: 6,
+      biceps: 5,
+      triceps: 5,
+      calves: 7,
+      abs: 6,
+    };
+  }
+  if (focus === 'strength') {
+    return {
+      chest: 13,
+      back: 14,
+      quadriceps: 14,
+      hamstrings: 11,
+      shoulders: 10,
+      triceps: 9,
+      biceps: 8,
+      glutes: 8,
+      rear_delts: 5,
+      calves: 4,
+      abs: 4,
+    };
+  }
+  if (focus === 'v_taper') {
+    return {
+      back: 15,
+      shoulders: 14,
+      chest: 13,
+      quadriceps: 10,
+      rear_delts: 9,
+      biceps: 9,
+      triceps: 9,
+      hamstrings: 7,
+      glutes: 5,
+      calves: 5,
+      abs: 4,
+    };
+  }
+  return {
+    chest: 10,
+    back: 11,
+    quadriceps: 11,
+    hamstrings: 9,
+    shoulders: 10,
+    rear_delts: 7,
+    biceps: 8,
+    triceps: 8,
+    glutes: 10,
+    calves: 8,
+    abs: 8,
+  };
 }
 
+/**
+ * Converte pesos proporcionais em número inteiro exato de séries somando totalBudget
+ */
 export function scaleWeightsToBudget(
   weights: Record<MuscleGroup, number>,
   totalBudget: number
 ): Record<MuscleGroup, number> {
-  const sumWeights = Object.values(weights).reduce((a, b) => a + b, 0);
-  const result: Record<MuscleGroup, number> = {} as Record<MuscleGroup, number>;
+  const sumWeights = Object.values(weights).reduce((acc, w) => acc + w, 0);
+  const result = {} as Record<MuscleGroup, number>;
+  let currentSum = 0;
 
-  let allocated = 0;
   ALL_MUSCLE_GROUPS.forEach((m) => {
-    const raw = Math.round((weights[m] / sumWeights) * totalBudget);
-    result[m] = Math.max(2, raw);
-    allocated += result[m];
+    const val = Math.max(2, Math.round(((weights[m] || 8) / sumWeights) * totalBudget));
+    result[m] = val;
+    currentSum += val;
   });
 
-  // Adjust difference to match exactly totalBudget on primary groups
-  let diff = totalBudget - allocated;
-  const priorityOrder: MuscleGroup[] = ['back', 'chest', 'quadriceps', 'shoulders', 'hamstrings', 'glutes'];
-  let idx = 0;
-  while (diff !== 0) {
-    const targetMuscle = priorityOrder[idx % priorityOrder.length];
-    if (diff > 0) {
-      result[targetMuscle] += 1;
-      diff -= 1;
-    } else if (diff < 0 && result[targetMuscle] > 2) {
-      result[targetMuscle] -= 1;
-      diff += 1;
-    } else {
-      break;
-    }
-    idx++;
+  const diff = totalBudget - currentSum;
+  if (diff !== 0) {
+    const topMuscle = ALL_MUSCLE_GROUPS.reduce((a, b) => (weights[a] >= weights[b] ? a : b));
+    result[topMuscle] = Math.max(2, result[topMuscle] + diff);
   }
 
   return result;
 }
 
+export const BUDGET_PRESETS: Record<
+  string,
+  { name: string; icon: string; desc: string; weights: Record<MuscleGroup, number> }
+> = {
+  v_taper: {
+    name: 'Shape em V (Estética Clássica)',
+    icon: '🔱',
+    desc: 'Ênfase em dorsais largos, deltóides laterais e peitoral superior.',
+    weights: getPresetWeights('v_taper'),
+  },
+  glutes: {
+    name: 'Foco em Glúteos & Inferiores',
+    icon: '🍑',
+    desc: 'Prioridade máxima para glúteos, posteriores e quadríceps.',
+    weights: getPresetWeights('glutes'),
+  },
+  strength: {
+    name: 'Força & Densidade (Powerbuilding)',
+    icon: '🏋️',
+    desc: 'Distribuição focada nos grandes levantamentos compostos.',
+    weights: getPresetWeights('strength'),
+  },
+  balanced: {
+    name: 'Equilíbrio Total (Simetria)',
+    icon: '⚖️',
+    desc: 'Volume harmônico entre membros superiores e inferiores.',
+    weights: getPresetWeights('balanced'),
+  },
+};
+
+export function createDefaultBudgets(
+  totalBudget = 88,
+  focus: FocusOption = 'v_taper'
+): Record<MuscleGroup, number> {
+  const weights = getPresetWeights(focus);
+  return scaleWeightsToBudget(weights, totalBudget);
+}
+
 export const authStorage = {
-  getUsers(): UserProfile[] {
-    const users = safeStorage.get<UserProfile[]>('alex_all_users', []);
-    // Remove any legacy demo accounts from storage
-    const realUsers = users.filter((u) => u.username.toLowerCase() !== 'alex' && u.id !== 'user_alex_demo');
-    if (realUsers.length !== users.length) {
-      safeStorage.set('alex_all_users', realUsers);
+  /**
+   * Internal reader that automatically upgrades any legacy plaintext passwords to salted hashes
+   */
+  _getRawUsers(): UserProfile[] {
+    const users = safeStorage.get<UserProfile[]>(USERS_KEY, []);
+    let upgraded = false;
+    const normalized = users.map((u) => {
+      if (u.password && !u.password.startsWith(HASH_PREFIX)) {
+        upgraded = true;
+        return { ...u, password: hashPassword(u.password) };
+      }
+      return u;
+    });
+    if (upgraded) {
+      safeStorage.set(USERS_KEY, normalized);
     }
-    return realUsers;
+    return normalized;
+  },
+
+  /**
+   * Returns sanitized user profiles (passwords stripped)
+   */
+  getUsers(): UserProfile[] {
+    return this._getRawUsers().map(sanitizeUserProfile);
+  },
+
+  hasRegisteredUsers(): boolean {
+    return this._getRawUsers().length > 0;
+  },
+
+  saveUsers(users: UserProfile[]): void {
+    const secured = users.map((u) => ({
+      ...u,
+      password: u.password && !u.password.startsWith(HASH_PREFIX) ? hashPassword(u.password) : u.password,
+    }));
+    safeStorage.set(USERS_KEY, secured);
+  },
+
+  getActiveUserId(): string | null {
+    return safeStorage.get<string | null>(ACTIVE_USER_KEY, null);
+  },
+
+  setActiveUserId(id: string | null): void {
+    if (id) {
+      safeStorage.set(ACTIVE_USER_KEY, id);
+    } else {
+      safeStorage.remove(ACTIVE_USER_KEY);
+    }
   },
 
   getActiveUser(): UserProfile | null {
-    let activeId = safeStorage.get<string | null>('alex_active_user_id', null);
-    if (activeId === 'user_alex_demo') {
-      safeStorage.remove('alex_active_user_id');
-      activeId = null;
-    }
-    if (!activeId) return null;
-    const users = this.getUsers();
-    return users.find((u) => u.id === activeId) || null;
+    const id = this.getActiveUserId();
+    if (!id) return null;
+    const users = this._getRawUsers();
+    const found = users.find((u) => u.id === id);
+    return found ? sanitizeUserProfile(found) : null;
   },
 
-  setActiveUserId(id: string | null) {
-    if (id && id !== 'user_alex_demo') {
-      safeStorage.set('alex_active_user_id', id);
-    } else {
-      safeStorage.remove('alex_active_user_id');
-    }
+  verifyUserPassword(userId: string, passwordAttempt: string): boolean {
+    const users = this._getRawUsers();
+    const user = users.find((u) => u.id === userId);
+    if (!user) return false;
+    if (user.isVisitor && !user.password) return true;
+    return verifyPasswordHash(passwordAttempt, user.password);
   },
 
-  login(username: string, pass: string): { user?: UserProfile; error?: string } {
-    const users = this.getUsers();
-    const cleanUser = username.trim().toLowerCase();
-    const found = users.find((u) => u.username.toLowerCase() === cleanUser);
-
-    if (!found) {
-      return { error: 'Usuário não encontrado.' };
-    }
-    if (found.password !== pass) {
-      return { error: 'Senha incorreta.' };
+  createGuestUser(): UserProfile {
+    const users = this._getRawUsers();
+    const existingGuest = users.find((u) => u.username === 'visitante');
+    if (existingGuest) {
+      this.setActiveUserId(existingGuest.id);
+      setPrivacyShieldState(true);
+      return sanitizeUserProfile(existingGuest);
     }
 
-    this.setActiveUserId(found.id);
-    return { user: found };
-  },
-
-  register(data: {
-    username: string;
-    name: string;
-    password: string;
-    weightKg: number;
-    heightM: number;
-    gender?: GenderOption;
-    level?: LevelOption;
-    focus?: FocusOption;
-    frequency?: number;
-    preferredSplit?: SplitOption;
-    exercisesPerMuscle?: 1 | 2;
-    weeklyBudget?: number;
-    isVisitor?: boolean;
-  }): { user?: UserProfile; error?: string } {
-    const users = this.getUsers();
-    const cleanUsername = data.username.trim().toLowerCase();
-
-    if (!cleanUsername) return { error: 'Nome de usuário obrigatório.' };
-    if (cleanUsername.length < 3) return { error: 'Nome de usuário deve ter ao menos 3 caracteres.' };
-    if (!data.name.trim()) return { error: 'Nome / Apelido obrigatório.' };
-    if (!data.password || data.password.length < 3) {
-      return { error: 'A senha deve ter ao menos 3 caracteres.' };
-    }
-
-    if (users.some((u) => u.username.toLowerCase() === cleanUsername)) {
-      return { error: 'Este nome de usuário já está cadastrado.' };
-    }
-
-    const gender: GenderOption = data.gender || 'male';
-    const level: LevelOption = data.level || 'beginner';
-    const focus: FocusOption = data.focus || 'balanced';
-    const frequency: number = data.frequency || 4;
-    const preferredSplit: SplitOption = data.preferredSplit || (frequency === 3 || frequency === 6 ? 'ppl' : frequency === 5 ? 'abcde' : 'upper_lower');
-    const exercisesPerMuscle: 1 | 2 = 1; // Padrão sempre 1 exercício por músculo
-    const budget = data.weeklyBudget || calculateDefaultBudget(level, gender);
-    const weights = getPresetWeights(focus);
-
-    const newUser: UserProfile = {
-      id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      username: cleanUsername,
-      name: data.name.trim(),
-      password: data.password,
-      weightKg: data.weightKg || 75,
-      heightM: data.heightM || 1.75,
-      gender,
-      level,
-      focus,
-      frequency,
-      preferredSplit,
-      exercisesPerMuscle,
+    const budget = calculateDefaultBudget('intermediate', 'male');
+    const newGuest: UserProfile = {
+      id: 'user_guest_' + Date.now(),
+      name: 'Atleta Visitante',
+      username: 'visitante',
+      password: '',
+      isVisitor: true,
+      weightKg: 75,
+      heightM: 1.75,
+      gender: 'male',
+      level: 'intermediate',
+      focus: 'balanced',
+      frequency: 4,
+      preferredSplit: 'upper_lower',
+      exercisesPerMuscle: 1,
       weeklyBudget: budget,
-      muscleBudgets: scaleWeightsToBudget(weights, budget),
-      isVisitor: data.isVisitor || false,
+      muscleBudgets: createDefaultBudgets(budget, 'balanced'),
       createdAt: new Date().toISOString(),
     };
 
-    const updated = [...users, newUser];
-    safeStorage.set('alex_all_users', updated);
-    this.setActiveUserId(newUser.id);
-    return { user: newUser };
-  },
-
-  updateProfile(userId: string, partial: Partial<UserProfile>): UserProfile | null {
-    const users = this.getUsers();
-    const idx = users.findIndex((u) => u.id === userId);
-    if (idx === -1) return null;
-
-    const updatedUser = { ...users[idx], ...partial };
-    users[idx] = updatedUser;
-    safeStorage.set('alex_all_users', users);
-    return updatedUser;
+    users.push(newGuest);
+    this.saveUsers(users);
+    this.setActiveUserId(newGuest.id);
+    setPrivacyShieldState(true);
+    return sanitizeUserProfile(newGuest);
   },
 
   convertVisitorToPermanent(
     userId: string,
     data: { name: string; username: string; password: string }
   ): { user?: UserProfile; error?: string } {
-    const users = this.getUsers();
+    const users = this._getRawUsers();
     const cleanUsername = data.username.trim().toLowerCase();
-    if (!cleanUsername || cleanUsername.length < 3) {
-      return { error: 'Nome de usuário deve ter ao menos 3 caracteres.' };
-    }
-    if (users.some((u) => u.id !== userId && u.username.toLowerCase() === cleanUsername)) {
-      return { error: 'Este nome de usuário já está em uso.' };
-    }
-    if (!data.password || data.password.length < 3) {
-      return { error: 'A senha deve ter ao menos 3 caracteres.' };
-    }
-    const idx = users.findIndex((u) => u.id === userId);
-    if (idx === -1) return { error: 'Perfil não encontrado.' };
 
-    const updated = {
+    if (!cleanUsername || !data.password || !data.name.trim()) {
+      return { error: 'Preencha nome, usuário e senha para criar sua conta.' };
+    }
+
+    if (data.password.length < 4) {
+      return { error: 'A senha deve ter pelo menos 4 caracteres para sua segurança.' };
+    }
+
+    if (users.some((u) => u.id !== userId && u.username.toLowerCase() === cleanUsername)) {
+      return { error: 'Este nome de usuário já está em uso. Escolha outro.' };
+    }
+
+    const idx = users.findIndex((u) => u.id === userId);
+    if (idx === -1) return { error: 'Usuário não encontrado.' };
+
+    users[idx] = {
       ...users[idx],
-      name: data.name.trim() || users[idx].name,
+      name: data.name.trim(),
       username: cleanUsername,
-      password: data.password,
+      password: hashPassword(data.password),
       isVisitor: false,
     };
-    users[idx] = updated;
-    safeStorage.set('alex_all_users', users);
-    return { user: updated };
+
+    this.saveUsers(users);
+    setPrivacyShieldState(true);
+    return { user: sanitizeUserProfile(users[idx]) };
   },
 
-  deleteUser(userId: string): boolean {
-    const users = this.getUsers().filter((u) => u.id !== userId);
-    safeStorage.set('alex_all_users', users);
+  register(data: Omit<UserProfile, 'id' | 'createdAt' | 'muscleBudgets'>): { user?: UserProfile; error?: string } {
+    const users = this._getRawUsers();
+    const cleanUsername = data.username.trim().toLowerCase();
+
+    if (!cleanUsername || !data.password || !data.name.trim()) {
+      return { error: 'Preencha todos os campos obrigatórios.' };
+    }
+
+    if (data.password.length < 4) {
+      return { error: 'A senha deve ter pelo menos 4 caracteres para proteger seus dados.' };
+    }
+
+    if (users.some((u) => u.username.toLowerCase() === cleanUsername)) {
+      return { error: 'Este nome de usuário já está cadastrado.' };
+    }
+
+    const budget = data.weeklyBudget || calculateDefaultBudget(data.level, data.gender);
+    const focus = data.focus || 'v_taper';
+    const newUser: UserProfile = {
+      ...data,
+      name: data.name.trim(),
+      username: cleanUsername,
+      password: hashPassword(data.password),
+      id: 'user_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      weeklyBudget: budget,
+      muscleBudgets: createDefaultBudgets(budget, focus),
+      createdAt: new Date().toISOString(),
+    };
+
+    users.push(newUser);
+    this.saveUsers(users);
+    this.setActiveUserId(newUser.id);
+    setPrivacyShieldState(true);
+    return { user: sanitizeUserProfile(newUser) };
+  },
+
+  login(username: string, password: string): { user?: UserProfile; error?: string } {
+    const users = this._getRawUsers();
+    const cleanUsername = username.trim().toLowerCase();
+    const found = users.find(
+      (u) => u.username.toLowerCase() === cleanUsername && verifyPasswordHash(password, u.password)
+    );
+    if (!found) {
+      return { error: 'Usuário ou senha incorretos.' };
+    }
+    this.setActiveUserId(found.id);
+    setPrivacyShieldState(true);
+    return { user: sanitizeUserProfile(found) };
+  },
+
+  logout(): void {
+    this.setActiveUserId(null);
+    setPrivacyShieldState(true);
+  },
+
+  deleteUser(userId: string): void {
+    const users = this._getRawUsers().filter((u) => u.id !== userId);
+    this.saveUsers(users);
 
     const keysToRemove = [
       `alex_u_${userId}_split`,
@@ -320,95 +424,128 @@ export const authStorage = {
       `alex_u_${userId}_active_routine_id`,
       `alex_u_${userId}_active_routine_started_at`,
       `alex_u_${userId}_workout`,
+      `alex_u_${userId}_workout_items`,
       `alex_u_${userId}_current_logs`,
       `alex_u_${userId}_history_logs`,
       `alex_u_${userId}_sessions`,
       `alex_u_${userId}_weekly_volume`,
       `alex_u_${userId}_workout_notes`,
       `alex_u_${userId}_measurements`,
+      `alex_u_${userId}_has_init_routines`,
+      `mtp_reminder_${userId}`,
+      `mtp_feedback_history_${userId}`,
       `mtp_cardio_active_${userId}`,
-      `mtp_cardio_history_${userId}`,
+      `mtp_cardio_logs_${userId}`,
+      `mtp_water_tracker_${userId}`,
+      `mtp_deload_${userId}`,
     ];
     keysToRemove.forEach((k) => safeStorage.remove(k));
 
-    if (this.getActiveUser()?.id === userId) {
-      if (users.length > 0) {
-        this.setActiveUserId(users[0].id);
-      } else {
-        this.setActiveUserId(null);
-      }
+    // Security fix: NEVER auto-login into another user's profile after deletion
+    if (this.getActiveUserId() === userId) {
+      this.setActiveUserId(null);
     }
-    return true;
+    setPrivacyShieldState(true);
+  },
+
+  updateProfile(
+    userId: string,
+    updates: Partial<
+      Pick<
+        UserProfile,
+        | 'name'
+        | 'weightKg'
+        | 'heightM'
+        | 'age'
+        | 'bodyFatPercent'
+        | 'gender'
+        | 'level'
+        | 'focus'
+        | 'frequency'
+        | 'preferredSplit'
+        | 'exercisesPerMuscle'
+        | 'weeklyBudget'
+        | 'muscleBudgets'
+        | 'muscleTargetRir'
+        | 'nutritionPlan'
+      >
+    >
+  ): UserProfile | null {
+    const users = this._getRawUsers();
+    const idx = users.findIndex((u) => u.id === userId);
+    if (idx === -1) return null;
+
+    users[idx] = { ...users[idx], ...updates };
+    this.saveUsers(users);
+    return sanitizeUserProfile(users[idx]);
   },
 
   changePassword(userId: string, oldPass: string, newPass: string): { success: boolean; error?: string } {
-    const users = this.getUsers();
+    const users = this._getRawUsers();
     const idx = users.findIndex((u) => u.id === userId);
     if (idx === -1) return { success: false, error: 'Usuário não encontrado.' };
 
-    if (users[idx].password !== oldPass) {
-      return { success: false, error: 'Senha atual incorreta.' };
+    if (!verifyPasswordHash(oldPass, users[idx].password)) {
+      return { success: false, error: 'A senha atual está incorreta.' };
     }
-    if (!newPass || newPass.length < 3) {
-      return { success: false, error: 'Nova senha deve ter ao menos 3 caracteres.' };
+    if (!newPass || newPass.length < 4) {
+      return { success: false, error: 'A nova senha deve ter pelo menos 4 caracteres.' };
     }
 
-    users[idx].password = newPass;
-    safeStorage.set('alex_all_users', users);
+    users[idx].password = hashPassword(newPass);
+    this.saveUsers(users);
     return { success: true };
   },
 
-  createGuestUser(name: string = 'Visitante'): UserProfile {
-    const randomSuffix = Math.random().toString(36).slice(2, 6);
-    const res = this.register({
-      username: `visitante_${randomSuffix}`,
-      name,
-      password: 'demo',
-      weightKg: 75,
-      heightM: 1.75,
-      gender: 'male',
-      level: 'intermediate',
-      focus: 'balanced',
-      frequency: 4,
-      preferredSplit: 'upper_lower',
-      exercisesPerMuscle: 1,
-      weeklyBudget: 80,
-      isVisitor: true,
-    });
-    return res.user!;
-  },
+  importBackupFile(backupData: any): { user?: UserProfile; error?: string } {
+    try {
+      if (!backupData || !backupData.user || !backupData.user.username) {
+        return { error: 'Arquivo JSON inválido ou não contém um perfil do MeuTreino Pro.' };
+      }
 
-  importBackupFile(parsed: any): { user?: UserProfile; error?: string } {
-    if (!parsed || !parsed.user) {
-      return { error: 'Arquivo inválido: nenhum perfil de atleta encontrado no backup.' };
+      const importedUser: UserProfile = {
+        ...backupData.user,
+        password: backupData.user.password ? hashPassword(backupData.user.password) : '',
+      };
+      const users = this._getRawUsers();
+      const existingIdx = users.findIndex(
+        (u) => u.id === importedUser.id || u.username.toLowerCase() === importedUser.username.toLowerCase()
+      );
+
+      if (existingIdx >= 0) {
+        // Preserve existing hashed password if backup stripped password
+        const preservedPassword = importedUser.password || users[existingIdx].password;
+        users[existingIdx] = { ...importedUser, id: users[existingIdx].id, password: preservedPassword };
+        importedUser.id = users[existingIdx].id;
+      } else {
+        users.push(importedUser);
+      }
+
+      this.saveUsers(users);
+      const uid = importedUser.id;
+      this.setActiveUserId(uid);
+      setPrivacyShieldState(true);
+
+      if (backupData.settings) {
+        if (backupData.settings.split) safeStorage.set(`alex_u_${uid}_split`, backupData.settings.split);
+        if (backupData.settings.strategy) safeStorage.set(`alex_u_${uid}_strategy`, backupData.settings.strategy);
+        if (backupData.settings.level) safeStorage.set(`alex_u_${uid}_level`, backupData.settings.level);
+        if (backupData.settings.equip) safeStorage.set(`alex_u_${uid}_equip`, backupData.settings.equip);
+        if (backupData.settings.weeklyBudget) safeStorage.set(`alex_u_${uid}_weekly_budget`, backupData.settings.weeklyBudget);
+      }
+
+      if (backupData.routines) safeStorage.set(`alex_u_${uid}_routines`, backupData.routines);
+      if (backupData.measurements) safeStorage.set(`alex_u_${uid}_measurements`, backupData.measurements);
+      if (backupData.workoutItems) safeStorage.set(`alex_u_${uid}_workout`, backupData.workoutItems);
+      if (backupData.currentLogs) safeStorage.set(`alex_u_${uid}_current_logs`, backupData.currentLogs);
+      if (backupData.historyLogs) safeStorage.set(`alex_u_${uid}_history_logs`, backupData.historyLogs);
+      if (backupData.sessions) safeStorage.set(`alex_u_${uid}_sessions`, backupData.sessions);
+      if (backupData.weeklyVolume) safeStorage.set(`alex_u_${uid}_weekly_volume`, backupData.weeklyVolume);
+      if (backupData.workoutNotes !== undefined) safeStorage.set(`alex_u_${uid}_workout_notes`, backupData.workoutNotes);
+
+      return { user: sanitizeUserProfile(importedUser) };
+    } catch {
+      return { error: 'Falha ao processar o arquivo de backup.' };
     }
-    const backupUser: UserProfile = parsed.user;
-    const users = this.getUsers();
-    const existingIdx = users.findIndex(
-      (u) => u.id === backupUser.id || u.username.toLowerCase() === backupUser.username.toLowerCase()
-    );
-    if (existingIdx >= 0) {
-      users[existingIdx] = backupUser;
-    } else {
-      users.push(backupUser);
-    }
-    safeStorage.set('alex_all_users', users);
-    this.setActiveUserId(backupUser.id);
-
-    const uid = backupUser.id;
-    if (parsed.currentLogs) safeStorage.set(`alex_u_${uid}_current_logs`, parsed.currentLogs);
-    if (parsed.historyLogs) safeStorage.set(`alex_u_${uid}_history_logs`, parsed.historyLogs);
-    if (parsed.sessions) safeStorage.set(`alex_u_${uid}_sessions`, parsed.sessions);
-    if (parsed.weeklyVolume) safeStorage.set(`alex_u_${uid}_weekly_volume`, parsed.weeklyVolume);
-    if (parsed.workoutItems) safeStorage.set(`alex_u_${uid}_workout`, parsed.workoutItems);
-    if (parsed.routines) safeStorage.set(`alex_u_${uid}_routines`, parsed.routines);
-    if (parsed.workoutNotes !== undefined) safeStorage.set(`alex_u_${uid}_workout_notes`, parsed.workoutNotes);
-    if (parsed.measurements) safeStorage.set(`alex_u_${uid}_measurements`, parsed.measurements);
-
-    return { user: backupUser };
-  },
-
-  logout() {
-    this.setActiveUserId(null);
   },
 };

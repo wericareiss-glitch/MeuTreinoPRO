@@ -18,13 +18,17 @@ import {
   Sparkles, 
   Check, 
   Image as ImageIcon,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Lock
 } from 'lucide-react';
-import { BodyMeasurement } from '../types/workout';
+import { BodyMeasurement, UserProfile } from '../types/workout';
+import { PrivacyShieldControl } from './PrivacyShieldControl';
+import { usePrivacyMode, maskSensitiveValue } from '../utils/privacy';
 
 interface BodyMeasurementsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  user?: UserProfile | null;
   measurements: BodyMeasurement[];
   onSaveMeasurement: (m: BodyMeasurement) => void;
   onDeleteMeasurement: (id: string) => void;
@@ -33,10 +37,12 @@ interface BodyMeasurementsModalProps {
 export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
   isOpen,
   onClose,
+  user = null,
   measurements,
   onSaveMeasurement,
   onDeleteMeasurement,
 }) => {
+  const { isPrivacyHidden } = usePrivacyMode();
   const [activeSubTab, setActiveSubTab] = useState<'new' | 'history' | 'compare'>('new');
 
   // New entry form state
@@ -59,6 +65,27 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
   // Comparison selector
   const [compareIdA, setCompareIdA] = useState<string>(() => measurements[measurements.length - 1]?.id || '');
   const [compareIdB, setCompareIdB] = useState<string>(() => measurements[0]?.id || '');
+
+  React.useEffect(() => {
+    if (measurements.length === 0) return;
+    const oldestId = measurements[measurements.length - 1]?.id || '';
+    const newestId = measurements[0]?.id || '';
+    const validA = measurements.some((m) => m.id === compareIdA);
+    const validB = measurements.some((m) => m.id === compareIdB);
+    if (!validA) setCompareIdA(oldestId);
+    if (!validB) setCompareIdB(newestId);
+    if (measurements.length >= 2 && compareIdA === compareIdB) {
+      setCompareIdA(oldestId);
+      setCompareIdB(newestId);
+    }
+  }, [measurements, compareIdA, compareIdB]);
+
+  const formatDelta = (valB?: number, valA?: number, unit = 'cm') => {
+    if (valA === undefined || valB === undefined) return '—';
+    const diff = valB - valA;
+    const sign = diff > 0 ? '+' : '';
+    return `${sign}${diff.toFixed(1)} ${unit}`;
+  };
 
   // Helper to compress image to max 800px to keep storage light and fast
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, slot: 'front' | 'back' | 'side') => {
@@ -144,13 +171,16 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <PrivacyShieldControl user={user} variant="compact" />
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Sub-tabs Navigation */}
@@ -411,9 +441,9 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                             {new Date(m.date).toLocaleDateString('pt-BR')}
                           </span>
                           <span className="text-xs font-black text-teal-400 font-mono bg-teal-500/10 px-2 py-0.5 rounded border border-teal-500/20">
-                            {m.weightKg} kg
+                            {maskSensitiveValue(m.weightKg, 'kg', isPrivacyHidden)}
                           </span>
-                          {weightDiff !== 0 && (
+                          {!isPrivacyHidden && weightDiff !== 0 && (
                             <span className={`text-[10px] font-bold flex items-center gap-0.5 ${weightDiff > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                               {weightDiff > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                               {weightDiff > 0 ? `+${weightDiff}` : weightDiff} kg
@@ -423,27 +453,29 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
 
                         {/* Badges de medidas */}
                         <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono text-slate-300 pt-1">
-                          {m.waistCm && <span>Cintura: <strong className="text-white">{m.waistCm}cm</strong></span>}
-                          {m.armsCm && <span>Braço: <strong className="text-white">{m.armsCm}cm</strong></span>}
-                          {m.chestCm && <span>Tórax: <strong className="text-white">{m.chestCm}cm</strong></span>}
-                          {m.thighsCm && <span>Coxa: <strong className="text-white">{m.thighsCm}cm</strong></span>}
+                          {m.waistCm && <span>Cintura: <strong className="text-white">{isPrivacyHidden ? '••••' : `${m.waistCm}cm`}</strong></span>}
+                          {m.armsCm && <span>Braço: <strong className="text-white">{isPrivacyHidden ? '••••' : `${m.armsCm}cm`}</strong></span>}
+                          {m.chestCm && <span>Tórax: <strong className="text-white">{isPrivacyHidden ? '••••' : `${m.chestCm}cm`}</strong></span>}
+                          {m.thighsCm && <span>Coxa: <strong className="text-white">{isPrivacyHidden ? '••••' : `${m.thighsCm}cm`}</strong></span>}
                         </div>
 
                         {m.notes && (
-                          <p className="text-[11px] text-slate-400 italic pt-0.5">&ldquo;{m.notes}&rdquo;</p>
+                          <p className="text-[11px] text-slate-400 italic pt-0.5">
+                            {isPrivacyHidden ? '🔒 Notas pessoais ocultas' : `“${m.notes}”`}
+                          </p>
                         )}
                       </div>
 
-                      {/* Miniaturas de fotos */}
+                      {/* Miniaturas de fotos (Protegidas com Blur no Modo Privacidade) */}
                       <div className="flex items-center gap-2 shrink-0">
                         {m.photoFront && (
-                          <img src={m.photoFront} alt="Frente" className="w-10 h-12 object-cover rounded-lg border border-slate-700" />
+                          <img src={m.photoFront} alt="Frente" className={`w-10 h-12 object-cover rounded-lg border border-slate-700 ${isPrivacyHidden ? 'blur-md select-none pointer-events-none' : ''}`} />
                         )}
                         {m.photoBack && (
-                          <img src={m.photoBack} alt="Costas" className="w-10 h-12 object-cover rounded-lg border border-slate-700" />
+                          <img src={m.photoBack} alt="Costas" className={`w-10 h-12 object-cover rounded-lg border border-slate-700 ${isPrivacyHidden ? 'blur-md select-none pointer-events-none' : ''}`} />
                         )}
                         {m.photoSide && (
-                          <img src={m.photoSide} alt="Perfil" className="w-10 h-12 object-cover rounded-lg border border-slate-700" />
+                          <img src={m.photoSide} alt="Perfil" className={`w-10 h-12 object-cover rounded-lg border border-slate-700 ${isPrivacyHidden ? 'blur-md select-none pointer-events-none' : ''}`} />
                         )}
 
                         <button
@@ -477,7 +509,7 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                   >
                     {measurements.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {new Date(m.date).toLocaleDateString('pt-BR')} ({m.weightKg} kg)
+                        {new Date(m.date).toLocaleDateString('pt-BR')} ({isPrivacyHidden ? '•••• kg' : `${m.weightKg} kg`})
                       </option>
                     ))}
                   </select>
@@ -494,7 +526,7 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                   >
                     {measurements.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {new Date(m.date).toLocaleDateString('pt-BR')} ({m.weightKg} kg)
+                        {new Date(m.date).toLocaleDateString('pt-BR')} ({isPrivacyHidden ? '•••• kg' : `${m.weightKg} kg`})
                       </option>
                     ))}
                   </select>
@@ -508,40 +540,48 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                     <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3 text-center">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block">Peso</span>
                       <strong className={`text-base font-black font-mono block mt-0.5 ${itemB.weightKg <= itemA.weightKg ? 'text-teal-400' : 'text-amber-400'}`}>
-                        {(itemB.weightKg - itemA.weightKg).toFixed(1)} kg
+                        {isPrivacyHidden ? '••••' : formatDelta(itemB.weightKg, itemA.weightKg, 'kg')}
                       </strong>
                     </div>
 
                     <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3 text-center">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block">Cintura</span>
                       <strong className="text-base font-black font-mono text-teal-400 block mt-0.5">
-                        {itemA.waistCm && itemB.waistCm ? `${(itemB.waistCm - itemA.waistCm).toFixed(1)} cm` : '—'}
+                        {isPrivacyHidden ? '••••' : formatDelta(itemB.waistCm, itemA.waistCm, 'cm')}
                       </strong>
                     </div>
 
                     <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3 text-center">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block">Braço</span>
                       <strong className="text-base font-black font-mono text-sky-400 block mt-0.5">
-                        {itemA.armsCm && itemB.armsCm ? `+${(itemB.armsCm - itemA.armsCm).toFixed(1)} cm` : '—'}
+                        {isPrivacyHidden ? '••••' : formatDelta(itemB.armsCm, itemA.armsCm, 'cm')}
                       </strong>
                     </div>
 
                     <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3 text-center">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block">Coxa</span>
                       <strong className="text-base font-black font-mono text-emerald-400 block mt-0.5">
-                        {itemA.thighsCm && itemB.thighsCm ? `+${(itemB.thighsCm - itemA.thighsCm).toFixed(1)} cm` : '—'}
+                        {isPrivacyHidden ? '••••' : formatDelta(itemB.thighsCm, itemA.thighsCm, 'cm')}
                       </strong>
                     </div>
                   </div>
 
                   {/* Fotos Comparativas Lado a Lado */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-[#090e1c] border border-slate-800 rounded-2xl p-3 text-center space-y-2">
+                    <div className="bg-[#090e1c] border border-slate-800 rounded-2xl p-3 text-center space-y-2 relative overflow-hidden">
                       <span className="text-xs font-bold text-slate-400 block font-mono">
                         Antes ({new Date(itemA.date).toLocaleDateString('pt-BR')})
                       </span>
                       {itemA.photoFront ? (
-                        <img src={itemA.photoFront} alt="Antes" className="w-full max-h-72 object-cover rounded-xl mx-auto border border-slate-700" />
+                        <div className="relative">
+                          <img src={itemA.photoFront} alt="Antes" className={`w-full max-h-72 object-cover rounded-xl mx-auto border border-slate-700 ${isPrivacyHidden ? 'blur-xl select-none pointer-events-none' : ''}`} />
+                          {isPrivacyHidden && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-emerald-300 bg-slate-950/60 rounded-xl">
+                              <Lock className="w-5 h-5" />
+                              <span className="text-[10px] font-bold">Foto Protegida</span>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div className="h-44 bg-slate-900 rounded-xl flex items-center justify-center text-xs text-slate-600">
                           Sem foto
@@ -549,12 +589,20 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                       )}
                     </div>
 
-                    <div className="bg-[#090e1c] border border-slate-800 rounded-2xl p-3 text-center space-y-2">
+                    <div className="bg-[#090e1c] border border-slate-800 rounded-2xl p-3 text-center space-y-2 relative overflow-hidden">
                       <span className="text-xs font-bold text-teal-400 block font-mono">
                         Depois ({new Date(itemB.date).toLocaleDateString('pt-BR')})
                       </span>
                       {itemB.photoFront ? (
-                        <img src={itemB.photoFront} alt="Depois" className="w-full max-h-72 object-cover rounded-xl mx-auto border border-slate-700" />
+                        <div className="relative">
+                          <img src={itemB.photoFront} alt="Depois" className={`w-full max-h-72 object-cover rounded-xl mx-auto border border-slate-700 ${isPrivacyHidden ? 'blur-xl select-none pointer-events-none' : ''}`} />
+                          {isPrivacyHidden && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-emerald-300 bg-slate-950/60 rounded-xl">
+                              <Lock className="w-5 h-5" />
+                              <span className="text-[10px] font-bold">Foto Protegida</span>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div className="h-44 bg-slate-900 rounded-xl flex items-center justify-center text-xs text-slate-600">
                           Sem foto

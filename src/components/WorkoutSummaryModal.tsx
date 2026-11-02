@@ -16,11 +16,14 @@ import {
   Eye,
   Loader2,
   MessageCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileDown
 } from 'lucide-react';
 import { WorkoutSessionSummary } from '../types/workout';
 import { generateWorkoutCardImage } from '../utils/generateWorkoutCardImage';
 import { extractSessionPRs } from '../utils/prEngine';
+import { exportCompletedSessionToPDF } from '../utils/pdfExport';
+import { WorkoutPdfExportModal } from './WorkoutPdfExportModal';
 
 interface WorkoutSummaryModalProps {
   isOpen: boolean;
@@ -43,6 +46,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   const [cardImage, setCardImage] = useState<{ blob: Blob; dataUrl: string; file: File } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+  const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
 
   // Generate image card automatically whenever modal opens with session
   useEffect(() => {
@@ -613,6 +617,30 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
             <button
               type="button"
+              onClick={() => {
+                exportCompletedSessionToPDF(session, athleteName);
+                setShareFeedback('Relatório em PDF baixado com sucesso!');
+                setTimeout(() => setShareFeedback(null), 3000);
+              }}
+              className="py-3 px-3 rounded-xl font-bold text-xs bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+              title="Baixar relatório completo da sessão concluída em PDF A4"
+            >
+              <FileDown className="w-4 h-4 text-sky-400" />
+              <span>PDF</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsPdfPreviewOpen(true)}
+              className="py-3 px-2.5 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+              title="Visualizar e imprimir folha A4"
+            >
+              <Eye className="w-4 h-4 text-sky-400" />
+              <span className="hidden md:inline">Ver A4</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleExportSessionCSV}
               className="py-3 px-3 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
               title="Exportar dados desta sessão em CSV"
@@ -650,6 +678,14 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal de Pré-visualização e Impressão A4 da Sessão Concluída */}
+      <WorkoutPdfExportModal
+        isOpen={isPdfPreviewOpen}
+        onClose={() => setIsPdfPreviewOpen(false)}
+        session={session}
+        athleteName={athleteName}
+      />
     </div>
   );
 };

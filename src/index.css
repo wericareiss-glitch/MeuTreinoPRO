@@ -34,14 +34,14 @@
 .theme-light {
   /* High-Readability Light Mode */
   --color-scheme: light;
-  --bg-app: #f4f6fa;
+  --bg-app: #f1f5f9;
   --bg-surface: #ffffff;
-  --bg-surface-secondary: #f1f5f9;
+  --bg-surface-secondary: #f8fafc;
   --bg-card: #ffffff;
-  --bg-card-subtle: #f8fafc;
+  --bg-card-subtle: #f1f5f9;
   --bg-input: #ffffff;
-  --border-subtle: #e2e8f0;
-  --border-strong: #cbd5e1;
+  --border-subtle: #cbd5e1;
+  --border-strong: #94a3b8;
   --text-heading: #0f172a;
   --text-body: #1e293b;
   --text-muted: #475569;
@@ -51,9 +51,9 @@
   --brand-emerald: #059669;
   --brand-emerald-hover: #047857;
   --brand-emerald-dark: #065f46;
-  --brand-emerald-surface: rgba(5, 150, 105, 0.12);
-  --brand-emerald-border: rgba(5, 150, 105, 0.35);
-  --card-shadow: 0 4px 15px -3px rgba(15, 23, 42, 0.07), 0 2px 6px -2px rgba(15, 23, 42, 0.04);
+  --brand-emerald-surface: rgba(16, 185, 129, 0.14);
+  --brand-emerald-border: rgba(5, 150, 105, 0.38);
+  --card-shadow: 0 4px 16px -3px rgba(15, 23, 42, 0.08), 0 2px 6px -2px rgba(15, 23, 42, 0.04);
 }
 
 /* Base Body Styles */
@@ -92,105 +92,196 @@ html, body {
 }
 
 /* ==========================================================================
-   Automated High-Readability Light Mode Transformations
-   Adapts hardcoded dark utilities to theme variables safely
+   Comprehensive Light Mode Transformations
+   Converts all dark surfaces, gradients, borders, and pastel texts cleanly
    ========================================================================== */
 [data-theme="light"] {
   color-scheme: light;
 }
 
+/* 1. All Custom Dark Hex Backgrounds (#05xxxx to #0bxxxx -> Light Subtle Well #f8fafc) */
+[data-theme="light"] [class*="bg-[#05"],
+[data-theme="light"] [class*="bg-[#06"],
+[data-theme="light"] [class*="bg-[#07"],
+[data-theme="light"] [class*="bg-[#08"],
+[data-theme="light"] [class*="bg-[#09"],
+[data-theme="light"] [class*="bg-[#0a"],
+[data-theme="light"] [class*="bg-[#0b"] {
+  background-color: #f8fafc !important;
+}
+
+/* App Root & Sticky Header/Dock Overrides */
 [data-theme="light"] .bg-\[\#090d16\],
-[data-theme="light"] .bg-\[\#080d1a\],
-[data-theme="light"] .bg-\[\#080d19\],
-[data-theme="light"] .bg-\[\#050811\] {
+[data-theme="light"] .bg-\[\#080d1a\] {
   background-color: var(--bg-app) !important;
 }
 
-[data-theme="light"] .bg-\[\#0f172a\],
-[data-theme="light"] .bg-\[\#0c1424\],
-[data-theme="light"] .bg-\[\#0d1424\],
-[data-theme="light"] .bg-\[\#0c1322\],
-[data-theme="light"] .bg-\[\#0d1527\],
-[data-theme="light"] .bg-\[\#0a101d\],
-[data-theme="light"] .bg-\[\#0b1220\],
-[data-theme="light"] .bg-\[\#0a0817\] {
-  background-color: var(--bg-surface) !important;
+[data-theme="light"] header[class*="bg-[#0d1424]"],
+[data-theme="light"] [class*="bg-[#090f1d]/95"],
+[data-theme="light"] [class*="bg-[#0b101c]"] {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+}
+
+/* 2. All Main Card Dark Hex Backgrounds (#0cxxxx to #1axxxx -> Pure White Surface #ffffff) */
+[data-theme="light"] [class*="bg-[#0c"],
+[data-theme="light"] [class*="bg-[#0d"],
+[data-theme="light"] [class*="bg-[#0e"],
+[data-theme="light"] [class*="bg-[#0f"],
+[data-theme="light"] [class*="bg-[#10"]:not([class*="bg-[#10b981]"]),
+[data-theme="light"] [class*="bg-[#11"] {
+  background-color: #ffffff !important;
   box-shadow: var(--card-shadow);
 }
 
-[data-theme="light"] .bg-\[\#0d1424\]\/95,
-[data-theme="light"] .bg-\[\#0f172a\]\/95,
-[data-theme="light"] .bg-\[\#0f172a\]\/90,
-[data-theme="light"] .bg-\[\#090f1d\]\/95 {
-  background-color: rgba(255, 255, 255, 0.95) !important;
-}
-
-[data-theme="light"] .bg-\[\#121c32\],
-[data-theme="light"] .bg-\[\#141f36\],
-[data-theme="light"] .bg-\[\#1a2947\],
-[data-theme="light"] .bg-\[\#16233b\] {
-  background-color: var(--bg-surface-secondary) !important;
-}
-
-[data-theme="light"] .bg-slate-950 {
-  background-color: #ffffff !important;
-}
-
-[data-theme="light"] .bg-slate-900 {
-  background-color: #ffffff !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-[data-theme="light"] .bg-slate-900\/90,
-[data-theme="light"] .bg-slate-900\/95 {
-  background-color: rgba(255, 255, 255, 0.95) !important;
-}
-
-[data-theme="light"] .bg-slate-800 {
+/* 3. Secondary / Interactive Dark Hex Surfaces (#12xxxx to #1axxxx -> Soft Slate #f1f5f9) */
+[data-theme="light"] [class*="bg-[#12"],
+[data-theme="light"] [class*="bg-[#13"],
+[data-theme="light"] [class*="bg-[#14"],
+[data-theme="light"] [class*="bg-[#16"],
+[data-theme="light"] [class*="bg-[#19"],
+[data-theme="light"] [class*="bg-[#1a"] {
   background-color: #f1f5f9 !important;
 }
 
-[data-theme="light"] .bg-slate-800\/50,
-[data-theme="light"] .bg-slate-800\/60,
-[data-theme="light"] .bg-slate-800\/70,
-[data-theme="light"] .bg-slate-800\/80,
-[data-theme="light"] .bg-slate-800\/90 {
+[data-theme="light"] [class*="hover:bg-[#1"]:hover {
+  background-color: #e2e8f0 !important;
+}
+
+/* 4. Standard Tailwind Dark Slate Surfaces */
+[data-theme="light"] .bg-slate-950,
+[data-theme="light"] [class*="bg-slate-950/"] {
+  background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .bg-slate-900,
+[data-theme="light"] [class*="bg-slate-900/"] {
+  background-color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-slate-800,
+[data-theme="light"] [class*="bg-slate-800/"] {
   background-color: #f1f5f9 !important;
 }
 
-/* Borders in Light Mode */
-[data-theme="light"] .border-slate-800,
-[data-theme="light"] .border-slate-800\/80,
-[data-theme="light"] .border-slate-800\/60,
-[data-theme="light"] .border-slate-800\/50,
-[data-theme="light"] .border-slate-700,
-[data-theme="light"] .border-slate-750,
-[data-theme="light"] .border-\[\#1f2d47\],
-[data-theme="light"] .border-\[\#1e293b\],
-[data-theme="light"] .border-\[\#1d2942\],
-[data-theme="light"] .border-\[\#1f2b42\] {
+[data-theme="light"] .bg-slate-700,
+[data-theme="light"] [class*="bg-slate-700/"] {
+  background-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .hover\:bg-slate-800:hover,
+[data-theme="light"] [class*="hover:bg-slate-800/"]:hover,
+[data-theme="light"] .hover\:bg-slate-700:hover {
+  background-color: #e2e8f0 !important;
+}
+
+/* 5. Dark Gradients -> Clean Light Mode Gradients */
+/* Neutral Dark Card Gradients */
+[data-theme="light"] [class*="from-[#0"],
+[data-theme="light"] [class*="from-[#1"],
+[data-theme="light"] [class*="to-[#0"],
+[data-theme="light"] [class*="to-[#1"],
+[data-theme="light"] [class*="via-[#0"],
+[data-theme="light"] [class*="via-[#1"] {
+  background-image: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%) !important;
+  background-color: #ffffff !important;
+  box-shadow: var(--card-shadow);
+}
+
+/* Emerald-Tinted Dark Gradients */
+[data-theme="light"] [class*="from-emerald-950"],
+[data-theme="light"] [class*="from-emerald-900"],
+[data-theme="light"] [class*="to-emerald-900"] {
+  background-image: linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%) !important;
+  background-color: #ecfdf5 !important;
+}
+
+/* Amber-Tinted Dark Gradients */
+[data-theme="light"] [class*="from-amber-950"],
+[data-theme="light"] [class*="via-amber-900"],
+[data-theme="light"] [class*="from-[#1a1307]"] {
+  background-image: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%) !important;
+  background-color: #fffbeb !important;
+}
+
+/* Sky-Tinted Dark Gradients */
+[data-theme="light"] [class*="from-sky-950"],
+[data-theme="light"] [class*="to-sky-950"],
+[data-theme="light"] [class*="via-sky-900"] {
+  background-image: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%) !important;
+  background-color: #f0f9ff !important;
+}
+
+/* Rose/Purple-Tinted Dark Gradients (Donation & PIX Cards) */
+[data-theme="light"] [class*="from-rose-950"],
+[data-theme="light"] [class*="from-[#121024]"],
+[data-theme="light"] [class*="via-[#161226]"],
+[data-theme="light"] [class*="via-[#1a1233]"] {
+  background-image: linear-gradient(135deg, #fff1f2 0%, #ffffff 100%) !important;
+  background-color: #fff1f2 !important;
+}
+
+/* 6. Dark Tinted 950/900 Backgrounds -> Crisp Pastel Light Backgrounds */
+[data-theme="light"] [class*="bg-emerald-950"],
+[data-theme="light"] [class*="bg-emerald-900"] {
+  background-color: #ecfdf5 !important;
+}
+
+[data-theme="light"] [class*="bg-amber-950"],
+[data-theme="light"] [class*="bg-amber-900"] {
+  background-color: #fffbeb !important;
+}
+
+[data-theme="light"] [class*="bg-rose-950"],
+[data-theme="light"] [class*="bg-rose-900"] {
+  background-color: #fff1f2 !important;
+}
+
+[data-theme="light"] [class*="bg-sky-950"],
+[data-theme="light"] [class*="bg-sky-900"] {
+  background-color: #f0f9ff !important;
+}
+
+[data-theme="light"] [class*="bg-purple-950"],
+[data-theme="light"] [class*="bg-purple-900"] {
+  background-color: #faf5ff !important;
+}
+
+[data-theme="light"] [class*="bg-pink-950"],
+[data-theme="light"] [class*="bg-pink-900"] {
+  background-color: #fdf2f8 !important;
+}
+
+[data-theme="light"] [class*="bg-teal-950"],
+[data-theme="light"] [class*="bg-teal-900"] {
+  background-color: #f0fdfa !important;
+}
+
+[data-theme="light"] [class*="bg-orange-950"],
+[data-theme="light"] [class*="bg-orange-900"] {
+  background-color: #fff7ed !important;
+}
+
+/* Hover states for 950 tinted buttons in menus */
+[data-theme="light"] [class*="hover:bg-emerald-950"]:hover { background-color: #d1fae5 !important; }
+[data-theme="light"] [class*="hover:bg-amber-950"]:hover { background-color: #fef3c7 !important; }
+[data-theme="light"] [class*="hover:bg-rose-950"]:hover { background-color: #ffe4e6 !important; }
+[data-theme="light"] [class*="hover:bg-sky-950"]:hover { background-color: #e0f2fe !important; }
+[data-theme="light"] [class*="hover:bg-purple-950"]:hover { background-color: #f3e8ff !important; }
+[data-theme="light"] [class*="hover:bg-pink-950"]:hover { background-color: #fce7f3 !important; }
+[data-theme="light"] [class*="hover:bg-teal-950"]:hover { background-color: #ccfbf1 !important; }
+[data-theme="light"] [class*="hover:bg-orange-950"]:hover { background-color: #ffedd5 !important; }
+
+/* 7. Borders in Light Mode */
+[data-theme="light"] [class*="border-slate-8"],
+[data-theme="light"] [class*="border-slate-7"],
+[data-theme="light"] [class*="border-[#1"],
+[data-theme="light"] [class*="border-[#2"] {
   border-color: var(--border-subtle) !important;
 }
 
-/* Typography in Light Mode */
+/* 8. Typography & High-Contrast Readable Accent Texts in Light Mode */
 [data-theme="light"] .text-white {
   color: var(--text-heading) !important;
-}
-
-/* Preserve white text on dark/vibrant colored badges and buttons */
-[data-theme="light"] .bg-emerald-500 .text-white,
-[data-theme="light"] .bg-emerald-600 .text-white,
-[data-theme="light"] .bg-rose-500 .text-white,
-[data-theme="light"] .bg-rose-600 .text-white,
-[data-theme="light"] .bg-amber-500 .text-white,
-[data-theme="light"] .bg-purple-600 .text-white,
-[data-theme="light"] .bg-blue-600 .text-white,
-[data-theme="light"] .bg-sky-600 .text-white,
-[data-theme="light"] button.bg-rose-600,
-[data-theme="light"] button.bg-emerald-600,
-[data-theme="light"] button.bg-emerald-500,
-[data-theme="light"] .btn-solid-white-text {
-  color: #ffffff !important;
 }
 
 [data-theme="light"] .text-slate-100,
@@ -210,7 +301,80 @@ html, body {
   color: var(--text-faint) !important;
 }
 
-/* Form Controls & Inputs in Light Mode */
+/* Pastel Accent Texts darkened for WCAG AA/AAA readability on white surfaces */
+[data-theme="light"] .text-emerald-400,
+[data-theme="light"] .text-emerald-300,
+[data-theme="light"] .text-emerald-200 {
+  color: #047857 !important; /* emerald-700 */
+}
+
+[data-theme="light"] .text-teal-400,
+[data-theme="light"] .text-teal-300 {
+  color: #0f766e !important; /* teal-700 */
+}
+
+[data-theme="light"] .text-sky-400,
+[data-theme="light"] .text-sky-300,
+[data-theme="light"] .text-sky-200 {
+  color: #0369a1 !important; /* sky-700 */
+}
+
+[data-theme="light"] .text-amber-400,
+[data-theme="light"] .text-amber-300,
+[data-theme="light"] .text-amber-200 {
+  color: #b45309 !important; /* amber-700 */
+}
+
+[data-theme="light"] .text-orange-400,
+[data-theme="light"] .text-orange-300 {
+  color: #c2410c !important; /* orange-700 */
+}
+
+[data-theme="light"] .text-rose-400,
+[data-theme="light"] .text-rose-300 {
+  color: #be123c !important; /* rose-700 */
+}
+
+[data-theme="light"] .text-pink-400,
+[data-theme="light"] .text-pink-300 {
+  color: #be185d !important; /* pink-700 */
+}
+
+[data-theme="light"] .text-purple-400,
+[data-theme="light"] .text-purple-300 {
+  color: #6d28d9 !important; /* purple-700 */
+}
+
+/* Preserve white text on solid vibrant buttons & badges (both same-element and child-element) */
+[data-theme="light"] .bg-emerald-500.text-white,
+[data-theme="light"] .bg-emerald-500 .text-white,
+[data-theme="light"] .bg-emerald-600.text-white,
+[data-theme="light"] .bg-emerald-600 .text-white,
+[data-theme="light"] [class*="bg-emerald-600/"].text-white,
+[data-theme="light"] [class*="bg-emerald-600/"] .text-white,
+[data-theme="light"] .bg-rose-500.text-white,
+[data-theme="light"] .bg-rose-500 .text-white,
+[data-theme="light"] .bg-rose-600.text-white,
+[data-theme="light"] .bg-rose-600 .text-white,
+[data-theme="light"] .bg-amber-500.text-white,
+[data-theme="light"] .bg-amber-500 .text-white,
+[data-theme="light"] .bg-purple-600.text-white,
+[data-theme="light"] .bg-purple-600 .text-white,
+[data-theme="light"] .bg-blue-600.text-white,
+[data-theme="light"] .bg-blue-600 .text-white,
+[data-theme="light"] .bg-sky-600.text-white,
+[data-theme="light"] .bg-sky-600 .text-white,
+[data-theme="light"] [class*="bg-sky-600/"].text-white,
+[data-theme="light"] [class*="bg-sky-600/"] .text-white,
+[data-theme="light"] [class*="from-emerald-600"].text-white,
+[data-theme="light"] [class*="from-emerald-600"] .text-white,
+[data-theme="light"] [class*="from-pink-500"].text-white,
+[data-theme="light"] [class*="from-pink-500"] .text-white,
+[data-theme="light"] .btn-solid-white-text {
+  color: #ffffff !important;
+}
+
+/* 9. Form Controls & Inputs in Light Mode */
 [data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
 [data-theme="light"] select,
 [data-theme="light"] textarea {
@@ -219,37 +383,93 @@ html, body {
   border-color: var(--border-strong) !important;
 }
 
+[data-theme="light"] select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
 [data-theme="light"] input::placeholder,
 [data-theme="light"] textarea::placeholder {
   color: var(--text-faint) !important;
 }
 
-/* Core Brand Colors in Light Mode */
-[data-theme="light"] .text-emerald-400 {
-  color: var(--brand-emerald) !important;
+/* 10. SVG Progress Rings & Recharts Charts in Light Mode */
+[data-theme="light"] .stroke-slate-800 {
+  stroke: #e2e8f0 !important;
 }
 
-[data-theme="light"] .text-emerald-300 {
-  color: var(--brand-emerald-dark) !important;
+[data-theme="light"] .recharts-cartesian-grid-horizontal line,
+[data-theme="light"] .recharts-cartesian-grid-vertical line {
+  stroke: #e2e8f0 !important;
 }
 
-[data-theme="light"] .bg-emerald-500\/10,
-[data-theme="light"] .bg-emerald-500\/15,
-[data-theme="light"] .bg-emerald-500\/20,
-[data-theme="light"] .bg-emerald-950\/30,
-[data-theme="light"] .bg-emerald-950\/40 {
-  background-color: var(--brand-emerald-surface) !important;
+[data-theme="light"] .recharts-cartesian-axis-tick-value tspan {
+  fill: #475569 !important;
 }
 
-[data-theme="light"] .border-emerald-500\/30,
-[data-theme="light"] .border-emerald-500\/40,
-[data-theme="light"] .border-emerald-500\/25 {
-  border-color: var(--brand-emerald-border) !important;
-}
-
-/* Modals backdrop in Light Mode */
+/* 11. Modals Backdrop in Light Mode */
+[data-theme="light"] .bg-black\/60,
 [data-theme="light"] .bg-black\/70,
 [data-theme="light"] .bg-black\/75,
 [data-theme="light"] .bg-black\/80 {
-  background-color: rgba(15, 23, 42, 0.6) !important;
+  background-color: rgba(15, 23, 42, 0.5) !important;
 }
+
+/* ==========================================================================
+   12. MOBILE USABILITY, TOUCH ERGONOMICS & GYM ONE-HANDED OPTIMIZATIONS
+   ========================================================================== */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Eliminate 300ms tap delay and accidental double-tap zoom on interactive elements */
+button,
+a,
+input,
+select,
+textarea,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent iOS Safari / Android Chrome auto-zoom when focusing inputs on mobile (< 640px) */
+@media screen and (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Remove native number input spinners so stepper buttons have full control */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Hide scrollbars on horizontal quick-action strips while keeping smooth touch scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe area bottom padding for notched mobile devices */
+.pb-safe-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+

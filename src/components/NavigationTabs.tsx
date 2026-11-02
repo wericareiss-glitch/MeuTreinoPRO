@@ -7,6 +7,7 @@ import React from 'react';
 import { Home, Dumbbell, User, Flame, Zap, MessageSquare } from 'lucide-react';
 import { TabType } from '../types/navigation';
 import { useI18n } from '../utils/i18n';
+import { soundManager } from '../utils/audio';
 
 interface NavigationTabsProps {
   activeTab: TabType;
@@ -28,6 +29,14 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   hasActiveWorkout = false,
 }) => {
   const { t } = useI18n();
+
+  const handleTabClick = (tabId: TabType) => {
+    soundManager.vibrate(10);
+    onSelectTab(tabId);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const desktopTabs: {
     id: TabType;
@@ -101,6 +110,9 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
         { id: 'feedback' as TabType, label: 'Suporte', icon: MessageSquare, badge: null },
       ];
 
+  const workoutProgressPct =
+    activeSetsCount > 0 ? Math.min(100, Math.round((completedSetsCount / activeSetsCount) * 100)) : 0;
+
   return (
     <>
       {/* Desktop / Tablet Subheader Tab Switcher */}
@@ -116,7 +128,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => onSelectTab(tab.id)}
+                  onClick={() => handleTabClick(tab.id)}
                   className={`flex items-center gap-2 px-3.5 lg:px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all relative cursor-pointer ${
                     isActive
                       ? isHighlight
@@ -164,8 +176,11 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
         </div>
       </div>
 
-      {/* Mobile Sticky Bottom Navigation Dock (Native App Style) */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#090f1d]/95 backdrop-blur-lg border-t border-[#1d2942] pb-[env(safe-area-inset-bottom)] px-2 py-1.5 shadow-2xl">
+      {/* Mobile Sticky Bottom Navigation Dock (Native App Style, Thumb-Optimized) */}
+      <nav
+        aria-label="Navegação Principal Mobile"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#090f1d]/95 backdrop-blur-xl border-t border-[#1d2942] pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1.5 px-2 shadow-2xl"
+      >
         <div className="grid grid-cols-5 gap-1 max-w-md mx-auto">
           {mobileTabs.map((tab) => {
             const Icon = tab.icon;
@@ -176,35 +191,69 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => onSelectTab(tab.id)}
-                className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-2xl transition-all relative cursor-pointer touch-manipulation min-h-[44px] ${
+                onClick={() => handleTabClick(tab.id)}
+                className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-2xl transition-all relative overflow-hidden cursor-pointer touch-manipulation min-h-[50px] ${
                   isActive
                     ? 'text-emerald-400 bg-emerald-500/15 border border-emerald-500/40 shadow-inner'
                     : isHighlight
-                    ? 'text-emerald-300 bg-emerald-950/30 border border-emerald-500/30 animate-pulse'
+                    ? 'text-amber-300 bg-amber-950/35 border border-amber-500/40'
                     : 'text-slate-400 hover:text-slate-200 active:scale-95'
                 }`}
               >
+                {/* Top Active Indicator Pill */}
+                {isActive && (
+                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-emerald-400" />
+                )}
+
                 <div className="relative">
-                  <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5] text-emerald-400' : isHighlight ? 'text-emerald-300' : 'text-slate-400'}`} />
+                  <Icon
+                    className={`w-5 h-5 ${
+                      isActive
+                        ? 'stroke-[2.5] text-emerald-400'
+                        : isHighlight
+                        ? 'text-amber-400 fill-amber-400/20 animate-pulse'
+                        : 'text-slate-400'
+                    }`}
+                  />
                   {tab.badge !== null && tab.badge !== undefined && (
-                    <span className={`absolute -top-1.5 -right-3.5 text-[8px] font-mono px-1 py-0.2 rounded-full font-black ${
-                      tab.badge === '●'
-                        ? 'bg-rose-500 text-white animate-pulse'
-                        : 'bg-emerald-500 text-slate-950'
-                    } leading-tight`}>
+                    <span
+                      className={`absolute -top-1.5 -right-4 text-[8px] font-mono px-1 py-0.2 rounded-full font-black ${
+                        tab.badge === '●'
+                          ? 'bg-rose-500 text-white animate-pulse'
+                          : 'bg-emerald-500 text-slate-950'
+                      } leading-tight shadow-sm`}
+                    >
                       {tab.badge}
                     </span>
                   )}
                 </div>
-                <span className={`text-[10px] font-bold mt-1 tracking-tight truncate max-w-full ${isActive ? 'text-emerald-300 font-extrabold' : 'text-slate-400'}`}>
+
+                <span
+                  className={`text-[10px] font-bold mt-1 tracking-tight truncate max-w-full ${
+                    isActive
+                      ? 'text-emerald-300 font-extrabold'
+                      : isHighlight
+                      ? 'text-amber-300 font-extrabold'
+                      : 'text-slate-400'
+                  }`}
+                >
                   {tab.label}
                 </span>
+
+                {/* Mini Progress Bar on Treino Ativo Tab */}
+                {tab.id === 'treino_ativo' && activeSetsCount > 0 && (
+                  <span className="absolute bottom-0 left-1 right-1 h-0.5 bg-slate-800 rounded-full overflow-hidden">
+                    <span
+                      className="block h-full bg-emerald-400 transition-all duration-300"
+                      style={{ width: `${workoutProgressPct}%` }}
+                    />
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
-      </div>
+      </nav>
     </>
   );
 };

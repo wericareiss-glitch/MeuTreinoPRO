@@ -28,7 +28,7 @@ interface AuthModalProps {
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   const [tab, setTab] = useState<'login' | 'register'>(() => {
-    return authStorage.getUsers().length > 0 ? 'login' : 'register';
+    return authStorage.hasRegisteredUsers() ? 'login' : 'register';
   });
   const [error, setError] = useState<string | null>(null);
 

@@ -42,9 +42,106 @@ export type SplitOption =
   | 'pull' 
   | 'legs';
 export type StrategyOption = 'single' | 'synergy';
+export type PeriodizationStrategy = 'hypertrophy' | 'strength' | 'metabolic';
 export type LevelOption = 'beginner' | 'intermediate' | 'advanced';
 export type GenderOption = 'male' | 'female';
 export type FocusOption = 'glutes' | 'strength' | 'v_taper' | 'balanced';
+
+export interface PeriodizationPhaseConfig {
+  id: PeriodizationStrategy;
+  label: string;
+  shortLabel: string;
+  repRange: string;
+  repBadge: string;
+  rirTarget: string;
+  restRecommended: number;
+  intensityPct: string;
+  stimulus: string;
+}
+
+export const PERIODIZATION_PHASES: Record<PeriodizationStrategy, PeriodizationPhaseConfig> = {
+  strength: {
+    id: 'strength',
+    label: 'Fase de Força Pura',
+    shortLabel: 'Força',
+    repRange: '3-5',
+    repBadge: '3-5 reps',
+    rirTarget: 'RIR 1-2',
+    restRecommended: 120,
+    intensityPct: '85–92% 1RM',
+    stimulus: 'Tensão Neural & Recrutamento Miofibrilar Máximo',
+  },
+  hypertrophy: {
+    id: 'hypertrophy',
+    label: 'Fase de Hipertrofia',
+    shortLabel: 'Hipertrofia',
+    repRange: '8-12',
+    repBadge: '8-12 reps',
+    rirTarget: 'RIR 1-2',
+    restRecommended: 75,
+    intensityPct: '70–80% 1RM',
+    stimulus: 'Tensão Mecânica Ótima & Volume Efetivo',
+  },
+  metabolic: {
+    id: 'metabolic',
+    label: 'Fase Metabólica',
+    shortLabel: 'Metabólico',
+    repRange: '15+',
+    repBadge: '15+ reps',
+    rirTarget: 'RIR 0-1',
+    restRecommended: 45,
+    intensityPct: '55–65% 1RM',
+    stimulus: 'Estresse Metabólico, Pump & Densidade Sarcoplasmática',
+  },
+};
+
+export type SetIntensityType = 'W' | 'T' | 'F' | 'D' | 'RP';
+
+export interface SetIntensityOption {
+  code: SetIntensityType;
+  shortLabel: string;
+  label: string;
+  description: string;
+  badgeClass: string;
+}
+
+export const SET_INTENSITY_TYPES: SetIntensityOption[] = [
+  {
+    code: 'W',
+    shortLabel: 'W',
+    label: 'Aquecimento (W)',
+    description: 'Série preparatória de ativação articular/neural (não contabiliza como série de trabalho até a falha)',
+    badgeClass: 'bg-sky-500/20 text-sky-400 border-sky-500/40',
+  },
+  {
+    code: 'T',
+    shortLabel: 'T',
+    label: 'Série de Trabalho (T)',
+    description: 'Série principal hipertrofia/força dentro da faixa alvo de repetições e RIR',
+    badgeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+  },
+  {
+    code: 'F',
+    shortLabel: 'F',
+    label: 'Falha Concêntrica (F)',
+    description: 'Série levada até a falha muscular momentânea (RIR 0 / RPE 10)',
+    badgeClass: 'bg-rose-500/20 text-rose-400 border-rose-500/40',
+  },
+  {
+    code: 'D',
+    shortLabel: 'D',
+    label: 'Drop-set (D)',
+    description: 'Redução imediata de 20-30% da carga sem descanso para prolongar o tempo sob tensão',
+    badgeClass: 'bg-purple-500/20 text-purple-400 border-purple-500/40',
+  },
+  {
+    code: 'RP',
+    shortLabel: 'RP',
+    label: 'Rest-Pause / Myo-Reps (RP)',
+    description: 'Pausa curta de 10-20s após a falha seguida de mini-séries extras com a mesma carga',
+    badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+  },
+];
 
 export interface WorkoutItem {
   id: string;
@@ -55,6 +152,7 @@ export interface WorkoutItem {
   rir: string;
   rest: number;
   tagRole?: string;
+  isBisetWithNext?: boolean;
 }
 
 export interface GeneratedWorkoutRoutine {
@@ -68,6 +166,7 @@ export interface GeneratedWorkoutRoutine {
   totalSets: number;
   estimatedMinutes: number;
   isCustom?: boolean;
+  periodizationStrategy?: PeriodizationStrategy;
 }
 
 export interface RpeScaleOption {
@@ -113,6 +212,7 @@ export interface SetData {
   reps: string;
   rpe?: string;
   rir?: string;
+  setType?: SetIntensityType;
   done: boolean;
   timestamp?: number;
 }
@@ -178,6 +278,7 @@ export interface UserProfile {
   gender?: GenderOption;
   level?: LevelOption;
   focus?: FocusOption;
+  periodizationStrategy?: PeriodizationStrategy;
   frequency?: number; // 2, 3, 4, 5, 6 days per week
   preferredSplit?: SplitOption;
   exercisesPerMuscle?: 1 | 2; // 1 = 1 exercício por músculo, 2 = Base + Complementar

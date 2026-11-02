@@ -106,7 +106,7 @@ export const CardioView: React.FC<CardioViewProps> = ({ user, onCardioStateChang
     }
   }, [activeData, activeStorageKey, onCardioStateChange]);
 
-  // Keep-alive e WakeLock durante cardio ativo para manter funcionando mesmo com tela bloqueada
+  // Keep-alive e WakeLock durante cardio ativo para manter funcionando mesmo com tela bloqueada ou trocando de aba
   useEffect(() => {
     if (activeData.isRunning) {
       soundManager.startBackgroundKeepAlive();
@@ -114,9 +114,6 @@ export const CardioView: React.FC<CardioViewProps> = ({ user, onCardioStateChang
     } else {
       soundManager.stopBackgroundKeepAlive();
     }
-    return () => {
-      soundManager.stopBackgroundKeepAlive();
-    };
   }, [activeData.isRunning]);
 
   // Sincronização instantânea ao religar a tela ou focar na aba
@@ -228,7 +225,8 @@ export const CardioView: React.FC<CardioViewProps> = ({ user, onCardioStateChang
     }
 
     if (finalSeconds < 10 && activeData.distanceKm <= 0 && activeData.calories <= 0) {
-      alert('Sessão muito curta para salvar. Realize pelo menos alguns segundos de cardio!');
+      setSaveSuccessMsg('⚠️ Sessão muito curta para salvar. Realize pelo menos 10 segundos de cardio!');
+      setTimeout(() => setSaveSuccessMsg(null), 3500);
       return;
     }
 

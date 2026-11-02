@@ -12,11 +12,15 @@ import {
   Upload, 
   RotateCcw, 
   PlusCircle, 
-  Sliders
+  Sliders,
+  Zap,
+  ArrowRight
 } from 'lucide-react';
 import { 
   SplitOption, 
   StrategyOption, 
+  PeriodizationStrategy,
+  PERIODIZATION_PHASES,
   LevelOption, 
   EquipmentRequirement, 
   WorkoutItem, 
@@ -74,6 +78,7 @@ import { CardioView } from './components/CardioView';
 import { ProfileView } from './components/ProfileView';
 import { DeloadAssistantModal } from './components/DeloadAssistantModal';
 import { getDeloadState, analyzeFatigueAndDeload, DeloadState } from './utils/deloadEngine';
+import { checkAndTriggerScheduledNotification } from './utils/notifications';
 import { TabType } from './types/navigation';
 import { useI18n } from './utils/i18n';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -95,6 +100,26 @@ export default function App() {
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [isAddExerciseOpen, setIsAddExerciseOpen] = useState(false);
 
+  // Verificador global de lembretes Push agendados (funciona em qualquer aba do app)
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const checkNow = () => {
+      checkAndTriggerScheduledNotification(currentUser.id, currentUser.name || 'Atleta');
+    };
+    checkNow();
+    const interval = setInterval(checkNow, 25000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkNow();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [currentUser?.id, currentUser?.name]);
+
   // Helper for per-user storage key isolation
   const userKey = (key: string) => currentUser ? `alex_u_${currentUser.id}_${key}` : `alex_guest_${key}`;
 
@@ -105,6 +130,14 @@ export default function App() {
     return safeStorage.get(`alex_u_${user.id}_split`, user.preferredSplit || (user.frequency === 3 || user.frequency === 6 ? 'ppl' : 'upper_lower'));
   });
   const [strategy, setStrategy] = useState<StrategyOption>('synergy');
+  const [periodizationStrategy, setPeriodizationStrategy] = useState<PeriodizationStrategy>(() => {
+    const user = authStorage.getActiveUser();
+    if (!user) return 'hypertrophy';
+    return safeStorage.get<PeriodizationStrategy>(
+      `alex_u_${user.id}_periodization_strategy`,
+      user.periodizationStrategy || (user.focus === 'strength' ? 'strength' : 'hypertrophy')
+    );
+  });
   // Padrão sempre 1 exercício por músculo
   const exercisesPerMuscle: 1 = 1;
   const [weeklyBudget, setWeeklyBudget] = useState<number>(() => {
@@ -477,25 +510,24 @@ export default function App() {
     }
   }, [showToast]);
 
-  // Excluir Perfil com limpeza de storage
+  // Excluir Perfil com limpeza de storage e logout imediato (nunca logar automaticamente em outro usuário)
   const handleDeleteProfile = useCallback((userId: string) => {
     authStorage.deleteUser(userId);
-    const users = authStorage.getUsers();
-    if (users.length > 0) {
-      authStorage.setActiveUserId(users[0].id);
-      setCurrentUser(users[0]);
-    } else {
-      authStorage.setActiveUserId(null);
-      setCurrentUser(null);
-      setIsAuthOpen(true);
-    }
-    showToast('Perfil excluído com sucesso.');
+    authStorage.logout();
+    setCurrentUser(null);
+    setIsProfileOpen(false);
+    setIsAuthOpen(true);
+    showToast('Perfil excluído e sessão encerrada com segurança.');
   }, [showToast]);
 
-  // Trocar Perfil
+  // Trocar Perfil exige desconexão imediata para proteger os dados da conta atual
   const handleSwitchProfile = useCallback(() => {
+    authStorage.logout();
+    setCurrentUser(null);
+    setIsProfileOpen(false);
     setIsAuthOpen(true);
-  }, []);
+    showToast('Sessão bloqueada. Faça login para acessar outro perfil.');
+  }, [showToast]);
 
   // Geração inicial automática apenas no primeiro acesso se o usuário não possuir rotinas
   useEffect(() => {
@@ -569,8 +601,24 @@ export default function App() {
     });
   }, []);
 
-  // Log handlers (Sincronização bidirecional automática de RPE 6-10 e RIR 0-4)
-  const handleUpdateLog = useCallback((key: string, field: 'weight' | 'reps' | 'rpe' | 'rir', val: string) => {
+  const handleSelectPeriodizationStrategy = useCallback((phase: PeriodizationStrategy) => {
+    setPeriodizationStrategy(phase);
+    const phaseCfg = PERIODIZATION_PHASES[phase] || PERIODIZATION_PHASES.hypertrophy;
+    if (currentUser) {
+      safeStorage.set(`alex_u_${currentUser.id}_periodization_strategy`, phase);
+    }
+    setWorkoutItems((prev) =>
+      prev.map((item) => ({
+        ...item,
+        reps: phaseCfg.repRange,
+        rir: phaseCfg.rirTarget,
+      }))
+    );
+    showToast(`Rep-Target ajustado: ${phaseCfg.label} (${phaseCfg.repBadge})`);
+  }, [currentUser, showToast]);
+
+  // Log handlers (Sincronização bidirecional automática de RPE 6-10 e RIR 0-4 + Técnica de Intensidade)
+  const handleUpdateLog = useCallback((key: string, field: 'weight' | 'reps' | 'rpe' | 'rir' | 'setType', val: string) => {
     setLogs((prev) => {
       const current = prev[key] || { weight: '', reps: '', done: false };
       const updated = { ...current, [field]: val };
@@ -600,9 +648,13 @@ export default function App() {
 
       if (nextDone) {
         soundManager.vibrateSetComplete();
-        setTimerRestSeconds(restSec);
-        setTimerTriggerKey((k) => k + 1);
-        showToast(`Série concluída! Descanso de ${restSec}s iniciado.`);
+        if (restSec > 0) {
+          setTimerRestSeconds(restSec);
+          setTimerTriggerKey((k) => k + 1);
+          showToast(`Série concluída! Descanso de ${restSec}s iniciado.`);
+        } else {
+          showToast('⚡ 1º exercício do Bi-set concluído! Vá direto para o 2º exercício sem descanso!');
+        }
       }
 
       return {
@@ -716,8 +768,21 @@ export default function App() {
   // Finish and save session
   const finishAndSaveSession = () => {
     if (!currentUser) return;
+    const uid = currentUser.id;
+    // Merge latest persisted logs from safeStorage with React state so zero keystrokes are lost
+    const storedLogs = safeStorage.get<WorkoutLogs>(`alex_u_${uid}_current_logs`, {});
+    const finalLogs: WorkoutLogs = { ...storedLogs, ...logs };
+    Object.keys(storedLogs).forEach((k) => {
+      if (storedLogs[k] && logs[k]) {
+        finalLogs[k] = {
+          ...logs[k],
+          ...storedLogs[k],
+          done: logs[k].done || storedLogs[k].done,
+        };
+      }
+    });
+
     // Auto-mark any set that has both weight and reps filled as completed
-    const finalLogs = { ...logs };
     workoutItems.forEach((item) => {
       for (let s = 1; s <= item.sets; s++) {
         const key = `${item.exercise.id}_${s}`;
@@ -760,17 +825,20 @@ export default function App() {
       })
       .filter((ex) => ex.sets.length > 0);
 
+    const resolvedSplitName = activeRoutine
+      ? `${activeRoutine.letter} — ${activeRoutine.name}`
+      : split.toUpperCase();
+
     const newSession: WorkoutSessionSummary = {
       id: `session_${Date.now()}`,
       date: new Date().toISOString(),
-      splitName: split.toUpperCase(),
+      splitName: resolvedSplitName,
       totalSets: completedKeys.length,
       totalVolumeLoadKg: totalVolumeLoad,
       notes: workoutNotes.trim() || undefined,
       completedExercises: completedExercisesSummary,
     };
 
-    const uid = currentUser.id;
     const updatedSessions = [newSession, ...sessions];
     setSessions(updatedSessions);
     safeStorage.set(`alex_u_${uid}_sessions`, updatedSessions);
@@ -855,12 +923,18 @@ export default function App() {
 
   const handleExportBackup = () => {
     if (!currentUser) return;
+    const sanitizedUser: UserProfile = {
+      ...currentUser,
+      password: '',
+    };
     const backup = {
       app: 'MeuTreinoPro',
-      version: '4.0',
+      version: '4.1',
       exportedAt: new Date().toISOString(),
-      user: currentUser,
-      settings: { split, strategy, level, equip },
+      user: sanitizedUser,
+      settings: { split, strategy, level, equip, restSeconds, weeklyBudget },
+      routines,
+      measurements,
       workoutItems,
       currentLogs: logs,
       historyLogs: history,
@@ -876,26 +950,58 @@ export default function App() {
     document.body.appendChild(a);
     a.click();
     a.remove();
-    showToast('Backup do perfil exportado com sucesso!');
+    showToast('Backup completo do perfil exportado com sucesso!');
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !currentUser) return;
+    const uid = currentUser.id;
 
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
-        if (parsed.currentLogs) setLogs(parsed.currentLogs);
-        if (parsed.historyLogs) setHistory(parsed.historyLogs);
-        if (parsed.sessions) setSessions(parsed.sessions);
-        if (parsed.weeklyVolume) setWeeklyCompletedSets(parsed.weeklyVolume);
-        if (parsed.workoutItems) setWorkoutItems(parsed.workoutItems);
-        if (parsed.workoutNotes !== undefined) setWorkoutNotes(parsed.workoutNotes);
-        showToast('Dados restaurados com sucesso para este perfil!');
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('Invalid backup structure');
+        }
+        if (parsed.currentLogs) {
+          setLogs(parsed.currentLogs);
+          safeStorage.set(`alex_u_${uid}_current_logs`, parsed.currentLogs);
+        }
+        if (parsed.historyLogs) {
+          setHistory(parsed.historyLogs);
+          safeStorage.set(`alex_u_${uid}_history_logs`, parsed.historyLogs);
+        }
+        if (Array.isArray(parsed.sessions)) {
+          setSessions(parsed.sessions);
+          safeStorage.set(`alex_u_${uid}_sessions`, parsed.sessions);
+        }
+        if (parsed.weeklyVolume) {
+          setWeeklyCompletedSets(parsed.weeklyVolume);
+          safeStorage.set(`alex_u_${uid}_weekly_volume`, parsed.weeklyVolume);
+        }
+        if (Array.isArray(parsed.routines)) {
+          setRoutines(parsed.routines);
+          safeStorage.set(`alex_u_${uid}_routines`, parsed.routines);
+        }
+        if (Array.isArray(parsed.measurements)) {
+          setMeasurements(parsed.measurements);
+          safeStorage.set(`alex_u_${uid}_measurements`, parsed.measurements);
+        }
+        if (Array.isArray(parsed.workoutItems)) {
+          setWorkoutItems(parsed.workoutItems);
+          safeStorage.set(`alex_u_${uid}_workout_items`, parsed.workoutItems);
+        }
+        if (parsed.workoutNotes !== undefined) {
+          setWorkoutNotes(parsed.workoutNotes);
+          safeStorage.set(`alex_u_${uid}_workout_notes`, parsed.workoutNotes);
+        }
+        showToast('✅ Dados do backup restaurados e salvos com sucesso!');
       } catch {
-        alert('Arquivo de backup inválido.');
+        showToast('⚠️ Arquivo de backup inválido ou corrompido.');
+      } finally {
+        e.target.value = '';
       }
     };
     reader.readAsText(file);
@@ -903,14 +1009,12 @@ export default function App() {
 
   const handleResetToday = () => {
     if (!currentUser) return;
-    if (confirm('Deseja realmente zerar todos os registros de séries e notas de hoje?')) {
-      const uid = currentUser.id;
-      setLogs({});
-      setWorkoutNotes('');
-      safeStorage.remove(`alex_u_${uid}_current_logs`);
-      safeStorage.remove(`alex_u_${uid}_workout_notes`);
-      showToast('Anotações de hoje foram zeradas.');
-    }
+    const uid = currentUser.id;
+    setLogs({});
+    setWorkoutNotes('');
+    safeStorage.remove(`alex_u_${uid}_current_logs`);
+    safeStorage.remove(`alex_u_${uid}_workout_notes`);
+    showToast('Anotações de hoje foram zeradas.');
   };
 
   // Nutrition Plan Save Handler
@@ -1024,7 +1128,40 @@ export default function App() {
       />
 
       {/* Main Container - Renders the selected Tab View */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-6">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
+        {/* Banner Flutuante Rápido de Retorno ao Treino Ativo quando o usuário navega para outras abas */}
+        {activeRoutine && activeTab !== 'treino_ativo' && (
+          <div className="mb-4 p-3 rounded-2xl bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-teal-500/20 border border-amber-400/50 shadow-lg flex items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 font-black flex items-center justify-center shrink-0 shadow-md">
+                <Zap className="w-4 h-4 fill-slate-950" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-mono font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                    Treino em Andamento
+                  </span>
+                  <span className="text-xs font-extrabold text-white truncate">
+                    {activeRoutine.name}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 font-mono mt-0.5">
+                  {totalCompletedSetsInWorkout} de {totalSetsInWorkout} séries concluídas
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('treino_ativo')}
+              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center gap-1.5 shrink-0 cursor-pointer shadow-md active:scale-95 transition-all"
+            >
+              <span>Voltar ao Treino</span>
+              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+          </div>
+        )}
+
         {/* ABA 1: INÍCIO (Resumo do atleta, KPIs, acompanhamento de volume e histórico detalhado) */}
         {activeTab === 'inicio' && (
           <HomeView
@@ -1101,6 +1238,9 @@ export default function App() {
             onOpenCadence={() => setIsCadenceOpen(true)}
             onOpenPlateCalc={handleOpenPlateCalc}
             muscleTargetRir={currentUser?.muscleTargetRir}
+            periodizationStrategy={periodizationStrategy}
+            userFocus={currentUser?.focus}
+            onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
             onFinishSession={finishAndSaveSession}
             onDiscardSession={handleDiscardActiveWorkout}
             onBackToList={() => setActiveTab('treino')}
@@ -1129,11 +1269,9 @@ export default function App() {
             onViewSummary={(sess) => setSummaryModalSession(sess)}
             onClearHistory={() => {
               if (!currentUser) return;
-              if (confirm('Tem certeza que deseja apagar todo o histórico de treinos deste perfil?')) {
-                setSessions([]);
-                safeStorage.remove(`alex_u_${currentUser.id}_sessions`);
-                showToast('Histórico do perfil foi apagado.');
-              }
+              setSessions([]);
+              safeStorage.remove(`alex_u_${currentUser.id}_sessions`);
+              showToast('Histórico do perfil foi apagado.');
             }}
             onDeleteProfile={handleDeleteProfile}
             onSwitchProfile={handleSwitchProfile}
@@ -1291,6 +1429,7 @@ export default function App() {
       <BodyMeasurementsModal
         isOpen={isMeasurementsOpen}
         onClose={() => setIsMeasurementsOpen(false)}
+        user={currentUser}
         measurements={measurements}
         onSaveMeasurement={handleSaveMeasurement}
         onDeleteMeasurement={handleDeleteMeasurement}

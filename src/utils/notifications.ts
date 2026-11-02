@@ -8,16 +8,26 @@ import { safeStorage } from './storage';
 
 export interface DailyReminderConfig {
   enabled: boolean;
-  time: string; // Ex: "08:00" ou "18:30"
+  time: string; // Horário principal (compatibilidade), ex: "18:00"
+  times?: string[]; // Múltiplos horários definidos pelo usuário, ex: ["07:30", "18:00"]
   days: number[]; // 0: Dom, 1: Seg, 2: Ter, 3: Qua, 4: Qui, 5: Sex, 6: Sáb
-  lastNotifiedDate?: string; // Formato YYYY-MM-DD para evitar notificações duplicadas no mesmo dia
+  customTitle?: string; // Título personalizado do lembrete (ex: "Hora do treino")
+  customMessage?: string; // Mensagem personalizada opcional
+  lastNotifiedDate?: string; // Formato YYYY-MM-DD (compatibilidade)
+  notifiedSlots?: string[]; // Lista de slots já notificados no formato "YYYY-MM-DD@HH:MM"
 }
 
 export const DEFAULT_REMINDER_CONFIG: DailyReminderConfig = {
   enabled: false,
   time: '18:00',
+  times: ['18:00'],
   days: [1, 2, 3, 4, 5], // Segunda a Sexta
+  customTitle: 'Hora do treino ⚡',
+  customMessage: 'Hora do treino! Mantenha sua consistência e sobrecarga progressiva em dia 💪',
+  notifiedSlots: [],
 };
+
+const DAY_NAMES_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -42,45 +52,206 @@ export function getNotificationPermissionStatus(): NotificationPermission {
   return Notification.permission;
 }
 
-export function sendAppNotification(title: string, body: string): boolean {
+/**
+ * Dispara notificação local via Push (Service Worker registration.showNotification)
+ * com fallback imediato para a API Notification nativa do navegador.
+ */
+export function sendAppNotification(
+  title: string,
+  body: string,
+  tag: string = 'meutreino-workout-push'
+): boolean {
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return false;
   }
 
-  if (Notification.permission === 'granted') {
-    try {
-      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-        navigator.vibrate([200, 100, 200]);
-      }
-      new Notification(title, {
-        body,
-        icon: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png',
-        badge: 'https://cdn-icons-png.flaticon.com/512/2964/2964514.png',
-      });
-      return true;
-    } catch {
-      return false;
-    }
+  if (Notification.permission !== 'granted') {
+    return false;
   }
-  return false;
+
+  try {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate([200, 100, 200]);
+    }
+
+    const iconUrl = '/pwa-192x192.png';
+
+    // Prioriza disparo via Service Worker Push Local quando ativo
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .getRegistration()
+        .then((registration) => {
+          if (registration && typeof registration.showNotification === 'function') {
+            return registration.showNotification(title, {
+              body,
+              icon: iconUrl,
+              badge: iconUrl,
+              tag,
+              vibrate: [200, 100, 200],
+              data: { url: '/?action=start-workout' },
+            } as NotificationOptions);
+          } else {
+            new Notification(title, {
+              body,
+              icon: iconUrl,
+              badge: iconUrl,
+              tag,
+            });
+          }
+        })
+        .catch(() => {
+          try {
+            new Notification(title, {
+              body,
+              icon: iconUrl,
+              badge: iconUrl,
+              tag,
+            });
+          } catch {}
+        });
+      return true;
+    }
+
+    // Fallback direto para API Notification do navegador
+    new Notification(title, {
+      body,
+      icon: iconUrl,
+      badge: iconUrl,
+      tag,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Normaliza a lista de horários definidos garantindo ordenação e formato HH:MM
+ */
+export function normalizeReminderTimes(config: DailyReminderConfig): string[] {
+  const rawList =
+    Array.isArray(config.times) && config.times.length > 0
+      ? config.times
+      : config.time
+      ? [config.time]
+      : ['18:00'];
+
+  const valid = Array.from(
+    new Set(
+      rawList
+        .map((t) => (t || '').trim())
+        .filter((t) => /^\d{2}:\d{2}$/.test(t))
+    )
+  ).sort();
+
+  return valid.length > 0 ? valid : ['18:00'];
 }
 
 /**
  * Lê configuração de lembretes diários do usuário
  */
 export function getReminderConfig(userId: string): DailyReminderConfig {
-  return safeStorage.get<DailyReminderConfig>(`alex_reminder_cfg_${userId}`, DEFAULT_REMINDER_CONFIG);
+  const raw = safeStorage.get<DailyReminderConfig>(
+    `alex_reminder_cfg_${userId}`,
+    DEFAULT_REMINDER_CONFIG
+  );
+  const times = normalizeReminderTimes(raw);
+  return {
+    ...DEFAULT_REMINDER_CONFIG,
+    ...raw,
+    time: times[0],
+    times,
+    days: Array.isArray(raw.days) && raw.days.length > 0 ? raw.days : [1, 2, 3, 4, 5],
+    notifiedSlots: Array.isArray(raw.notifiedSlots) ? raw.notifiedSlots : [],
+  };
 }
 
 /**
  * Salva configuração de lembretes diários do usuário
  */
 export function saveReminderConfig(userId: string, config: DailyReminderConfig): void {
-  safeStorage.set(`alex_reminder_cfg_${userId}`, config);
+  const times = normalizeReminderTimes(config);
+  const normalized: DailyReminderConfig = {
+    ...config,
+    time: times[0],
+    times,
+  };
+  safeStorage.set(`alex_reminder_cfg_${userId}`, normalized);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('meutreino:reminder-updated', { detail: { userId, config: normalized } })
+    );
+  }
+}
+
+/**
+ * Calcula quando ocorrerá o próximo disparo de lembrete com base nos horários e dias configurados
+ */
+export function getNextScheduledReminderInfo(config: DailyReminderConfig): {
+  nextTime: string;
+  dayLabel: string;
+  countdownText: string;
+} | null {
+  if (!config.enabled || !config.days || config.days.length === 0) {
+    return null;
+  }
+
+  const times = normalizeReminderTimes(config);
+  const now = new Date();
+  const currentDay = now.getDay();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
+    const checkDay = (currentDay + dayOffset) % 7;
+    if (!config.days.includes(checkDay)) continue;
+
+    for (const timeStr of times) {
+      const [h, m] = timeStr.split(':').map((v) => parseInt(v, 10));
+      if (isNaN(h) || isNaN(m)) continue;
+      const slotMinutes = h * 60 + m;
+
+      if (dayOffset === 0 && slotMinutes <= currentMinutes) {
+        continue; // Horário de hoje já passou
+      }
+
+      const totalDiffMinutes =
+        dayOffset * 24 * 60 + (slotMinutes - currentMinutes);
+      const diffHours = Math.floor(totalDiffMinutes / 60);
+      const diffRemMinutes = totalDiffMinutes % 60;
+
+      let dayLabel = '';
+      if (dayOffset === 0) {
+        dayLabel = 'Hoje';
+      } else if (dayOffset === 1) {
+        dayLabel = `Amanhã (${DAY_NAMES_SHORT[checkDay]})`;
+      } else {
+        dayLabel = `${DAY_NAMES_SHORT[checkDay]}`;
+      }
+
+      let countdownText = '';
+      if (diffHours === 0) {
+        countdownText = `em ${diffRemMinutes} min`;
+      } else if (diffHours < 24) {
+        countdownText = `em ${diffHours}h ${diffRemMinutes > 0 ? `${diffRemMinutes}m` : ''}`.trim();
+      } else {
+        const days = Math.floor(diffHours / 24);
+        countdownText = `em ${days}d ${diffHours % 24}h`;
+      }
+
+      return {
+        nextTime: timeStr,
+        dayLabel,
+        countdownText,
+      };
+    }
+  }
+
+  return null;
 }
 
 /**
  * Verifica se no momento atual deve disparar o lembrete de treino agendado
+ * Suporta múltiplos horários definidos pelo usuário no mesmo dia.
  */
 export function checkAndTriggerScheduledNotification(
   userId: string,
@@ -105,46 +276,71 @@ export function checkAndTriggerScheduledNotification(
   const localDay = String(now.getDate()).padStart(2, '0');
   const todayStr = `${localYear}-${localMonth}-${localDay}`;
 
-  if (config.lastNotifiedDate === todayStr) {
-    return false; // Já notificado com sucesso hoje
-  }
-
-  if (!config.time || !config.time.includes(':')) {
-    return false;
-  }
-
-  const [targetH, targetM] = config.time.split(':').map((v) => parseInt(v, 10));
-  if (isNaN(targetH) || isNaN(targetM)) {
-    return false;
-  }
-
+  const times = normalizeReminderTimes(config);
   const currentH = now.getHours();
   const currentM = now.getMinutes();
-
-  // Janela segura de tolerância de 5 minutos após o horário agendado
-  // Impede que o usuário perca o aviso caso o timer de 40s ou a aba em segundo plano atrase alguns segundos
-  const targetTotalMinutes = targetH * 60 + targetM;
   const currentTotalMinutes = currentH * 60 + currentM;
-  const diffMinutes = currentTotalMinutes - targetTotalMinutes;
 
-  if (diffMinutes >= 0 && diffMinutes <= 5) {
-    const messages = [
-      `Hora do treino, ${athleteName}! Seu corpo precisa do estímulo de hipertrofia hoje 💪`,
-      `Bora treinar, ${athleteName}! A consistência é o que constrói resultados definitivos 🔥`,
-      `Seu treino de hoje está pronto no MeuTreino Pro! Vamos bater recordes de carga 🏋️‍♂️`,
-      `Lembrete de treino: Mantenha sua meta da semana ativa! 🎯`
-    ];
-    const randomMsg = messages[Math.floor(Math.random() * messages.length)];
+  const notifiedSlots = Array.isArray(config.notifiedSlots)
+    ? config.notifiedSlots.filter((slot) => slot.startsWith(todayStr))
+    : [];
 
-    const success = sendAppNotification('MeuTreino Pro ⚡', randomMsg);
-    if (success) {
-      config.lastNotifiedDate = todayStr;
-      saveReminderConfig(userId, config);
-      return true;
+  let triggeredAny = false;
+
+  for (const timeSlot of times) {
+    if (!timeSlot || !timeSlot.includes(':')) continue;
+
+    const slotKey = `${todayStr}@${timeSlot}`;
+    if (notifiedSlots.includes(slotKey)) {
+      continue; // Este horário já foi notificado hoje
+    }
+
+    // Compatibilidade caso lastNotifiedDate antigo tenha sido salvo para horário único
+    if (times.length === 1 && config.lastNotifiedDate === todayStr && notifiedSlots.length === 0) {
+      continue;
+    }
+
+    const [targetH, targetM] = timeSlot.split(':').map((v) => parseInt(v, 10));
+    if (isNaN(targetH) || isNaN(targetM)) continue;
+
+    const targetTotalMinutes = targetH * 60 + targetM;
+    const diffMinutes = currentTotalMinutes - targetTotalMinutes;
+
+    // Janela segura de tolerância de 5 minutos após o horário definido
+    if (diffMinutes >= 0 && diffMinutes <= 5) {
+      const defaultMessages = [
+        `Hora do treino (${timeSlot}), ${athleteName}! Seu corpo precisa do estímulo de hipertrofia hoje 💪`,
+        `Bora treinar, ${athleteName}! Lembrete das ${timeSlot}: a consistência constrói resultados definitivos 🔥`,
+        `Seu treino das ${timeSlot} está pronto no MeuTreino Pro! Vamos buscar a sobrecarga progressiva 🏋️‍♂️`,
+        `Lembrete de treino (${timeSlot}): Mantenha sua meta semanal em dia! 🎯`,
+      ];
+      const messageToSend =
+        config.customMessage && config.customMessage.trim().length > 0
+          ? config.customMessage.trim()
+          : defaultMessages[Math.floor(Math.random() * defaultMessages.length)];
+
+      const titleToSend =
+        config.customTitle && config.customTitle.trim().length > 0
+          ? `${config.customTitle.trim()} • ${timeSlot}`
+          : `Hora do treino ⚡ • ${timeSlot}`;
+
+      const success = sendAppNotification(
+        titleToSend,
+        messageToSend,
+        `meutreino-push-${slotKey}`
+      );
+
+      if (success) {
+        notifiedSlots.push(slotKey);
+        config.lastNotifiedDate = todayStr;
+        config.notifiedSlots = notifiedSlots;
+        saveReminderConfig(userId, config);
+        triggeredAny = true;
+      }
     }
   }
 
-  return false;
+  return triggeredAny;
 }
 
 /**

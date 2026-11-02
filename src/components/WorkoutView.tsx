@@ -54,7 +54,7 @@ interface WorkoutViewProps {
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onDeleteExercise: (index: number) => void;
-  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'rpe' | 'rir', val: string) => void;
+  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'rpe' | 'rir' | 'setType', val: string) => void;
   onToggleSet: (key: string, restSec: number) => void;
   onUpdateRest: (index: number, newRest: number) => void;
   onOpenWarmup: (name: string, weight: string) => void;

@@ -134,7 +134,7 @@ export const CardioDock: React.FC<CardioDockProps> = ({ userId, onOpenCardio }) 
   return (
     <div
       onClick={onOpenCardio}
-      className="fixed bottom-16 sm:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:w-80 z-30 bg-slate-900/95 backdrop-blur-md border border-sky-500/40 rounded-2xl p-2 sm:p-2.5 shadow-2xl shadow-sky-950/50 cursor-pointer transition-all hover:border-sky-400 animate-in fade-in slide-in-from-bottom-3 duration-200"
+      className="fixed bottom-[76px] md:bottom-6 left-3 right-3 sm:left-auto sm:right-6 sm:w-80 z-30 bg-slate-900/95 backdrop-blur-md border border-sky-500/40 rounded-2xl p-2 sm:p-2.5 shadow-2xl shadow-sky-950/50 cursor-pointer transition-all hover:border-sky-400 animate-in fade-in slide-in-from-bottom-3 duration-200"
     >
       <div className="flex items-center justify-between gap-2.5">
         {/* Left: Type Icon & Pulse */}

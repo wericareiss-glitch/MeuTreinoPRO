@@ -23,6 +23,9 @@ import {
 } from 'lucide-react';
 import { UserProfile, GenderOption, LevelOption, FocusOption } from '../types/workout';
 import { authStorage, calculateDefaultBudget, getPresetWeights, scaleWeightsToBudget } from '../utils/auth';
+import { ThemeToggle } from './ThemeToggle';
+import { PrivacyShieldControl } from './PrivacyShieldControl';
+import { usePrivacyMode, maskUsername, maskDisplayName, maskSensitiveValue } from '../utils/privacy';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -55,6 +58,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [newPass, setNewPass] = useState('');
   const [passMsg, setPassMsg] = useState<{ text: string; error: boolean } | null>(null);
 
+  const { isPrivacyHidden } = usePrivacyMode();
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   if (!isOpen) return null;
@@ -130,68 +134,101 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <h3 className="text-base font-bold text-white tracking-tight">
                 Perfil do Atleta
               </h3>
-              <p className="text-xs text-slate-400 font-mono">@{user.username}</p>
+              <p className="text-xs text-slate-400 font-mono">
+                {maskUsername(user.username, isPrivacyHidden)}
+              </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <PrivacyShieldControl user={user} variant="compact" />
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Profile Info Form */}
         <form onSubmit={handleSaveProfile} className="space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1">
-              Nome / Apelido
-            </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
-                <Scale className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Peso Corporal</span>
-              </label>
-              <div className="relative flex items-center">
-                <input
-                  type="number"
-                  step="0.5"
-                  value={weightKg}
-                  onChange={(e) => setWeightKg(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
-                />
-                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">kg</span>
+          {isPrivacyHidden ? (
+            <div className="p-3.5 rounded-2xl bg-[#0b1220] border border-emerald-500/30 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Dados Pessoais Ocultos</span>
+                </span>
+                <PrivacyShieldControl user={user} variant="inline" />
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs font-mono">
+                <div className="p-2 rounded-xl bg-[#101828] border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Nome</span>
+                  <span className="text-white font-bold">{maskDisplayName(name, true)}</span>
+                </div>
+                <div className="p-2 rounded-xl bg-[#101828] border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Peso</span>
+                  <span className="text-emerald-400 font-bold">{maskSensitiveValue(weightKg, 'kg', true)}</span>
+                </div>
+                <div className="p-2 rounded-xl bg-[#101828] border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">Estatura</span>
+                  <span className="text-sky-400 font-bold">{maskSensitiveValue(heightM, 'm', true)}</span>
+                </div>
               </div>
             </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
-                <Ruler className="w-3.5 h-3.5 text-sky-400" />
-                <span>Estatura</span>
-              </label>
-              <div className="relative flex items-center">
+          ) : (
+            <>
+              <div>
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
+                  Nome / Apelido
+                </label>
                 <input
-                  type="number"
-                  step="0.01"
-                  value={heightM}
-                  onChange={(e) => setHeightM(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
                 />
-                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">m</span>
               </div>
-            </div>
-          </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
+                    <Scale className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Peso Corporal</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={weightKg}
+                      onChange={(e) => setWeightKg(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                    />
+                    <span className="absolute right-2.5 text-xs text-slate-500 font-mono">kg</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
+                    <Ruler className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Estatura</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={heightM}
+                      onChange={(e) => setHeightM(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                    />
+                    <span className="absolute right-2.5 text-xs text-slate-500 font-mono">m</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* 1. SELEÇÃO DE SEXO */}
           <div className="bg-[#0b1220] p-3 rounded-2xl border border-slate-800">
@@ -375,7 +412,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <div className="bg-[#0b1220] p-2.5 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
             <span className="text-slate-400">Índice de Massa Corporal (IMC):</span>
             <span className="font-mono font-black text-emerald-400">
-              {imc} <span className="text-[10px] text-slate-500 font-normal">kg/m²</span>
+              {isPrivacyHidden ? '••••' : imc} <span className="text-[10px] text-slate-500 font-normal">kg/m²</span>
             </span>
           </div>
 
@@ -408,8 +445,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
         </form>
 
-        {/* Action: Open Volume Budget */}
-        <div className="mt-4 pt-4 border-t border-slate-800">
+        {/* Action: Open Volume Budget & Theme Toggle */}
+        <div className="mt-4 pt-4 border-t border-slate-800 space-y-3">
+          <div className="p-3 rounded-2xl bg-[#0b1220] border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div>
+              <span className="text-xs font-bold text-white block">Modo de Visualização (Dark / Light)</span>
+              <span className="text-[10px] text-slate-400 block">
+                Força o tema no localStorage e desativa a detecção automática
+              </span>
+            </div>
+            <ThemeToggle variant="segmented" />
+          </div>
+
           <button
             type="button"
             onClick={() => {
