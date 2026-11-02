@@ -1,9 +1,4 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Trophy, 
   Share2, 
@@ -19,16 +14,20 @@ import {
   Download,
   Image as ImageIcon,
   Eye,
-  Loader2
+  Loader2,
+  MessageCircle,
+  FileSpreadsheet
 } from 'lucide-react';
 import { WorkoutSessionSummary } from '../types/workout';
 import { generateWorkoutCardImage } from '../utils/generateWorkoutCardImage';
+import { extractSessionPRs } from '../utils/prEngine';
 
 interface WorkoutSummaryModalProps {
   isOpen: boolean;
   onClose: () => void;
   session: WorkoutSessionSummary | null;
   athleteName: string;
+  previousSessions?: WorkoutSessionSummary[];
 }
 
 export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
@@ -36,6 +35,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   onClose,
   session,
   athleteName,
+  previousSessions = [],
 }) => {
   const [copied, setCopied] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
@@ -73,6 +73,15 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
     };
   }, [isOpen, session, athleteName]);
 
+  // Extrai recordes pessoais batidos nesta sessão
+  const sessionPRs = useMemo(() => {
+    if (!session) return [];
+    const olderSessions = previousSessions.filter(
+      (s) => s.id !== session.id && new Date(s.date).getTime() < new Date(session.date).getTime()
+    );
+    return extractSessionPRs(session, olderSessions);
+  }, [session, previousSessions]);
+
   if (!isOpen || !session) return null;
 
   // Format date
@@ -108,6 +117,14 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
       lines.push(`⚡ Carga Máxima da Sessão: *${maxLift} kg*`);
     }
 
+    if (sessionPRs.length > 0) {
+      lines.push('');
+      lines.push('🔥 *NOVOS RECORDES PESSOAIS (PRs):*');
+      sessionPRs.forEach((pr) => {
+        lines.push(`• *${pr.exerciseName}*: ${pr.weight}kg × ${pr.reps} reps (+${pr.isWeightPR ? `${pr.diffWeight}kg na carga` : `${pr.diff1RM}kg no 1RM`})`);
+      });
+    }
+
     if (session.notes) {
       lines.push(`📝 Observações: _"${session.notes}"_`);
     }
@@ -126,6 +143,45 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
     lines.push('');
     lines.push('⚡ _Hipertrofia individualizada e periodização com MeuTreino Pro._');
     return lines.join('\n');
+  };
+
+  const handleWhatsAppShare = () => {
+    const text = encodeURIComponent(buildShareText());
+    window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+  };
+
+  const handleExportSessionCSV = () => {
+    if (!session) return;
+    const headers = ['Data', 'Divisao', 'Exercicio', 'Serie', 'Carga (kg)', 'Reps', 'RPE', 'RIR'];
+    const rows: string[][] = [];
+    const dStr = new Date(session.date).toLocaleDateString('pt-BR');
+    session.completedExercises.forEach((ex) => {
+      ex.sets.forEach((s, sIdx) => {
+        rows.push([
+          `"${dStr}"`,
+          `"${session.splitName}"`,
+          `"${ex.name}"`,
+          `"${sIdx + 1}"`,
+          `"${s.weight}"`,
+          `"${s.reps}"`,
+          `"${s.rpe || ''}"`,
+          `"${s.rir || ''}"`
+        ]);
+      });
+    });
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `treino_${session.splitName.toLowerCase().replace(/\s+/g, '_')}_${new Date(session.date).toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setShareFeedback('CSV exportado com sucesso!');
+    setTimeout(() => setShareFeedback(null), 3000);
   };
 
   // Direct download of the generated PNG card
@@ -328,6 +384,54 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               </div>
             </div>
 
+            {/* Novos Recordes Pessoais (PRs) Batidos nesta Sessão */}
+            {sessionPRs.length > 0 && (
+              <div className="bg-gradient-to-br from-[#1a1307] via-[#140e04] to-[#0c0902] border border-amber-500/40 rounded-2xl p-3.5 sm:p-4 space-y-2.5 shadow-xl shadow-amber-500/10 animate-fadeIn">
+                <div className="flex items-center justify-between gap-2 border-b border-amber-500/30 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      <Flame className="w-4 h-4 fill-amber-400" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-black text-amber-300">
+                        🔥 Novos Recordes Pessoais (PRs) Batidos!
+                      </h4>
+                      <span className="text-[10px] text-amber-400/80 font-mono">
+                        {sessionPRs.length} superação(ões) histórica(s) nesta sessão
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full">
+                    Novo Pico
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {sessionPRs.map((pr, pIdx) => (
+                    <div
+                      key={pIdx}
+                      className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/70 border border-amber-500/25 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-extrabold text-white block truncate">{pr.exerciseName}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {pr.weight}kg × {pr.reps} reps
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="font-mono font-black text-amber-400 block text-xs sm:text-sm">
+                          +{pr.isWeightPR ? `${pr.diffWeight}kg na carga` : `${pr.diff1RM}kg no 1RM`}
+                        </span>
+                        <span className="text-[9px] text-amber-300/80 font-bold uppercase">
+                          {pr.isWeightPR ? 'Carga Máxima' : '1RM Estimado'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Session Notes if provided */}
             {session.notes && (
               <div className="bg-[#080e1b] border border-purple-500/25 rounded-2xl p-3 sm:p-3.5 flex items-start gap-2.5">
@@ -495,6 +599,26 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             >
               <Download className="w-4 h-4" />
               <span className="hidden xs:inline">Baixar Card</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleWhatsAppShare}
+              className="py-3 px-3 rounded-xl font-bold text-xs bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-500/40 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+              title="Compartilhar no WhatsApp com formatação"
+            >
+              <MessageCircle className="w-4 h-4 fill-white text-emerald-600" />
+              <span className="hidden xs:inline">WhatsApp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportSessionCSV}
+              className="py-3 px-3 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+              title="Exportar dados desta sessão em CSV"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span className="hidden xs:inline">CSV</span>
             </button>
 
             <button

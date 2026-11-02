@@ -4,6 +4,20 @@
  */
 
 import { WorkoutSessionSummary } from '../types/workout';
+import { safeStorage } from './storage';
+
+export interface DailyReminderConfig {
+  enabled: boolean;
+  time: string; // Ex: "08:00" ou "18:30"
+  days: number[]; // 0: Dom, 1: Seg, 2: Ter, 3: Qua, 4: Qui, 5: Sex, 6: Sáb
+  lastNotifiedDate?: string; // Formato YYYY-MM-DD para evitar notificações duplicadas no mesmo dia
+}
+
+export const DEFAULT_REMINDER_CONFIG: DailyReminderConfig = {
+  enabled: false,
+  time: '18:00',
+  days: [1, 2, 3, 4, 5], // Segunda a Sexta
+};
 
 export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -52,6 +66,88 @@ export function sendAppNotification(title: string, body: string): boolean {
 }
 
 /**
+ * Lê configuração de lembretes diários do usuário
+ */
+export function getReminderConfig(userId: string): DailyReminderConfig {
+  return safeStorage.get<DailyReminderConfig>(`alex_reminder_cfg_${userId}`, DEFAULT_REMINDER_CONFIG);
+}
+
+/**
+ * Salva configuração de lembretes diários do usuário
+ */
+export function saveReminderConfig(userId: string, config: DailyReminderConfig): void {
+  safeStorage.set(`alex_reminder_cfg_${userId}`, config);
+}
+
+/**
+ * Verifica se no momento atual deve disparar o lembrete de treino agendado
+ */
+export function checkAndTriggerScheduledNotification(
+  userId: string,
+  athleteName: string = 'Atleta'
+): boolean {
+  if (!isNotificationSupported() || Notification.permission !== 'granted') {
+    return false;
+  }
+
+  const config = getReminderConfig(userId);
+  if (!config.enabled) return false;
+
+  const now = new Date();
+  const currentDay = now.getDay();
+  if (!config.days.includes(currentDay)) {
+    return false;
+  }
+
+  // Data local do atleta (evita bug de UTC no Brasil e fusos negativos)
+  const localYear = now.getFullYear();
+  const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+  const localDay = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${localYear}-${localMonth}-${localDay}`;
+
+  if (config.lastNotifiedDate === todayStr) {
+    return false; // Já notificado com sucesso hoje
+  }
+
+  if (!config.time || !config.time.includes(':')) {
+    return false;
+  }
+
+  const [targetH, targetM] = config.time.split(':').map((v) => parseInt(v, 10));
+  if (isNaN(targetH) || isNaN(targetM)) {
+    return false;
+  }
+
+  const currentH = now.getHours();
+  const currentM = now.getMinutes();
+
+  // Janela segura de tolerância de 5 minutos após o horário agendado
+  // Impede que o usuário perca o aviso caso o timer de 40s ou a aba em segundo plano atrase alguns segundos
+  const targetTotalMinutes = targetH * 60 + targetM;
+  const currentTotalMinutes = currentH * 60 + currentM;
+  const diffMinutes = currentTotalMinutes - targetTotalMinutes;
+
+  if (diffMinutes >= 0 && diffMinutes <= 5) {
+    const messages = [
+      `Hora do treino, ${athleteName}! Seu corpo precisa do estímulo de hipertrofia hoje 💪`,
+      `Bora treinar, ${athleteName}! A consistência é o que constrói resultados definitivos 🔥`,
+      `Seu treino de hoje está pronto no MeuTreino Pro! Vamos bater recordes de carga 🏋️‍♂️`,
+      `Lembrete de treino: Mantenha sua meta da semana ativa! 🎯`
+    ];
+    const randomMsg = messages[Math.floor(Math.random() * messages.length)];
+
+    const success = sendAppNotification('MeuTreino Pro ⚡', randomMsg);
+    if (success) {
+      config.lastNotifiedDate = todayStr;
+      saveReminderConfig(userId, config);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Calcula o progresso do microciclo semanal e consistência do atleta.
  */
 export function getWeeklyMicrocycleStatus(
@@ -66,7 +162,6 @@ export function getWeeklyMicrocycleStatus(
   statusMessage: string;
 } {
   const now = new Date();
-  // Get start of current calendar week (Monday or 7 days back)
   const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const thisWeekSessions = sessions.filter((s) => new Date(s.date) >= oneWeekAgo);
@@ -81,9 +176,7 @@ export function getWeeklyMicrocycleStatus(
     statusMessage = `Resta${remaining > 1 ? 'm' : ''} ${remaining} treino${remaining > 1 ? 's' : ''} para concluir a meta de ${targetFrequency}x nesta semana!`;
   }
 
-  // Calculate streak: consecutive weeks with target frequency
   let consecutiveWeeksStreak = completedThisWeek >= targetFrequency ? 1 : 0;
-  // Simple heuristic calculation based on total sessions
   if (sessions.length >= targetFrequency * 2) {
     consecutiveWeeksStreak = Math.min(12, Math.floor(sessions.length / targetFrequency));
   }

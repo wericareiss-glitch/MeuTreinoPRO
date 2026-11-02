@@ -232,9 +232,9 @@ export const authStorage = {
 
     const gender: GenderOption = data.gender || 'male';
     const level: LevelOption = data.level || 'beginner';
-    const focus: FocusOption = data.focus || 'v_taper';
+    const focus: FocusOption = data.focus || 'balanced';
     const frequency: number = data.frequency || 4;
-    const preferredSplit: SplitOption = data.preferredSplit || (frequency <= 3 ? 'fullbody' : 'upper');
+    const preferredSplit: SplitOption = data.preferredSplit || (frequency === 3 || frequency === 6 ? 'ppl' : frequency === 5 ? 'abcde' : 'upper_lower');
     const exercisesPerMuscle: 1 | 2 = 1; // Padrão sempre 1 exercício por músculo
     const budget = data.weeklyBudget || calculateDefaultBudget(level, gender);
     const weights = getPresetWeights(focus);

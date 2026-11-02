@@ -14,7 +14,7 @@ import {
   Zap
 } from 'lucide-react';
 import { MuscleGroup, WorkoutSessionSummary } from '../types/workout';
-import { MUSCLE_NAMES } from '../data/exerciseDatabase';
+import { MUSCLE_NAMES, EXERCISE_DATABASE } from '../data/exerciseDatabase';
 
 interface MuscleRecoveryHeatmapProps {
   sessions: WorkoutSessionSummary[];
@@ -44,6 +44,28 @@ const ALL_MUSCLES: MuscleGroup[] = [
   'abs',
 ];
 
+const findMuscleKey = (item: { name: string; muscleGroup?: string; muscleKey?: string }): MuscleGroup | null => {
+  if (item.muscleKey && ALL_MUSCLES.includes(item.muscleKey as MuscleGroup)) {
+    return item.muscleKey as MuscleGroup;
+  }
+  if (item.muscleGroup && ALL_MUSCLES.includes(item.muscleGroup as MuscleGroup)) {
+    return item.muscleGroup as MuscleGroup;
+  }
+  if (item.muscleGroup) {
+    const entry = Object.entries(MUSCLE_NAMES).find(
+      ([, name]) => name.toLowerCase() === item.muscleGroup?.toLowerCase()
+    );
+    if (entry) return entry[0] as MuscleGroup;
+  }
+  for (const m of ALL_MUSCLES) {
+    const list = EXERCISE_DATABASE[m] || [];
+    if (list.some((ex) => ex.name.toLowerCase() === item.name.toLowerCase())) {
+      return m;
+    }
+  }
+  return null;
+};
+
 export const MuscleRecoveryHeatmap: React.FC<MuscleRecoveryHeatmapProps> = ({
   sessions,
   className = '',
@@ -63,8 +85,7 @@ export const MuscleRecoveryHeatmap: React.FC<MuscleRecoveryHeatmapProps> = ({
       if (isNaN(sessTime)) return;
 
       sess.completedExercises.forEach((item) => {
-        // Obter muscleKey do exercício através de muscleGroup ou muscleKey
-        const mKey = (item.muscleGroup as MuscleGroup) || ((item as any).muscleKey as MuscleGroup);
+        const mKey = findMuscleKey(item);
         if (mKey && !lastTrainedMap[mKey]) {
           lastTrainedMap[mKey] = sessTime;
         }

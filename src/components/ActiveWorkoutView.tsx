@@ -15,11 +15,14 @@ import {
   Activity,
   Disc,
   Check,
-  MoreVertical
+  MoreVertical,
+  Sparkles
 } from 'lucide-react';
-import { GeneratedWorkoutRoutine, WorkoutItem, WorkoutLogs, WorkoutSessionSummary } from '../types/workout';
+import { GeneratedWorkoutRoutine, WorkoutItem, WorkoutLogs, WorkoutSessionSummary, MuscleGroup } from '../types/workout';
 import { ExerciseCard } from './ExerciseCard';
 import { wakeLockManager } from '../utils/wakeLock';
+import { JointMobilityModal } from './JointMobilityModal';
+import { generateJointWarmupRoutine } from '../utils/jointMobilityEngine';
 
 interface ActiveWorkoutViewProps {
   routine: GeneratedWorkoutRoutine;
@@ -30,6 +33,7 @@ interface ActiveWorkoutViewProps {
   startedAt: number;
   workoutNotes: string;
   onUpdateWorkoutNotes: (notes: string) => void;
+  muscleTargetRir?: Partial<Record<MuscleGroup, number>>;
 
   onOpenAddExercise: () => void;
   onMoveUp: (index: number) => void;
@@ -60,6 +64,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   startedAt,
   workoutNotes,
   onUpdateWorkoutNotes,
+  muscleTargetRir,
   onOpenAddExercise,
   onMoveUp,
   onMoveDown,
@@ -80,7 +85,13 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
 }) => {
   const [isConfirmingCancel, setIsConfirmingCancel] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [isMobilityOpen, setIsMobilityOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
+
+  // Gera rotina de aquecimento articular dinâmica baseada nos exercícios do treino ativo
+  const mobilityRoutine = React.useMemo(() => {
+    return generateJointWarmupRoutine(workoutItems, routine.name);
+  }, [workoutItems, routine.name]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -161,13 +172,25 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   });
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const updateElapsed = () => {
       setElapsedSecs(Math.floor((Date.now() - (startedAt || Date.now())) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
+    };
+
+    const interval = setInterval(updateElapsed, 1000);
+
+    document.addEventListener('visibilitychange', updateElapsed);
+    window.addEventListener('focus', updateElapsed);
+    window.addEventListener('pageshow', updateElapsed);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', updateElapsed);
+      window.removeEventListener('focus', updateElapsed);
+      window.removeEventListener('pageshow', updateElapsed);
+    };
   }, [startedAt]);
 
-  // Screen Wake Lock API: impede que a tela do celular desligue durante o treino
+  // Screen Wake Lock API & Keep-Alive: impede que a tela apague e mantém timers ativos
   useEffect(() => {
     wakeLockManager.request().catch(() => {});
     const unbind = wakeLockManager.bindVisibilityListener();
@@ -312,6 +335,24 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             </span>
           </div>
         )}
+        {/* Sugestão de Aquecimento Articular antes da 1ª série */}
+        {completedSets === 0 && (
+          <div className="mt-2.5 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-amber-300 min-w-0">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="truncate">
+                Aquecimento articular sugerido ({mobilityRoutine.totalExercises} etapas · ~{mobilityRoutine.totalDurationMinutes} min)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMobilityOpen(true)}
+              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] shrink-0 cursor-pointer shadow-sm transition-all active:scale-95"
+            >
+              Iniciar Aquecimento
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 2. Barra de Controle e Adição (Layout Espaçoso e Otimizado para Mobile) */}
@@ -321,6 +362,17 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
         </span>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Botão de Aquecimento Articular Específico */}
+          <button
+            type="button"
+            onClick={() => setIsMobilityOpen(true)}
+            className="hidden sm:flex py-1.5 px-2.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+            title="Rotina de Aquecimento Articular Específica (3-5 min)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Mobilidade (3-5 min)</span>
+          </button>
+
           {/* Desktop Direct Tool Shortcuts */}
           {onOpenCadence && (
             <button
@@ -357,56 +409,69 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
           </button>
 
           {/* Mobile 3-Dots Menu for Active Workout Tools */}
-          {(onOpenCadence || onOpenPlateCalc) && (
-            <div className="relative sm:hidden" ref={toolsMenuRef}>
-              <button
-                type="button"
-                onClick={() => setShowToolsMenu((prev) => !prev)}
-                className="w-8 h-8 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 flex items-center justify-center transition-colors cursor-pointer active:scale-95"
-                title="Ferramentas do treino"
-                aria-label="Ferramentas do treino"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
+          <div className="relative sm:hidden" ref={toolsMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowToolsMenu((prev) => !prev)}
+              className="w-8 h-8 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+              title="Ferramentas do treino"
+              aria-label="Ferramentas do treino"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
 
-              {showToolsMenu && (
-                <div className="absolute right-0 top-9 w-52 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-1.5 z-30 animate-fadeIn space-y-1">
-                  {onOpenCadence && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowToolsMenu(false);
-                        onOpenCadence();
-                      }}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-purple-300 hover:bg-purple-950/40 text-left transition-colors cursor-pointer"
-                    >
-                      <Activity className="w-4 h-4 text-purple-400 shrink-0" />
-                      <div>
-                        <span className="block font-bold">Metrônomo</span>
-                        <span className="block text-[10px] text-slate-400">Cadência & TUT</span>
-                      </div>
-                    </button>
-                  )}
-                  {onOpenPlateCalc && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowToolsMenu(false);
-                        onOpenPlateCalc();
-                      }}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-sky-300 hover:bg-sky-950/40 text-left transition-colors cursor-pointer"
-                    >
-                      <Disc className="w-4 h-4 text-sky-400 shrink-0" />
-                      <div>
-                        <span className="block font-bold">Anilhas</span>
-                        <span className="block text-[10px] text-slate-400">Calculadora de barra</span>
-                      </div>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+            {showToolsMenu && (
+              <div className="absolute right-0 top-9 w-56 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-1.5 z-30 animate-fadeIn space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowToolsMenu(false);
+                    setIsMobilityOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-amber-300 hover:bg-amber-950/40 text-left transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="block font-bold">Aquecimento Articular</span>
+                    <span className="block text-[10px] text-slate-400">3-5 min de mobilidade específica</span>
+                  </div>
+                </button>
+
+                {onOpenCadence && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowToolsMenu(false);
+                      onOpenCadence();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-purple-300 hover:bg-purple-950/40 text-left transition-colors cursor-pointer"
+                  >
+                    <Activity className="w-4 h-4 text-purple-400 shrink-0" />
+                    <div>
+                      <span className="block font-bold">Metrônomo</span>
+                      <span className="block text-[10px] text-slate-400">Cadência & TUT</span>
+                    </div>
+                  </button>
+                )}
+                {onOpenPlateCalc && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowToolsMenu(false);
+                      onOpenPlateCalc();
+                    }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-sky-300 hover:bg-sky-950/40 text-left transition-colors cursor-pointer"
+                  >
+                    <Disc className="w-4 h-4 text-sky-400 shrink-0" />
+                    <div>
+                      <span className="block font-bold">Anilhas</span>
+                      <span className="block text-[10px] text-slate-400">Calculadora de barra</span>
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -434,6 +499,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             onRemoveSet={onRemoveSet}
             onOpenAnalytics={onOpenAnalytics}
             onOpenPlateCalc={onOpenPlateCalc}
+            targetMuscleRir={muscleTargetRir?.[item.muscleKey as MuscleGroup]}
           />
         ))}
       </div>
@@ -521,6 +587,14 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
           </button>
         )}
       </div>
+
+      {/* Modal de Aquecimento Articular Guiado */}
+      <JointMobilityModal
+        isOpen={isMobilityOpen}
+        onClose={() => setIsMobilityOpen(false)}
+        routine={mobilityRoutine}
+        routineTitle={routine.name}
+      />
     </div>
   );
 };

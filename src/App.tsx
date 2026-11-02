@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   Dumbbell, 
   Sparkles, 
@@ -26,6 +26,7 @@ import {
   Exercise,
   UserProfile,
   GeneratedWorkoutRoutine,
+  NutritionPlan,
   BodyMeasurement,
   rpeToRir,
   rirToRpe
@@ -52,6 +53,8 @@ import { CardioDock } from './components/CardioDock';
 import { FeedbackView } from './components/FeedbackView';
 import { WarmupModal } from './components/WarmupModal';
 import { PlateCalculatorModal } from './components/PlateCalculatorModal';
+import { NutritionModal } from './components/NutritionModal';
+import { DonationModal } from './components/DonationModal';
 import { HistoryModal } from './components/HistoryModal';
 import { SwapExerciseModal } from './components/SwapExerciseModal';
 import { AuthModal } from './components/AuthModal';
@@ -69,18 +72,24 @@ import { WorkoutListView } from './components/WorkoutListView';
 import { ActiveWorkoutView } from './components/ActiveWorkoutView';
 import { CardioView } from './components/CardioView';
 import { ProfileView } from './components/ProfileView';
+import { DeloadAssistantModal } from './components/DeloadAssistantModal';
+import { getDeloadState, analyzeFatigueAndDeload, DeloadState } from './utils/deloadEngine';
 import { TabType } from './types/navigation';
 import { useI18n } from './utils/i18n';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { useTheme } from './utils/theme';
 
 export default function App() {
   const { t } = useI18n();
+  // Inicializa e sincroniza o sistema global de temas (Escuro de alto contraste / Claro de alta legibilidade)
+  useTheme();
 
   // Navigation tab state: 'inicio' | 'treino' | 'cardio' | 'perfil'
   const [activeTab, setActiveTab] = useState<TabType>('inicio');
 
   // Current active authenticated user
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authStorage.getActiveUser());
+  const loadedUserIdRef = useRef<string | null>(currentUser?.id || null);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(() => !authStorage.getActiveUser());
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
@@ -90,7 +99,11 @@ export default function App() {
   const userKey = (key: string) => currentUser ? `alex_u_${currentUser.id}_${key}` : `alex_guest_${key}`;
 
   // Config state
-  const [split, setSplit] = useState<SplitOption>('upper');
+  const [split, setSplit] = useState<SplitOption>(() => {
+    const user = authStorage.getActiveUser();
+    if (!user) return 'upper_lower';
+    return safeStorage.get(`alex_u_${user.id}_split`, user.preferredSplit || (user.frequency === 3 || user.frequency === 6 ? 'ppl' : 'upper_lower'));
+  });
   const [strategy, setStrategy] = useState<StrategyOption>('synergy');
   // Padrão sempre 1 exercício por músculo
   const exercisesPerMuscle: 1 = 1;
@@ -135,6 +148,8 @@ export default function App() {
   const [timerRestSeconds, setTimerRestSeconds] = useState(30);
 
   // Modals state
+  const [isNutritionOpen, setIsNutritionOpen] = useState(false);
+  const [isDonationOpen, setIsDonationOpen] = useState(false);
   const [isCadenceOpen, setIsCadenceOpen] = useState(false);
   const [isPlateCalcOpen, setIsPlateCalcOpen] = useState(false);
   const [plateCalcWeight, setPlateCalcWeight] = useState<number | undefined>(undefined);
@@ -166,6 +181,11 @@ export default function App() {
   const [summaryModalSession, setSummaryModalSession] = useState<WorkoutSessionSummary | null>(null);
   const [isManualWorkoutOpen, setIsManualWorkoutOpen] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<GeneratedWorkoutRoutine | null>(null);
+  const [isDeloadOpen, setIsDeloadOpen] = useState(false);
+  const [deloadState, setDeloadState] = useState<DeloadState | null>(() => {
+    const user = authStorage.getActiveUser();
+    return user ? getDeloadState(user.id) : null;
+  });
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -177,9 +197,25 @@ export default function App() {
     }, 2800);
   }, []);
 
+  // Análise científica de fadiga acumulada e recomendação de Deload
+  const fatigueAnalysis = useMemo(() => {
+    if (!currentUser) {
+      return {
+        recommendDeload: false,
+        fatigueScore: 15,
+        consecutiveHeavyWeeks: 0,
+        highRpeSetsCount: 0,
+        mrvExceededMuscles: [],
+        reasons: [],
+      };
+    }
+    return analyzeFatigueAndDeload(currentUser, sessions, weeklyCompletedSets);
+  }, [currentUser, sessions, weeklyCompletedSets]);
+
   // Sync isolated user state whenever currentUser changes
   useEffect(() => {
     if (!currentUser) {
+      loadedUserIdRef.current = null;
       setRoutines([]);
       setActiveRoutineId(null);
       setActiveRoutineStartedAt(null);
@@ -193,12 +229,14 @@ export default function App() {
     }
     const uid = currentUser.id;
 
-    const defaultSplit = currentUser.preferredSplit || (
+    const defaultSplit: SplitOption = currentUser.preferredSplit || (
       currentUser.focus === 'glutes' 
         ? 'lower' 
-        : (currentUser.frequency || 4) <= 3 
-        ? 'fullbody' 
-        : 'upper'
+        : currentUser.frequency === 3 || currentUser.frequency === 6
+        ? 'ppl' 
+        : currentUser.frequency === 5
+        ? 'abcde'
+        : 'upper_lower'
     );
     setSplit(safeStorage.get(`alex_u_${uid}_split`, defaultSplit));
     setStrategy(safeStorage.get(`alex_u_${uid}_strategy`, 'synergy'));
@@ -218,6 +256,9 @@ export default function App() {
     setWeeklyCompletedSets(safeStorage.get(`alex_u_${uid}_weekly_volume`, {} as Record<MuscleGroup, number>));
     setWorkoutNotes(safeStorage.get(`alex_u_${uid}_workout_notes`, ''));
     setMeasurements(safeStorage.get(`alex_u_${uid}_measurements`, []));
+
+    // Marca o ID do usuário cujos dados foram carregados na memória
+    loadedUserIdRef.current = uid;
   }, [currentUser?.id]);
 
   // Update sound manager mute state
@@ -241,9 +282,9 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser?.id]);
 
-  // Persist user-isolated settings
+  // Persist user-isolated settings (somente após os dados do usuário estarem carregados)
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     const uid = currentUser.id;
     safeStorage.set(`alex_u_${uid}_split`, split);
     safeStorage.set(`alex_u_${uid}_strategy`, strategy);
@@ -255,19 +296,19 @@ export default function App() {
 
   // Persist routines
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_routines`, routines);
   }, [routines, currentUser]);
 
   // Persist workout items
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_workout`, workoutItems);
   }, [workoutItems, currentUser]);
 
   // Persist logs
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_current_logs`, logs);
   }, [logs, currentUser]);
 
@@ -277,12 +318,13 @@ export default function App() {
       safeStorage.set('alex_guest_workout_notes', workoutNotes);
       return;
     }
+    if (loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_workout_notes`, workoutNotes);
   }, [workoutNotes, currentUser]);
 
   // Persist measurements
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_measurements`, measurements);
   }, [measurements, currentUser]);
 
@@ -375,11 +417,20 @@ export default function App() {
   }, [currentUser, showToast]);
 
   // Geração de rotinas da semana (ACUMULA para o atleta poder escolher entre as opções)
-  const handleGenerateWeeklyRoutines = useCallback(() => {
+  const handleGenerateWeeklyRoutines = useCallback((forcedSplit?: SplitOption) => {
     if (!currentUser) return;
+    const splitToUse: SplitOption = forcedSplit || split || currentUser.preferredSplit || (
+      currentUser.focus === 'glutes'
+        ? 'lower'
+        : currentUser.frequency === 3 || currentUser.frequency === 6
+        ? 'ppl'
+        : currentUser.frequency === 5
+        ? 'abcde'
+        : 'upper_lower'
+    );
     const newRoutines = generateWeeklyRoutines({
       user: currentUser,
-      split,
+      split: splitToUse,
       strategy,
       manualWeeklySets: weeklyBudget,
       level,
@@ -387,11 +438,13 @@ export default function App() {
       restSeconds,
     });
     setRoutines((prev) => {
-      const updated = [...prev, ...newRoutines];
+      // Preserve custom/manual routines, replace weekly split routines
+      const customRoutines = prev.filter((r) => r.isCustom);
+      const updated = [...newRoutines, ...customRoutines];
       safeStorage.set(`alex_u_${currentUser.id}_routines`, updated);
       return updated;
     });
-    showToast(`${newRoutines.length} treinos gerados e adicionados à sua lista!`);
+    showToast(`Rotinas geradas: ${newRoutines.length} treinos para ${weeklyBudget} séries semanais!`);
   }, [currentUser, split, strategy, weeklyBudget, level, equip, restSeconds, showToast]);
 
   // Geração de Treino Rápido (Aleatório balanceado Full Body / Dobradiça)
@@ -450,7 +503,16 @@ export default function App() {
       const hasInit = safeStorage.get(`alex_u_${currentUser.id}_has_init_routines`, false);
       if (!hasInit && routines.length === 0) {
         safeStorage.set(`alex_u_${currentUser.id}_has_init_routines`, true);
-        handleGenerateWeeklyRoutines();
+        const targetSplit: SplitOption = currentUser.preferredSplit || (
+          currentUser.focus === 'glutes'
+            ? 'lower'
+            : currentUser.frequency === 3 || currentUser.frequency === 6
+            ? 'ppl'
+            : currentUser.frequency === 5
+            ? 'abcde'
+            : 'upper_lower'
+        );
+        handleGenerateWeeklyRoutines(targetSplit);
       }
     }
   }, [currentUser?.id, handleGenerateWeeklyRoutines, routines.length]);
@@ -654,30 +716,44 @@ export default function App() {
   // Finish and save session
   const finishAndSaveSession = () => {
     if (!currentUser) return;
-    const completedKeys = Object.keys(logs).filter((k) => logs[k].done);
+    // Auto-mark any set that has both weight and reps filled as completed
+    const finalLogs = { ...logs };
+    workoutItems.forEach((item) => {
+      for (let s = 1; s <= item.sets; s++) {
+        const key = `${item.exercise.id}_${s}`;
+        const log = finalLogs[key];
+        if (log && !log.done && parseFloat(log.weight) > 0 && parseInt(log.reps, 10) > 0) {
+          finalLogs[key] = { ...log, done: true };
+        }
+      }
+    });
+
+    const completedKeys = Object.keys(finalLogs).filter((k) => finalLogs[k].done);
     if (completedKeys.length === 0) {
-      showToast('Conclua ao menos uma série antes de salvar a sessão.');
+      showToast('Preencha ao menos uma série com carga e repetições antes de salvar a sessão.');
       return;
     }
 
-    const totalVolumeLoad = calculateVolumeLoad(logs);
+    const totalVolumeLoad = calculateVolumeLoad(finalLogs);
 
     // Build completed exercise summary
     const completedExercisesSummary = workoutItems
       .map((item) => {
-        const itemSets: { weight: number; reps: number; rpe?: string }[] = [];
+        const itemSets: { weight: number; reps: number; rpe?: string; rir?: string }[] = [];
         for (let s = 1; s <= item.sets; s++) {
           const key = `${item.exercise.id}_${s}`;
-          if (logs[key]?.done) {
+          if (finalLogs[key]?.done) {
             itemSets.push({
-              weight: parseFloat(logs[key].weight) || 0,
-              reps: parseInt(logs[key].reps, 10) || 0,
-              rpe: logs[key].rpe,
+              weight: parseFloat(finalLogs[key].weight) || 0,
+              reps: parseInt(finalLogs[key].reps, 10) || 0,
+              rpe: finalLogs[key].rpe,
+              rir: finalLogs[key].rir,
             });
           }
         }
         return {
           name: item.exercise.name,
+          muscleKey: item.muscleKey,
           muscleGroup: MUSCLE_NAMES[item.muscleKey],
           sets: itemSets,
         };
@@ -700,7 +776,7 @@ export default function App() {
     safeStorage.set(`alex_u_${uid}_sessions`, updatedSessions);
 
     // Save logs as history for next time
-    const updatedHistory = { ...history, ...logs };
+    const updatedHistory = { ...history, ...finalLogs };
     setHistory(updatedHistory);
     safeStorage.set(`alex_u_${uid}_history_logs`, updatedHistory);
 
@@ -837,11 +913,47 @@ export default function App() {
     }
   };
 
+  // Nutrition Plan Save Handler
+  const handleSaveNutritionPlan = (plan: NutritionPlan) => {
+    if (!currentUser) return;
+    const updated = authStorage.updateProfile(currentUser.id, { nutritionPlan: plan });
+    if (updated) {
+      setCurrentUser(updated);
+      showToast('Plano nutricional salvo no perfil! 🍎');
+    }
+  };
+
   // Profile and Auth Actions
   const handleAuthSuccess = (user: UserProfile) => {
     setCurrentUser(user);
     setIsAuthOpen(false);
     showToast(`Bem-vindo, ${user.name}!`);
+    const targetSplit: SplitOption = user.preferredSplit || (
+      user.focus === 'glutes'
+        ? 'lower'
+        : user.frequency === 3 || user.frequency === 6
+        ? 'ppl'
+        : user.frequency === 5
+        ? 'abcde'
+        : 'upper_lower'
+    );
+    setSplit(targetSplit);
+    safeStorage.set(`alex_u_${user.id}_split`, targetSplit);
+
+    const existingRoutines = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${user.id}_routines`, []);
+    if (existingRoutines.length === 0) {
+      const generated = generateWeeklyRoutines({
+        user,
+        split: targetSplit,
+        manualWeeklySets: user.weeklyBudget,
+        level: user.level || 'intermediate',
+        equip: 'full_gym',
+        restSeconds: 30,
+      });
+      setRoutines(generated);
+      safeStorage.set(`alex_u_${user.id}_routines`, generated);
+      safeStorage.set(`alex_u_${user.id}_has_init_routines`, true);
+    }
   };
 
   const handleLogout = () => {
@@ -865,7 +977,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#090d16] text-[#f1f5f9] pb-32">
+    <div className="min-h-screen bg-theme-app text-theme-body pb-32 transition-colors duration-200">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 font-extrabold text-xs sm:text-sm px-5 py-2.5 rounded-full shadow-2xl shadow-emerald-500/40 animate-bounce">
@@ -888,6 +1000,10 @@ export default function App() {
         onOpenAnalytics={() => handleOpenAnalytics()}
         onOpenMeasurements={() => setIsMeasurementsOpen(true)}
         onOpenCadence={() => setIsCadenceOpen(true)}
+        onOpenDeloadAssistant={() => setIsDeloadOpen(true)}
+        isDeloadActive={!!deloadState?.active}
+        onOpenNutrition={() => setIsNutritionOpen(true)}
+        onOpenDonation={() => setIsDonationOpen(true)}
         onShare={handleShare}
         isMuted={isMuted}
         onToggleMute={() => setIsMuted(!isMuted)}
@@ -921,7 +1037,15 @@ export default function App() {
             workoutNotes={workoutNotes}
             onUpdateWorkoutNotes={setWorkoutNotes}
             onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-            onGoToWorkout={() => setActiveTab('treino')}
+            onOpenDeloadAssistant={() => setIsDeloadOpen(true)}
+            isDeloadActive={!!deloadState?.active}
+            onGoToWorkout={() => {
+              if (activeRoutineId) {
+                setActiveTab('treino_ativo');
+              } else {
+                setActiveTab('treino');
+              }
+            }}
             onViewSummary={(sess) => setSummaryModalSession(sess)}
             onOpenAnalytics={() => handleOpenAnalytics()}
             onOpenMeasurements={() => setIsMeasurementsOpen(true)}
@@ -976,6 +1100,7 @@ export default function App() {
             onRemoveSet={handleRemoveSet}
             onOpenCadence={() => setIsCadenceOpen(true)}
             onOpenPlateCalc={handleOpenPlateCalc}
+            muscleTargetRir={currentUser?.muscleTargetRir}
             onFinishSession={finishAndSaveSession}
             onDiscardSession={handleDiscardActiveWorkout}
             onBackToList={() => setActiveTab('treino')}
@@ -1025,6 +1150,8 @@ export default function App() {
             onGenerateRoutines={handleGenerateWeeklyRoutines}
             onGoToWorkoutTab={() => setActiveTab('treino')}
             onGoToFeedback={() => setActiveTab('feedback')}
+            onOpenNutrition={() => setIsNutritionOpen(true)}
+            onOpenDonation={() => setIsDonationOpen(true)}
           />
         )}
 
@@ -1135,7 +1262,24 @@ export default function App() {
         onClose={() => setSummaryModalSession(null)}
         session={summaryModalSession}
         athleteName={currentUser?.name || 'Atleta'}
+        previousSessions={sessions}
       />
+
+      {currentUser && (
+        <DeloadAssistantModal
+          isOpen={isDeloadOpen}
+          onClose={() => setIsDeloadOpen(false)}
+          user={currentUser}
+          analysis={fatigueAnalysis}
+          currentDeload={deloadState}
+          currentBudget={weeklyBudget}
+          onDeloadStateChange={() => {
+            const next = getDeloadState(currentUser.id);
+            setDeloadState(next);
+            showToast(next?.active ? 'Semana de Deload Ativada (-40% séries) 🧘‍♂️' : 'Deload desativado. Volume restaurado!');
+          }}
+        />
+      )}
 
       <ExerciseAnalyticsModal
         isOpen={isAnalyticsOpen}
@@ -1158,6 +1302,20 @@ export default function App() {
         onSaveRoutine={handleSaveManualRoutine}
         editingRoutine={editingRoutine}
         existingRoutinesCount={routines.length}
+      />
+
+      {currentUser && (
+        <NutritionModal
+          isOpen={isNutritionOpen}
+          onClose={() => setIsNutritionOpen(false)}
+          user={currentUser}
+          onSavePlan={handleSaveNutritionPlan}
+        />
+      )}
+
+      <DonationModal
+        isOpen={isDonationOpen}
+        onClose={() => setIsDonationOpen(false)}
       />
     </div>
   );

@@ -32,7 +32,10 @@ import {
   MessageSquare,
   MoreVertical,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Heart,
+  Apple,
+  Flame
 } from 'lucide-react';
 import { 
   UserProfile, 
@@ -50,6 +53,8 @@ import { MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { useI18n, Language } from '../utils/i18n';
 import { WorkoutConfig } from './WorkoutConfig';
 import { PWAInstallButton } from './PWAInstallButton';
+import { ConsistencyCalendar } from './ConsistencyCalendar';
+import { ThemeToggle } from './ThemeToggle';
 
 interface ProfileViewProps {
   user: UserProfile;
@@ -78,6 +83,8 @@ interface ProfileViewProps {
   onGenerateRoutines: () => void;
   onGoToWorkoutTab: () => void;
   onGoToFeedback?: () => void;
+  onOpenNutrition?: () => void;
+  onOpenDonation?: () => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -106,6 +113,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onGenerateRoutines,
   onGoToWorkoutTab,
   onGoToFeedback,
+  onOpenNutrition,
+  onOpenDonation,
 }) => {
   const { t, language } = useI18n();
 
@@ -113,12 +122,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [name, setName] = useState(user.name);
   const [weightKg, setWeightKg] = useState(user.weightKg);
   const [heightM, setHeightM] = useState(user.heightM);
+  const [age, setAge] = useState<number>(user.age || 28);
+  const [bodyFatPercent, setBodyFatPercent] = useState<number | undefined>(user.bodyFatPercent);
   const [gender, setGender] = useState<GenderOption>(user.gender || 'male');
   const [level, setLevel] = useState<LevelOption>(user.level || 'beginner');
   const [focus, setFocus] = useState<FocusOption>(user.focus || 'v_taper');
   const [frequency, setFrequency] = useState<number>(user.frequency || 4);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [genSuccess, setGenSuccess] = useState(false);
+
+  // RIR alvo por grupo muscular (Periodização Granular)
+  const [muscleTargetRir, setMuscleTargetRir] = useState<Partial<Record<MuscleGroup, number>>>(() => user.muscleTargetRir || {});
+  const [rirSavedSuccess, setRirSavedSuccess] = useState(false);
 
   // Change password state
   const [showPassChange, setShowPassChange] = useState(false);
@@ -226,15 +241,54 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       name: name.trim(),
       weightKg,
       heightM,
+      age,
+      bodyFatPercent,
       gender,
       level,
       focus,
       frequency,
+      muscleTargetRir,
     });
     if (updated) {
       onUpdateUser(updated);
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2200);
+    }
+  };
+
+  const handleSaveTargetRir = () => {
+    const updated = authStorage.updateProfile(user.id, {
+      muscleTargetRir,
+    });
+    if (updated) {
+      onUpdateUser(updated);
+      setRirSavedSuccess(true);
+      setTimeout(() => setRirSavedSuccess(false), 2200);
+    }
+  };
+
+  const handleApplyHypertrophyDefaultRir = () => {
+    const defaultRir: Partial<Record<MuscleGroup, number>> = {
+      chest: 1,
+      back: 1,
+      quadriceps: 1,
+      hamstrings: 1,
+      shoulders: 1,
+      rear_delts: 1,
+      biceps: 1,
+      triceps: 1,
+      glutes: 1,
+      calves: 0,
+      abs: 0,
+    };
+    setMuscleTargetRir(defaultRir);
+    const updated = authStorage.updateProfile(user.id, {
+      muscleTargetRir: defaultRir,
+    });
+    if (updated) {
+      onUpdateUser(updated);
+      setRirSavedSuccess(true);
+      setTimeout(() => setRirSavedSuccess(false), 2200);
     }
   };
 
@@ -421,9 +475,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* Edit Body Metrics Form */}
         <form onSubmit={handleSaveProfile} className="mt-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             {/* Full Name */}
-            <div>
+            <div className="sm:col-span-2 lg:col-span-1">
               <label className="text-xs font-semibold text-slate-300 block mb-1">
                 {t.nameLabel}
               </label>
@@ -469,6 +523,50 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
                 />
                 <span className="absolute right-2.5 text-xs text-slate-500 font-mono">m</span>
+              </div>
+            </div>
+
+            {/* Idade */}
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                <span>Idade</span>
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="number"
+                  step="1"
+                  min="12"
+                  max="100"
+                  value={age}
+                  onChange={(e) => setAge(parseInt(e.target.value, 10) || 25)}
+                  className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-10 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                />
+                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">anos</span>
+              </div>
+            </div>
+
+            {/* % Gordura Corporal (Opcional) */}
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <Flame className="w-3.5 h-3.5 text-rose-400" />
+                  <span>% Gordura</span>
+                </span>
+                <span className="text-[10px] text-slate-500">Opcional</span>
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="number"
+                  step="0.5"
+                  min="3"
+                  max="60"
+                  placeholder="Ex: 14"
+                  value={bodyFatPercent !== undefined ? bodyFatPercent : ''}
+                  onChange={(e) => setBodyFatPercent(e.target.value ? parseFloat(e.target.value) : undefined)}
+                  className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                />
+                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">%</span>
               </div>
             </div>
           </div>
@@ -956,6 +1054,349 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
+      {/* RIR ALVO POR GRUPO MUSCULAR (Periodização Granular) */}
+      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800 mb-5">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+              <Target className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-extrabold text-white">
+                  RIR Alvo por Grupo Muscular
+                </h2>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Periodização Fina
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Defina quantas repetições na reserva (RIR) cada músculo deve buscar antes de encerrar a série
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleApplyHypertrophyDefaultRir}
+              className="px-3.5 py-2 rounded-xl font-bold text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              title="Aplica RIR 1-2 para grandes compostos e RIR 0-1 para isoladores/braços"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Padrão Hipertrofia (RIR 1-2)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSaveTargetRir}
+              className="px-4 py-2 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center gap-1.5 transition-all shadow-md shadow-emerald-500/20 cursor-pointer active:scale-95"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Salvar RIR</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Guia Rápido de RIR / RPE */}
+        <div className="bg-[#0a101d] p-3.5 rounded-2xl border border-slate-800 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+            <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300">
+              <span className="font-mono font-black block">RIR 0 · RPE 10</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Falha mecânica total</span>
+            </div>
+            <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300">
+              <span className="font-mono font-black block">RIR 1 · RPE 9</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">1 rep sobra (máx. hipertrofia)</span>
+            </div>
+            <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+              <span className="font-mono font-black block">RIR 2 · RPE 8</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">2 reps sobram (estímulo limpo)</span>
+            </div>
+            <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-300">
+              <span className="font-mono font-black block">RIR 3 · RPE 7</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">3 reps sobram (técnico/força)</span>
+            </div>
+            <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-300 col-span-2 sm:col-span-1">
+              <span className="font-mono font-black block">RIR 4 · RPE 6</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Recuperativo / Submáximo</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 11 Muscle Target RIR Selector Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {ALL_MUSCLE_GROUPS.map((m) => {
+            const currentRir = muscleTargetRir[m] !== undefined ? muscleTargetRir[m]! : 1;
+            const muscleName = t.muscles[m] || MUSCLE_NAMES[m];
+
+            return (
+              <div
+                key={m}
+                className="bg-[#0a101d] p-3 rounded-2xl border border-slate-800/90 flex items-center justify-between gap-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs font-bold text-white block truncate">
+                    {muscleName}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400 block">
+                    Alvo: <strong className="text-amber-400">RIR {currentRir}</strong> (RPE {10 - currentRir})
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  {[0, 1, 2, 3, 4].map((rirVal) => {
+                    const isSelected = currentRir === rirVal;
+                    let badgeColor = 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white';
+                    if (isSelected) {
+                      if (rirVal === 0) badgeColor = 'bg-rose-500 text-slate-950 font-black shadow-sm ring-1 ring-rose-400';
+                      else if (rirVal === 1) badgeColor = 'bg-amber-400 text-slate-950 font-black shadow-sm ring-1 ring-amber-300';
+                      else if (rirVal === 2) badgeColor = 'bg-emerald-400 text-slate-950 font-black shadow-sm ring-1 ring-emerald-300';
+                      else if (rirVal === 3) badgeColor = 'bg-sky-400 text-slate-950 font-black shadow-sm ring-1 ring-sky-300';
+                      else badgeColor = 'bg-purple-400 text-slate-950 font-black shadow-sm ring-1 ring-purple-300';
+                    }
+
+                    return (
+                      <button
+                        key={rirVal}
+                        type="button"
+                        onClick={() => {
+                          setMuscleTargetRir((prev) => ({
+                            ...prev,
+                            [m]: rirVal,
+                          }));
+                        }}
+                        className={`w-7 h-7 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${badgeColor}`}
+                        title={`${muscleName}: RIR ${rirVal} (RPE ${10 - rirVal})`}
+                      >
+                        {rirVal}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {rirSavedSuccess && (
+          <div className="mt-4 p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center gap-2 text-xs font-bold text-emerald-400">
+            <Check className="w-4 h-4 text-emerald-400" />
+            <span>RIR alvo por grupo muscular salvo com sucesso! O motor de periodização já está calibrado.</span>
+          </div>
+        )}
+      </div>
+
+      {/* MÓDULO DE NUTRIÇÃO & GASTO ENERGÉTICO (TMB / GET / MACROS) */}
+      <div className="bg-gradient-to-br from-[#0e172a] via-[#0f1d32] to-[#0a1222] border-2 border-emerald-500/25 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
+        <div className="absolute -right-8 -bottom-8 w-48 h-48 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/30 shadow-inner">
+              <Apple className="w-6 h-6 text-emerald-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-white">
+                  Nutrição, TMB & Gasto Energético (GET)
+                </h2>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Mifflin-St Jeor & Katch
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Cálculo metabólico e distribuição de macronutrientes para Cutting, Manutenção ou Bulking
+              </p>
+            </div>
+          </div>
+
+          {onOpenNutrition && (
+            <button
+              type="button"
+              onClick={onOpenNutrition}
+              className="px-5 py-2.5 rounded-2xl font-black text-xs bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95 shrink-0"
+            >
+              <Flame className="w-4 h-4 fill-slate-950" />
+              <span>{user.nutritionPlan ? 'Recalcular Macros' : 'Calcular Minha Dieta'}</span>
+            </button>
+          )}
+        </div>
+
+        {/* Resumo do Plano Nutricional Atual se existir */}
+        {user.nutritionPlan ? (
+          <div className="mt-5 space-y-4 relative z-10">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Meta Calórica</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400 block mt-0.5">
+                  {user.nutritionPlan.targetCalories.toLocaleString('pt-BR')} <span className="text-xs font-normal text-slate-400">kcal</span>
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-300 block mt-0.5">
+                  {user.nutritionPlan.goal === 'cutting' ? '🔥 Cutting Moderado'
+                    : user.nutritionPlan.goal === 'cutting_aggressive' ? '⚡ Cutting Agressivo'
+                    : user.nutritionPlan.goal === 'bulking_clean' ? '💪 Bulking Limpo'
+                    : user.nutritionPlan.goal === 'bulking_aggressive' ? '🚀 Bulking Agressivo'
+                    : '⚖️ Manutenção'}
+                </span>
+              </div>
+
+              <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Proteína</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-sky-400 block mt-0.5">
+                  {user.nutritionPlan.proteinGrams}g
+                </span>
+                <span className="text-[11px] text-slate-400 block mt-0.5">
+                  {user.nutritionPlan.proteinPerKg.toFixed(1)} g/kg corporal
+                </span>
+              </div>
+
+              <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Carboidratos</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-amber-400 block mt-0.5">
+                  {user.nutritionPlan.carbsGrams}g
+                </span>
+                <span className="text-[11px] text-slate-400 block mt-0.5">
+                  {(user.nutritionPlan.carbsGrams / (user.weightKg || 70)).toFixed(1)} g/kg corporal
+                </span>
+              </div>
+
+              <div className="bg-[#070d19] border border-slate-800 rounded-2xl p-3.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Gorduras & Água</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-rose-400 block mt-0.5">
+                  {user.nutritionPlan.fatsGrams}g
+                </span>
+                <span className="text-[11px] text-sky-400 font-semibold block mt-0.5">
+                  💧 {((user.nutritionPlan.waterMl || 3000) / 1000).toFixed(1)}L de água/dia
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-[#080d19] border border-slate-800/90 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
+              <div className="flex items-center gap-3">
+                <span>TMB Basal: <strong className="text-white font-mono">{user.nutritionPlan.tmb} kcal</strong></span>
+                <span>•</span>
+                <span>Gasto Total (GET): <strong className="text-white font-mono">{user.nutritionPlan.tdee} kcal</strong></span>
+                <span>•</span>
+                {(() => {
+                  const balance = user.nutritionPlan.targetCalories - user.nutritionPlan.tdee;
+                  return (
+                    <span>Balanço: <strong className={`font-mono font-bold ${balance < 0 ? 'text-emerald-400' : balance > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
+                      {balance > 0 ? `+${balance}` : balance} kcal
+                    </strong></span>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 p-4 rounded-2xl bg-[#080d19] border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+            <div>
+              <span className="text-xs font-bold text-white block mb-0.5">
+                Nenhum plano calórico calculado ainda
+              </span>
+              <p className="text-[11px] text-slate-400">
+                Utilize seu peso atual ({user.weightKg}kg), altura ({user.heightM}m) e idade ({user.age || 28} anos) para descobrir seu gasto calórico exato e gramas de proteína recomendadas.
+              </p>
+            </div>
+            {onOpenNutrition && (
+              <button
+                type="button"
+                onClick={onOpenNutrition}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
+              >
+                <span>Abrir Calculadora</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* PÁGINA / CARD DE DOAÇÃO PIX */}
+      <div className="bg-gradient-to-br from-[#121024] via-[#1a1233] to-[#0d0c1d] border-2 border-rose-500/30 rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rose-500/20 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-gradient-to-tr from-rose-500/20 to-pink-500/20 text-rose-400 border border-rose-500/30 shadow-inner">
+              <Heart className="w-6 h-6 text-rose-400 fill-rose-500/30" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-white">
+                  Apoie o Aplicativo com PIX
+                </h2>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  Gratuito & Independente
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Incentive o desenvolvimento contínuo deste app com qualquer valor!
+              </p>
+            </div>
+          </div>
+
+          {onOpenDonation && (
+            <button
+              type="button"
+              onClick={onOpenDonation}
+              className="px-5 py-2.5 rounded-2xl font-black text-xs bg-gradient-to-r from-rose-500 via-pink-500 to-rose-400 hover:from-rose-400 hover:to-pink-300 text-white flex items-center justify-center gap-2 shadow-lg shadow-rose-500/25 transition-all cursor-pointer active:scale-95 shrink-0"
+            >
+              <Heart className="w-4 h-4 fill-white" />
+              <span>Ver Opções de Apoio</span>
+            </button>
+          )}
+        </div>
+
+        {/* Chave PIX Rápida com 1-Clique */}
+        <div className="mt-5 p-4 rounded-2xl bg-[#0a0817] border border-rose-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+          <div>
+            <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">
+              Chave PIX E-mail (Titular: Alex Vieira)
+            </span>
+            <span className="font-mono font-bold text-white text-sm sm:text-base select-all block mt-0.5">
+              alex.vieira.123@hotmail.com
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText('alex.vieira.123@hotmail.com');
+              if (onOpenDonation) {
+                onOpenDonation();
+              }
+            }}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+            title="Copiar chave PIX e abrir opções"
+          >
+            <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
+            <span>Copiar PIX & Apoiar</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 🎨 Aparência & Tema Visual */}
+      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-6 shadow-2xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-extrabold text-white">
+                Aparência & Tema Visual
+              </h2>
+              <p className="text-xs text-slate-400">
+                Alterne entre Modo Escuro de alto contraste e Modo Claro de alta legibilidade.
+              </p>
+            </div>
+          </div>
+          <ThemeToggle variant="segmented" />
+        </div>
+      </div>
+
       {/* Organizar Treinos & Ferramentas */}
       <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl">
         <div className="flex items-center gap-3 mb-2">
@@ -1079,6 +1520,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Calendário de Consistência & Histórico de Dias Treinados */}
+      <ConsistencyCalendar
+        sessions={sessions}
+        weeklyFrequencyGoal={user.frequency || 4}
+      />
 
       {/* Histórico Geral do Perfil */}
       <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl">

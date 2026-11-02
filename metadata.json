@@ -1,6 +1,6 @@
 {
-  "name": "MeuTreino Pro - Hipertrofia Individualizada",
-  "description": "Sistema avançado de periodização, cálculo de 6RM, sobrecarga progressiva e prescrição individualizada de musculação e cardio.",
+  "name": "MeuTreino Pro",
+  "description": "Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

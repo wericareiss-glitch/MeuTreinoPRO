@@ -1,26 +1,255 @@
 @import "tailwindcss";
 
-/* Barra de rolagem discreta e transparente */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+/* ==========================================================================
+   Global CSS Variable System (High-Contrast Dark vs Readable Light Mode)
+   MeuTreino Pro Core Branding Preserved
+   ========================================================================== */
+
+:root {
+  /* Default: High-Contrast Dark Mode */
+  --color-scheme: dark;
+  --bg-app: #080d1a;
+  --bg-surface: #0f172a;
+  --bg-surface-secondary: #121c32;
+  --bg-card: #0c1424;
+  --bg-card-subtle: #141f36;
+  --bg-input: #080d19;
+  --border-subtle: #1e293b;
+  --border-strong: #334155;
+  --text-heading: #ffffff;
+  --text-body: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+  
+  /* Core Branding (Emerald / Pro Accents) */
+  --brand-emerald: #10b981;
+  --brand-emerald-hover: #34d399;
+  --brand-emerald-dark: #059669;
+  --brand-emerald-surface: rgba(16, 185, 129, 0.15);
+  --brand-emerald-border: rgba(16, 185, 129, 0.3);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+[data-theme="light"],
+.theme-light {
+  /* High-Readability Light Mode */
+  --color-scheme: light;
+  --bg-app: #f4f6fa;
+  --bg-surface: #ffffff;
+  --bg-surface-secondary: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-subtle: #f8fafc;
+  --bg-input: #ffffff;
+  --border-subtle: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text-heading: #0f172a;
+  --text-body: #1e293b;
+  --text-muted: #475569;
+  --text-faint: #64748b;
+
+  /* Core Branding maintained with WCAG AAA legibility */
+  --brand-emerald: #059669;
+  --brand-emerald-hover: #047857;
+  --brand-emerald-dark: #065f46;
+  --brand-emerald-surface: rgba(5, 150, 105, 0.12);
+  --brand-emerald-border: rgba(5, 150, 105, 0.35);
+  --card-shadow: 0 4px 15px -3px rgba(15, 23, 42, 0.07), 0 2px 6px -2px rgba(15, 23, 42, 0.04);
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+/* Base Body Styles */
+html, body {
+  background-color: var(--bg-app);
+  color: var(--text-body);
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.25);
-  border-radius: 9999px;
-  transition: background-color 0.2s ease;
+/* ==========================================================================
+   CSS Variable Utility Classes
+   ========================================================================== */
+.bg-theme-app { background-color: var(--bg-app) !important; }
+.bg-theme-surface { background-color: var(--bg-surface) !important; }
+.bg-theme-card { background-color: var(--bg-card) !important; }
+.bg-theme-input { background-color: var(--bg-input) !important; }
+.text-theme-heading { color: var(--text-heading) !important; }
+.text-theme-body { color: var(--text-body) !important; }
+.text-theme-muted { color: var(--text-muted) !important; }
+.border-theme-subtle { border-color: var(--border-subtle) !important; }
+.border-theme-strong { border-color: var(--border-strong) !important; }
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.5);
+.animate-slideDown {
+  animation: slideDown 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ==========================================================================
+   Automated High-Readability Light Mode Transformations
+   Adapts hardcoded dark utilities to theme variables safely
+   ========================================================================== */
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+[data-theme="light"] .bg-\[\#090d16\],
+[data-theme="light"] .bg-\[\#080d1a\],
+[data-theme="light"] .bg-\[\#080d19\],
+[data-theme="light"] .bg-\[\#050811\] {
+  background-color: var(--bg-app) !important;
+}
+
+[data-theme="light"] .bg-\[\#0f172a\],
+[data-theme="light"] .bg-\[\#0c1424\],
+[data-theme="light"] .bg-\[\#0d1424\],
+[data-theme="light"] .bg-\[\#0c1322\],
+[data-theme="light"] .bg-\[\#0d1527\],
+[data-theme="light"] .bg-\[\#0a101d\],
+[data-theme="light"] .bg-\[\#0b1220\],
+[data-theme="light"] .bg-\[\#0a0817\] {
+  background-color: var(--bg-surface) !important;
+  box-shadow: var(--card-shadow);
+}
+
+[data-theme="light"] .bg-\[\#0d1424\]\/95,
+[data-theme="light"] .bg-\[\#0f172a\]\/95,
+[data-theme="light"] .bg-\[\#0f172a\]\/90,
+[data-theme="light"] .bg-\[\#090f1d\]\/95 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+[data-theme="light"] .bg-\[\#121c32\],
+[data-theme="light"] .bg-\[\#141f36\],
+[data-theme="light"] .bg-\[\#1a2947\],
+[data-theme="light"] .bg-\[\#16233b\] {
+  background-color: var(--bg-surface-secondary) !important;
+}
+
+[data-theme="light"] .bg-slate-950 {
+  background-color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-slate-900 {
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .bg-slate-900\/90,
+[data-theme="light"] .bg-slate-900\/95 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+[data-theme="light"] .bg-slate-800 {
+  background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] .bg-slate-800\/50,
+[data-theme="light"] .bg-slate-800\/60,
+[data-theme="light"] .bg-slate-800\/70,
+[data-theme="light"] .bg-slate-800\/80,
+[data-theme="light"] .bg-slate-800\/90 {
+  background-color: #f1f5f9 !important;
+}
+
+/* Borders in Light Mode */
+[data-theme="light"] .border-slate-800,
+[data-theme="light"] .border-slate-800\/80,
+[data-theme="light"] .border-slate-800\/60,
+[data-theme="light"] .border-slate-800\/50,
+[data-theme="light"] .border-slate-700,
+[data-theme="light"] .border-slate-750,
+[data-theme="light"] .border-\[\#1f2d47\],
+[data-theme="light"] .border-\[\#1e293b\],
+[data-theme="light"] .border-\[\#1d2942\],
+[data-theme="light"] .border-\[\#1f2b42\] {
+  border-color: var(--border-subtle) !important;
+}
+
+/* Typography in Light Mode */
+[data-theme="light"] .text-white {
+  color: var(--text-heading) !important;
+}
+
+/* Preserve white text on dark/vibrant colored badges and buttons */
+[data-theme="light"] .bg-emerald-500 .text-white,
+[data-theme="light"] .bg-emerald-600 .text-white,
+[data-theme="light"] .bg-rose-500 .text-white,
+[data-theme="light"] .bg-rose-600 .text-white,
+[data-theme="light"] .bg-amber-500 .text-white,
+[data-theme="light"] .bg-purple-600 .text-white,
+[data-theme="light"] .bg-blue-600 .text-white,
+[data-theme="light"] .bg-sky-600 .text-white,
+[data-theme="light"] button.bg-rose-600,
+[data-theme="light"] button.bg-emerald-600,
+[data-theme="light"] button.bg-emerald-500,
+[data-theme="light"] .btn-solid-white-text {
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .text-slate-100,
+[data-theme="light"] .text-slate-200 {
+  color: var(--text-heading) !important;
+}
+
+[data-theme="light"] .text-slate-300 {
+  color: var(--text-body) !important;
+}
+
+[data-theme="light"] .text-slate-400 {
+  color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .text-slate-500 {
+  color: var(--text-faint) !important;
+}
+
+/* Form Controls & Inputs in Light Mode */
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background-color: var(--bg-input) !important;
+  color: var(--text-heading) !important;
+  border-color: var(--border-strong) !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: var(--text-faint) !important;
+}
+
+/* Core Brand Colors in Light Mode */
+[data-theme="light"] .text-emerald-400 {
+  color: var(--brand-emerald) !important;
+}
+
+[data-theme="light"] .text-emerald-300 {
+  color: var(--brand-emerald-dark) !important;
+}
+
+[data-theme="light"] .bg-emerald-500\/10,
+[data-theme="light"] .bg-emerald-500\/15,
+[data-theme="light"] .bg-emerald-500\/20,
+[data-theme="light"] .bg-emerald-950\/30,
+[data-theme="light"] .bg-emerald-950\/40 {
+  background-color: var(--brand-emerald-surface) !important;
+}
+
+[data-theme="light"] .border-emerald-500\/30,
+[data-theme="light"] .border-emerald-500\/40,
+[data-theme="light"] .border-emerald-500\/25 {
+  border-color: var(--brand-emerald-border) !important;
+}
+
+/* Modals backdrop in Light Mode */
+[data-theme="light"] .bg-black\/70,
+[data-theme="light"] .bg-black\/75,
+[data-theme="light"] .bg-black\/80 {
+  background-color: rgba(15, 23, 42, 0.6) !important;
 }

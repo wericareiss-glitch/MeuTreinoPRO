@@ -1,27 +1,32 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>MeuTreino Pro - Hipertrofia Individualizada</title>
-    <meta name="description" content="Sistema avançado de periodização, cálculo de 6RM, sobrecarga progressiva e prescrição individualizada de musculação e cardio." />
-    <meta property="og:title" content="MeuTreino Pro - Hipertrofia Individualizada" />
-    <meta property="og:description" content="Sistema avançado de periodização, cálculo de 6RM, sobrecarga progressiva e prescrição individualizada de musculação e cardio." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MeuTreino Pro</title>
+    <meta name="description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
+    <meta property="og:title" content="MeuTreino Pro" />
+    <meta property="og:description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    
-    <!-- PWA Primary & iOS Safari Meta Tags -->
-    <meta name="theme-color" content="#090f1d" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="MeuTreino" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="shortcut icon" href="/favicon.ico" />
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('meutreino_theme');
+          var theme = saved === 'light' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', theme);
+          if (theme === 'light') {
+            document.documentElement.classList.add('theme-light');
+          } else {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-[#090f1d] text-slate-100 antialiased selection:bg-emerald-500 selection:text-slate-950">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+

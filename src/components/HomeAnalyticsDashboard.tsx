@@ -146,7 +146,7 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
             bestReps = r;
           }
 
-          const calc1RM = calculate1RM(w.toString(), r.toString());
+          const calc1RM = calculate1RM(w.toString(), r.toString(), set.rpe || set.rir);
           if (calc1RM && calc1RM > max1RM) {
             max1RM = calc1RM;
           }

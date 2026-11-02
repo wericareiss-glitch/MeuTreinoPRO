@@ -499,9 +499,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
                     type="button"
                     onClick={() => {
                       setRegFrequency(freq);
-                      if (freq <= 3) setRegSplit('fullbody');
-                      else if (freq === 4) setRegSplit('upper');
-                      else setRegSplit('push');
+                      if (freq === 2) setRegSplit('upper_lower');
+                      else if (freq === 3) setRegSplit('ppl');
+                      else if (freq === 4) setRegSplit('upper_lower');
+                      else if (freq === 5) setRegSplit('abcde');
+                      else setRegSplit('ppl');
                     }}
                     className={`py-2 px-1 rounded-xl border text-center transition-all cursor-pointer ${
                       regFrequency === freq

@@ -141,9 +141,11 @@ export function getOptimalProgressionSuggestion(
   // Exercícios de pernas/compostos sobem 2.5kg a 5kg. Membros superiores sobem 1kg a 2.5kg.
   const loadIncrement = isLowerBody && isCompound ? 5 : isCompound ? 2.5 : 1;
 
-  // REGRA 1: Todas as séries bateram o teto de repetições com RPE controlado (RPE <= 8.5, RIR >= 1-2)
+  const maxReps = Math.max(...prevSets.map((s) => s.reps));
+
+  // REGRA 1: Séries atingiram o teto de repetições com RPE controlado (RPE <= 8.5, RIR >= 1-2)
   // SOBRECARGA PROGRESSIVA CONFIRMADA!
-  if (avgReps >= repCeiling && maxRpe <= 8.5) {
+  if ((avgReps >= repCeiling || maxReps >= repCeiling) && maxRpe <= 8.5) {
     const newWeight = maxWeight + loadIncrement;
     return {
       exerciseId: exercise.id,
@@ -155,7 +157,7 @@ export function getOptimalProgressionSuggestion(
       suggestedRir: '2',
       suggestedRestSeconds: smartRest,
       status: 'progress',
-      reason: `Meta batida com sobra! Na sessão anterior você fez ~${avgReps.toFixed(0)} reps com RPE ${avgRpe.toFixed(1)} (RIR ~2). Sua força aumentou!`,
+      reason: `Meta batida com folga! Na sessão anterior você fez ${maxReps} reps com RPE ${avgRpe.toFixed(1)} (RIR ~2). Sua força aumentou!`,
       actionText: `Subir para ${newWeight}kg (+${loadIncrement}kg)`,
     };
   }

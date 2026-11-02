@@ -307,7 +307,9 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setOpenMenuId(null);
-                                  onDeleteRoutine(routine.id);
+                                  if (confirm(`Deseja realmente remover o "${routine.name}" da sua lista?`)) {
+                                    onDeleteRoutine(routine.id);
+                                  }
                                 }}
                                 className="w-full px-3 py-2 text-left text-xs font-medium text-rose-400 hover:bg-rose-950/30 flex items-center gap-2 cursor-pointer border-t border-slate-800 mt-1 pt-1"
                               >

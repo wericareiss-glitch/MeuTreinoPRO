@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   Trophy, 
   Dumbbell, 
@@ -32,8 +32,19 @@ import {
 import { VolumeDashboard } from './VolumeDashboard';
 import { HomeAnalyticsDashboard } from './HomeAnalyticsDashboard';
 import { MuscleRecoveryHeatmap } from './MuscleRecoveryHeatmap';
+import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { useI18n } from '../utils/i18n';
-import { getWeeklyMicrocycleStatus, requestNotificationPermission, sendAppNotification, isNotificationSupported } from '../utils/notifications';
+import { 
+  getWeeklyMicrocycleStatus, 
+  requestNotificationPermission, 
+  sendAppNotification, 
+  isNotificationSupported,
+  getReminderConfig,
+  saveReminderConfig,
+  checkAndTriggerScheduledNotification,
+  getNotificationPermissionStatus,
+  DailyReminderConfig
+} from '../utils/notifications';
 
 interface HomeViewProps {
   user: UserProfile | null;
@@ -47,8 +58,10 @@ interface HomeViewProps {
   onOpenVolumeBudget: () => void;
   onGoToWorkout: () => void;
   onViewSummary: (session: WorkoutSessionSummary) => void;
-  onOpenAnalytics?: () => void;
+  onOpenAnalytics?: (exerciseName?: string) => void;
   onOpenMeasurements?: () => void;
+  onOpenDeloadAssistant?: () => void;
+  isDeloadActive?: boolean;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -65,6 +78,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onViewSummary,
   onOpenAnalytics,
   onOpenMeasurements,
+  onOpenDeloadAssistant,
+  isDeloadActive = false,
 }) => {
   const { t, language } = useI18n();
 
@@ -74,16 +89,98 @@ export const HomeView: React.FC<HomeViewProps> = ({
     [sessions, user?.frequency]
   );
   const [notifStatus, setNotifStatus] = useState<'idle' | 'success' | 'blocked'>('idle');
+  const [permStatus, setPermStatus] = useState<NotificationPermission>(() => getNotificationPermissionStatus());
+  const [showReminderSettings, setShowReminderSettings] = useState(false);
+  const [testNotifSuccess, setTestNotifSuccess] = useState(false);
 
-  const handleToggleNotifications = async () => {
-    const granted = await requestNotificationPermission();
-    if (granted) {
-      sendAppNotification('MeuTreino Pro ⚡', 'Lembretes de frequência e alertas de microciclo ativados!');
+  const [reminderConfig, setReminderConfig] = useState<DailyReminderConfig>(() => {
+    return user ? getReminderConfig(user.id) : { enabled: false, time: '18:00', days: [1, 2, 3, 4, 5] };
+  });
+
+  // Atualiza permissão atual
+  useEffect(() => {
+    setPermStatus(getNotificationPermissionStatus());
+  }, []);
+
+  // Scheduler em segundo plano otimizado: verifica a cada 40s se é hora do treino
+  const userId = user?.id;
+  const userName = user?.name;
+  const reminderEnabled = reminderConfig.enabled;
+  const reminderTime = reminderConfig.time;
+  const reminderDaysStr = reminderConfig.days.join(',');
+
+  useEffect(() => {
+    if (!userId || !reminderEnabled) return;
+
+    checkAndTriggerScheduledNotification(userId, userName || 'Atleta');
+    const interval = setInterval(() => {
+      checkAndTriggerScheduledNotification(userId, userName || 'Atleta');
+    }, 40000);
+
+    return () => clearInterval(interval);
+  }, [userId, userName, reminderEnabled, reminderTime, reminderDaysStr]);
+
+  const handleToggleReminder = async () => {
+    if (!user) return;
+
+    if (!reminderConfig.enabled) {
+      // Solicita permissão opcional do navegador se ainda não concedida
+      const currentPerm = getNotificationPermissionStatus();
+      if (currentPerm !== 'granted') {
+        const granted = await requestNotificationPermission();
+        setPermStatus(getNotificationPermissionStatus());
+        if (!granted) {
+          setNotifStatus('blocked');
+          setTimeout(() => setNotifStatus('idle'), 4000);
+          return;
+        }
+      }
+      const nextConfig = { ...reminderConfig, enabled: true };
+      setReminderConfig(nextConfig);
+      saveReminderConfig(user.id, nextConfig);
+      sendAppNotification('MeuTreino Pro ⚡', `Lembrete diário ativado para as ${nextConfig.time}!`);
       setNotifStatus('success');
       setTimeout(() => setNotifStatus('idle'), 3000);
     } else {
-      setNotifStatus('blocked');
-      setTimeout(() => setNotifStatus('idle'), 5000);
+      const nextConfig = { ...reminderConfig, enabled: false };
+      setReminderConfig(nextConfig);
+      saveReminderConfig(user.id, nextConfig);
+    }
+  };
+
+  const handleUpdateReminderTime = (newTime: string) => {
+    if (!user) return;
+    const nextConfig = { ...reminderConfig, time: newTime };
+    setReminderConfig(nextConfig);
+    saveReminderConfig(user.id, nextConfig);
+  };
+
+  const handleToggleDay = (day: number) => {
+    if (!user) return;
+    const exists = reminderConfig.days.includes(day);
+    const nextDays = exists 
+      ? reminderConfig.days.filter((d) => d !== day)
+      : [...reminderConfig.days, day].sort();
+    
+    const nextConfig = { ...reminderConfig, days: nextDays.length > 0 ? nextDays : [day] };
+    setReminderConfig(nextConfig);
+    saveReminderConfig(user.id, nextConfig);
+  };
+
+  const handleSendTestNotification = async () => {
+    const currentPerm = getNotificationPermissionStatus();
+    if (currentPerm !== 'granted') {
+      const granted = await requestNotificationPermission();
+      setPermStatus(getNotificationPermissionStatus());
+      if (!granted) return;
+    }
+    const sent = sendAppNotification(
+      'MeuTreino Pro ⚡',
+      `Hora do treino! Lembrete programado para as ${reminderConfig.time} está funcionando perfeitamente 💪`
+    );
+    if (sent) {
+      setTestNotifSuccess(true);
+      setTimeout(() => setTestNotifSuccess(false), 3000);
     }
   };
 
@@ -286,7 +383,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         {onOpenAnalytics && (
           <button
             type="button"
-            onClick={onOpenAnalytics}
+            onClick={() => onOpenAnalytics()}
             className="p-4 rounded-2xl bg-[#0f172a] hover:bg-[#142038] border border-slate-800 hover:border-emerald-500/40 text-left transition-all group cursor-pointer shadow-lg"
           >
             <div className="flex items-center justify-between mb-2">
@@ -329,39 +426,208 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={handleToggleNotifications}
-          className="p-4 rounded-2xl bg-[#0f172a] hover:bg-[#142038] border border-slate-800 hover:border-amber-500/40 text-left transition-all group cursor-pointer shadow-lg"
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 group-hover:scale-110 transition-transform">
-              <Bell className="w-5 h-5" />
+        {/* Card do Lembrete de Treino Agendado Diário */}
+        <div className={`p-4 rounded-2xl border transition-all shadow-lg flex flex-col justify-between ${
+          reminderConfig.enabled
+            ? 'bg-gradient-to-br from-[#0f172a] via-[#101b33] to-[#0d162b] border-amber-500/40'
+            : 'bg-[#0f172a] border-slate-800'
+        }`}>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className={`p-2 rounded-xl border transition-transform ${
+                reminderConfig.enabled
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}>
+                <Bell className="w-5 h-5" />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {reminderConfig.enabled && (
+                  <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30">
+                    {reminderConfig.time}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleToggleReminder}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    reminderConfig.enabled
+                      ? 'bg-amber-400 text-slate-950 font-black shadow-md'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  }`}
+                  title={reminderConfig.enabled ? 'Desativar lembretes' : 'Ativar lembretes'}
+                >
+                  {reminderConfig.enabled ? 'Ativo' : 'Ativar'}
+                </button>
+              </div>
             </div>
-            {notifStatus === 'success' && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 font-mono flex items-center gap-1">
-                <Check className="w-3 h-3" /> Ativado!
-              </span>
+
+            <strong className="text-xs sm:text-sm font-black text-white block">
+              Lembrete Diário de Treino
+            </strong>
+            <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+              {reminderConfig.enabled
+                ? `Notificação agendada às ${reminderConfig.time} nos dias selecionados.`
+                : 'Receba um aviso no navegador na hora do seu treino diário.'}
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setShowReminderSettings(!showReminderSettings)}
+              className="text-[11px] font-bold text-sky-400 hover:text-sky-300 flex items-center gap-1 cursor-pointer"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>{showReminderSettings ? 'Ocultar Horário' : 'Ajustar Horário & Dias'}</span>
+            </button>
+
+            {permStatus === 'denied' && (
+              <span className="text-[10px] text-rose-400 font-medium">Bloqueado no navegador</span>
             )}
-            {notifStatus === 'blocked' && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 font-mono flex items-center gap-1">
-                Permissão pendente
-              </span>
-            )}
-            {notifStatus === 'idle' && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 font-mono">
-                Push
+            {permStatus === 'granted' && reminderConfig.enabled && (
+              <span className="text-[10px] text-emerald-400 font-medium flex items-center gap-0.5">
+                <Check className="w-3 h-3" /> Conectado
               </span>
             )}
           </div>
-          <strong className="text-xs sm:text-sm font-black text-white block">
-            Lembretes de Frequência
-          </strong>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            Alertas no celular para consistência do microciclo
-          </p>
-        </button>
+        </div>
       </div>
+
+      {/* Painel Expansível de Configuração do Horário do Lembrete */}
+      {showReminderSettings && (
+        <div className="bg-[#0b1220] border border-amber-500/30 rounded-3xl p-4 sm:p-5 shadow-2xl animate-fadeIn space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-400" />
+              <h3 className="text-xs sm:text-sm font-bold text-white">
+                Programação do Lembrete Diário (Notificação Web)
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowReminderSettings(false)}
+              className="text-xs text-slate-400 hover:text-white cursor-pointer"
+            >
+              Fechar
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Escolha do Horário */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300 block">
+                Horário da Notificação:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={reminderConfig.time}
+                  onChange={(e) => handleUpdateReminderTime(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono font-bold text-white focus:outline-none focus:border-amber-400"
+                />
+                <span className="text-xs text-slate-400 font-mono">horário local</span>
+              </div>
+
+              {/* Presets Rápidos */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-[10px] text-slate-500 font-medium">Atalhos:</span>
+                {['06:30', '08:00', '12:30', '18:00', '19:30', '21:00'].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => handleUpdateReminderTime(preset)}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                      reminderConfig.time === preset
+                        ? 'bg-amber-400 text-slate-950 border-amber-300'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Dias da Semana */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-300 block">
+                Dias de Treino para Lembrar:
+              </label>
+              <div className="grid grid-cols-7 gap-1">
+                {[
+                  { day: 0, label: 'D', full: 'Domingo' },
+                  { day: 1, label: 'S', full: 'Segunda' },
+                  { day: 2, label: 'T', full: 'Terça' },
+                  { day: 3, label: 'Q', full: 'Quarta' },
+                  { day: 4, label: 'Q', full: 'Quinta' },
+                  { day: 5, label: 'S', full: 'Sexta' },
+                  { day: 6, label: 'S', full: 'Sábado' },
+                ].map((item) => {
+                  const isDayActive = reminderConfig.days.includes(item.day);
+                  return (
+                    <button
+                      key={item.day}
+                      type="button"
+                      onClick={() => handleToggleDay(item.day)}
+                      className={`h-9 rounded-xl font-bold text-xs transition-all cursor-pointer flex flex-col items-center justify-center ${
+                        isDayActive
+                          ? 'bg-emerald-500 text-slate-950 font-black shadow-md'
+                          : 'bg-slate-900 text-slate-500 border border-slate-800 hover:text-slate-300'
+                      }`}
+                      title={item.full}
+                    >
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Toque nos dias para ativar ou desativar o lembrete específico.
+              </p>
+            </div>
+          </div>
+
+          {/* Testar Notificação & Status */}
+          <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-slate-400">
+              {permStatus === 'granted' ? (
+                <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5" />
+                  Permissão concedida no navegador. Lembretes ativos!
+                </span>
+              ) : permStatus === 'denied' ? (
+                <span className="text-rose-400 font-semibold">
+                  ⚠️ Permissão bloqueada pelo navegador. Habilite nas configurações do site para receber avisos.
+                </span>
+              ) : (
+                <span className="text-slate-400">
+                  Permissão opcional do sistema solicitada ao ativar.
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSendTestNotification}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
+              >
+                <Bell className="w-3.5 h-3.5 text-amber-400" />
+                <span>Testar Notificação Agora</span>
+              </button>
+
+              {testNotifSuccess && (
+                <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 animate-fadeIn">
+                  <Check className="w-3.5 h-3.5" />
+                  Enviada!
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 📅 MICROCICLO SEMANAL & CONSISTÊNCIA */}
       <div className="bg-gradient-to-r from-[#10192e] to-[#0c1322] border border-sky-500/30 rounded-3xl p-4 sm:p-5 shadow-xl">
@@ -403,36 +669,62 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </p>
       </div>
 
-      {/* 🛡️ ALERTA CIENTÍFICO DE DELOAD */}
-      {isDeloadRecommended && (
-        <div className="bg-gradient-to-r from-amber-950/40 via-amber-900/20 to-slate-900 border border-amber-500/40 rounded-3xl p-4 sm:p-5 shadow-xl relative overflow-hidden animate-fadeIn">
+      {/* 📅 CALENDÁRIO DE CONSISTÊNCIA & STREAK (Últimos 35 dias) */}
+      <ConsistencyCalendar
+        sessions={sessions}
+        weeklyFrequencyGoal={user?.frequency || 4}
+      />
+
+      {/* 🛡️ ALERTA CIENTÍFICO DE DELOAD / FADIGA */}
+      {(isDeloadRecommended || isDeloadActive) && (
+        <div className={`bg-gradient-to-r ${
+          isDeloadActive ? 'from-sky-950/40 via-sky-900/20 to-slate-900 border-sky-500/40' : 'from-amber-950/40 via-amber-900/20 to-slate-900 border-amber-500/40'
+        } border rounded-3xl p-4 sm:p-5 shadow-xl relative overflow-hidden animate-fadeIn`}>
           <div className="flex items-start gap-3.5">
-            <div className="p-2.5 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+            <div className={`p-2.5 rounded-2xl ${
+              isDeloadActive ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+            } shrink-0`}>
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div className="space-y-1.5 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
-                  Fase de Supercompensação
+                <span className={`text-xs font-black uppercase tracking-wider ${
+                  isDeloadActive ? 'text-sky-400 bg-sky-500/10 border-sky-500/20' : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                } px-2.5 py-0.5 rounded-full border`}>
+                  {isDeloadActive ? 'Deload Ativo em Andamento' : 'Fase de Supercompensação Recomendada'}
                 </span>
                 <span className="text-[11px] text-amber-300 font-bold font-mono">
-                  {microcycle.consecutiveWeeksStreak} semanas consecutivas em alta intensidade
+                  {microcycle.consecutiveWeeksStreak} semanas consecutivas de estímulo
                 </span>
               </div>
               <h3 className="text-sm sm:text-base font-extrabold text-white">
-                Alerta Científico de Deload Sugerido
+                {isDeloadActive ? 'Semana de Recuperação e Regeneração Articular' : 'Alerta Fisiológico de Deload Sugerido'}
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Seu acúmulo de volume atingiu a marca de 4 semanas de sobrecarga contínua. Para dissipar a fadiga neural do Sistema Nervoso Central, regenerar tecido conectivo e consolidar a hipertrofia, recomenda-se reduzir o volume em ~40-50% nos próximos 7 dias.
+                {isDeloadActive
+                  ? 'Seu volume semanal está adaptado para dissipar a fadiga acumulada e regenerar ligamentos e tendões mantendo sua massa muscular.'
+                  : 'Seu acúmulo de volume atingiu a marca de semanas de sobrecarga contínua. Para dissipar a fadiga residual do SNC e consolidar a hipertrofia, recomenda-se uma semana de deload.'}
               </p>
               <div className="pt-1 flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={onOpenVolumeBudget}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all cursor-pointer shadow-md"
-                >
-                  Ajustar Volume para Deload
-                </button>
+                {onOpenDeloadAssistant ? (
+                  <button
+                    type="button"
+                    onClick={onOpenDeloadAssistant}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold ${
+                      isDeloadActive ? 'bg-sky-500 hover:bg-sky-400 text-slate-950' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                    } transition-all cursor-pointer shadow-md`}
+                  >
+                    {isDeloadActive ? 'Gerenciar Semana de Deload' : 'Abrir Assistente de Deload'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onOpenVolumeBudget}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all cursor-pointer shadow-md"
+                  >
+                    Ajustar Volume para Deload
+                  </button>
+                )}
               </div>
             </div>
           </div>

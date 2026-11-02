@@ -27,7 +27,9 @@ import {
   Disc,
   HelpCircle,
   BookOpen,
-  Sparkles
+  Sparkles,
+  Copy,
+  Trophy
 } from 'lucide-react';
 import { WorkoutItem, WorkoutLogs, WorkoutSessionSummary } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
@@ -35,6 +37,7 @@ import { calculate1RM, calculate6RM, estimateNextSetWeight, safeStorage } from '
 import { authStorage } from '../utils/auth';
 import { getOptimalProgressionSuggestion } from '../utils/progressiveOverload';
 import { soundManager } from '../utils/audio';
+import { getExerciseHistoricalPR, checkSetPR, PRCheckResult } from '../utils/prEngine';
 
 interface ExerciseCardProps {
   item: WorkoutItem;
@@ -56,6 +59,7 @@ interface ExerciseCardProps {
   onMoveUp?: (index: number) => void;
   onMoveDown?: (index: number) => void;
   onDeleteExercise?: (index: number) => void;
+  targetMuscleRir?: number;
 }
 
 // RPE de 6 a 10 com cálculo automático de RIR (RIR = 10 - RPE)
@@ -87,6 +91,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   onMoveUp,
   onMoveDown,
   onDeleteExercise,
+  targetMuscleRir,
 }) => {
   const [expandedSets, setExpandedSets] = useState<Record<string, boolean>>({});
   const [isDeleting, setIsDeleting] = useState(false);
@@ -263,6 +268,45 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
     return null;
   }, [sessions, ex.name]);
 
+  // Recorde Pessoal Histórico (PR) deste exercício
+  const historicalPR = useMemo(() => {
+    return getExerciseHistoricalPR(ex.name, sessions, history);
+  }, [ex.name, sessions, history]);
+
+  // Função para replicar a série anterior imediatamente acima com 1 toque
+  const handleReplicateSet = (targetSetNum: number, sourceSetNum: number) => {
+    const sourceKey = `${ex.id}_${sourceSetNum}`;
+    const targetKey = `${ex.id}_${targetSetNum}`;
+    const src = localLogs[sourceKey] || logs[sourceKey];
+    if (!src || !src.weight) return;
+
+    handleInputChange(targetKey, 'weight', src.weight);
+    if (src.reps) {
+      handleInputChange(targetKey, 'reps', src.reps);
+    }
+    if (src.rpe) {
+      handleUpdateRpe(targetKey, parseInt(src.rpe, 10) || 6);
+    }
+    soundManager.vibrate(30);
+  };
+
+  // Função para preencher todas as séries pendentes com os dados da Série #1
+  const handleReplicateFirstSetToAll = () => {
+    const firstKey = `${ex.id}_1`;
+    const first = localLogs[firstKey] || logs[firstKey];
+    if (!first || !first.weight) return;
+
+    for (let s = 2; s <= item.sets; s++) {
+      const k = `${ex.id}_${s}`;
+      if (!logs[k]?.done) {
+        handleInputChange(k, 'weight', first.weight);
+        if (first.reps) handleInputChange(k, 'reps', first.reps);
+        if (first.rpe) handleUpdateRpe(k, parseInt(first.rpe, 10) || 6);
+      }
+    }
+    soundManager.vibrate([40, 30, 40]);
+  };
+
   // CÁLCULO HISTÓRICO DE 6RM DA ÚLTIMA VEZ QUE O EXERCÍCIO FOI REALIZADO
   const historical6RMSuggestion = useMemo(() => {
     // 1. Procura na última sessão concluída
@@ -405,6 +449,17 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                 <Target className="w-3 h-3 text-amber-400" />
                 <span>6RM: ~{historical6RMSuggestion.weight}kg</span>
               </button>
+            )}
+
+            {/* Badge de RIR Alvo configurado no perfil */}
+            {targetMuscleRir !== undefined && (
+              <div 
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0"
+                title={`RIR Alvo personalizado para ${MUSCLE_NAMES[item.muscleKey] || ex.name}: ${targetMuscleRir} repetições na reserva (RPE ${10 - targetMuscleRir})`}
+              >
+                <Target className="w-3 h-3 text-amber-400" />
+                <span>RIR Alvo: {targetMuscleRir}</span>
+              </div>
             )}
 
             {/* Botão Dica de Execução */}
@@ -598,7 +653,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           </div>
         </div>
 
-        {/* Sub-header com Smart Rest e Status do Auto-save — META DESCRITA REMOVIDA conforme solicitação */}
+        {/* Sub-header com Smart Rest e Status do Auto-save */}
         <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
           <div className="flex items-center gap-2">
             <button
@@ -631,6 +686,44 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             )}
           </div>
         </div>
+
+        {/* Banner Preditivo de Sobrecarga Progressiva */}
+        {progression && progression.status === 'progress' && (
+          <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs animate-fadeIn">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0">
+                <TrendingUp className="w-4 h-4 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-extrabold text-white text-xs">
+                    ⚡ Sobrecarga Preditiva: <strong className="text-emerald-400 font-mono">{progression.suggestedWeight}kg</strong>
+                  </span>
+                  <span className="text-[10px] bg-emerald-500/15 text-emerald-300 font-bold px-1.5 py-0.2 rounded border border-emerald-500/30">
+                    +{progression.suggestedWeight - (progression.currentWeight || 0)}kg
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-300 truncate block">
+                  {progression.reason}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                for (let s = 1; s <= item.sets; s++) {
+                  const k = `${ex.id}_${s}`;
+                  if (!logs[k]?.done) {
+                    handleInputChange(k, 'weight', progression.suggestedWeight.toString());
+                  }
+                }
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] shadow-sm transition-all cursor-pointer shrink-0 active:scale-95"
+            >
+              Aplicar Carga
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Popover Biomecânico de Dica de Execução */}
@@ -715,6 +808,33 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
 
       {/* 2. Lista de Séries */}
       <div className="p-3 sm:p-4 space-y-3">
+        {/* Barra Superior da Seção de Séries: Recorde (PR) Histórico & Replicação Rápida */}
+        <div className="flex items-center justify-between gap-2 px-1 text-xs flex-wrap pb-1 border-b border-slate-800/60">
+          <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+            <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            {historicalPR.maxWeight > 0 ? (
+              <span>
+                Recorde Pessoal (PR): <strong className="text-amber-300 font-mono">{historicalPR.maxWeight}kg</strong>
+                {historicalPR.best1RM > 0 && <span> (1RM ~{historicalPR.best1RM}kg)</span>}
+              </span>
+            ) : (
+              <span className="text-slate-500 italic">Primeiro registro deste exercício</span>
+            )}
+          </div>
+
+          {item.sets > 1 && (
+            <button
+              type="button"
+              onClick={handleReplicateFirstSetToAll}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/25 transition-all cursor-pointer active:scale-95"
+              title="Preenche todas as séries pendentes com o peso e reps da Série #1"
+            >
+              <Copy className="w-3 h-3" />
+              <span>Preencher restantes com Série #1</span>
+            </button>
+          )}
+        </div>
+
         {Array.from({ length: item.sets }).map((_, sIdx) => {
           const setNum = sIdx + 1;
           const logKey = `${ex.id}_${setNum}`;
@@ -750,6 +870,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           const est1RM = calculate1RM(currWeightVal, currRepsVal, currentRpeNum.toString());
           const est6RM = calculate6RM(currWeightVal, currRepsVal, currentRpeNum.toString());
 
+          // DETECÇÃO DE RECORDE PESSOAL (PR) NA SÉRIE
+          const setWeightNum = parseFloat(currWeightVal) || 0;
+          const setRepsNum = parseInt(currRepsVal, 10) || 0;
+          const prResult = checkSetPR(ex.name, setWeightNum, setRepsNum, historicalPR);
+
           // CÁLCULO DE CARGA ESTIMADA PARA A PRÓXIMA SÉRIE
           const prevW = parseFloat(currWeightVal) || 0;
           const prevR = parseInt(currRepsVal, 10) || 0;
@@ -764,8 +889,21 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
             return (
               <div
                 key={logKey}
-                className="bg-slate-950/90 border border-emerald-500/40 rounded-xl p-3 transition-all hover:border-emerald-500/60 shadow-sm"
+                className="bg-slate-950/90 border border-emerald-500/40 rounded-xl p-3 transition-all hover:border-emerald-500/60 shadow-sm space-y-2"
               >
+                {/* Badge de PR batido nesta série */}
+                {prResult && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-300 font-extrabold text-[11px] animate-pulse">
+                    <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                    <span>
+                      🔥 NOVO RECORDE PESSOAL (PR)!{' '}
+                      {prResult.isWeightPR
+                        ? `+${prResult.diffWeight}kg na carga máxima!`
+                        : `+${prResult.diff1RM}kg no 1RM estimado!`}
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div className="w-7 h-7 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-sm shadow-emerald-500/20">
@@ -935,7 +1073,13 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                         }
                       }
 
-                      soundManager.vibrateSetComplete();
+                      // Comemoração especial se for Novo Recorde Pessoal (PR)
+                      if (prResult) {
+                        soundManager.playPRCelebration();
+                      } else {
+                        soundManager.vibrateSetComplete();
+                      }
+
                       onToggleSet(logKey, item.rest);
                       setExpandedSets((prev) => ({ ...prev, [logKey]: false }));
                     }}
@@ -951,28 +1095,67 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                 </div>
               </div>
 
-              {/* Marca d'água comparativa da série no treino anterior (1-toque para repetir) */}
-              {prevSetRecord && (
-                <div className="flex items-center gap-1.5 mt-2 px-1 text-[11px] text-slate-400">
-                  <span className="text-slate-500 font-medium">Anterior:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleInputChange(logKey, 'weight', prevSetRecord.weight);
-                      handleInputChange(logKey, 'reps', prevSetRecord.reps);
-                      if (prevSetRecord.rpe) {
-                        handleUpdateRpe(logKey, parseInt(prevSetRecord.rpe, 10) || 6);
-                      }
-                    }}
-                    className="inline-flex items-center gap-1 font-mono font-semibold text-sky-300 hover:text-sky-200 bg-sky-500/10 hover:bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/20 transition-colors cursor-pointer"
-                    title="Toque para preencher com a carga e repetições do treino anterior"
-                  >
-                    <span>{prevSetRecord.weight}kg × {prevSetRecord.reps} reps</span>
-                    {prevSetRecord.rpe && <span className="text-amber-400 font-bold">@{prevSetRecord.rpe}</span>}
-                    <span className="text-[10px] text-sky-400 font-sans ml-0.5 font-bold">(repetir)</span>
-                  </button>
+              {/* Badge de Novo Recorde Pessoal em Tempo Real */}
+              {prResult && (
+                <div className="mt-2.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-300 font-extrabold text-[11px] flex items-center justify-between gap-2 animate-pulse shadow-sm">
+                  <div className="flex items-center gap-1.5">
+                    <Flame className="w-4 h-4 text-amber-400 fill-amber-400 shrink-0" />
+                    <span>
+                      🔥 NOVO RECORDE PESSOAL (PR)!{' '}
+                      {prResult.isWeightPR
+                        ? `+${prResult.diffWeight}kg na carga máxima!`
+                        : `+${prResult.diff1RM}kg no 1RM estimado!`}
+                    </span>
+                  </div>
+                  <span className="text-[10px] bg-amber-500/30 text-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
+                    Histórico Superado
+                  </span>
                 </div>
               )}
+
+              {/* Botões Rápidos de 1-Toque: Copiar Série Anterior da Sessão ou Repetir do Treino Anterior */}
+              <div className="flex items-center gap-1.5 mt-2 px-1 text-[11px] text-slate-400 flex-wrap">
+                {/* 1-Tap: Replicar Série Anterior desta mesma sessão */}
+                {sIdx > 0 && (() => {
+                  const prevSetInSession = localLogs[`${ex.id}_${setNum - 1}`] || logs[`${ex.id}_${setNum - 1}`];
+                  const hasPrevWeight = prevSetInSession && (parseFloat(prevSetInSession.weight) || 0) > 0;
+                  if (!hasPrevWeight) return null;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleReplicateSet(setNum, setNum - 1)}
+                      className="inline-flex items-center gap-1.5 font-bold text-emerald-300 hover:text-emerald-200 bg-emerald-500/15 hover:bg-emerald-500/25 px-2 py-1 rounded-lg border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shadow-sm"
+                      title="Copiar carga e repetições da série imediatamente anterior"
+                    >
+                      <Copy className="w-3 h-3 text-emerald-400" />
+                      <span>Copiar Série #{setNum - 1} ({prevSetInSession.weight}kg × {prevSetInSession.reps || '0'})</span>
+                    </button>
+                  );
+                })()}
+
+                {/* Marca d'água comparativa da série no treino anterior (1-toque para repetir) */}
+                {prevSetRecord && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-500 font-medium">Anterior:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleInputChange(logKey, 'weight', prevSetRecord.weight);
+                        handleInputChange(logKey, 'reps', prevSetRecord.reps);
+                        if (prevSetRecord.rpe) {
+                          handleUpdateRpe(logKey, parseInt(prevSetRecord.rpe, 10) || 6);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 font-mono font-semibold text-sky-300 hover:text-sky-200 bg-sky-500/10 hover:bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/20 transition-colors cursor-pointer"
+                      title="Toque para preencher com a carga e repetições do treino anterior"
+                    >
+                      <span>{prevSetRecord.weight}kg × {prevSetRecord.reps} reps</span>
+                      {prevSetRecord.rpe && <span className="text-amber-400 font-bold">@{prevSetRecord.rpe}</span>}
+                      <span className="text-[10px] text-sky-400 font-sans ml-0.5 font-bold">(repetir)</span>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Informações de 1RM e Carga Sugerida */}
               <div className="flex items-center justify-between gap-2 mt-2 px-1 text-xs text-slate-400 flex-wrap">
@@ -1030,27 +1213,33 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                     </button>
                   </div>
 
-                  {/* Seletor direto RPE 6 a 10 */}
-                  <div className="flex items-center gap-1.5 flex-1 max-w-xs justify-end">
-                    {RPE_PRESETS.map((p) => {
-                      const isSelected = currentRpeNum === p.rpe;
-                      return (
-                        <button
-                          key={p.rpe}
-                          type="button"
-                          onClick={() => handleUpdateRpe(logKey, p.rpe)}
-                          className={`flex-1 py-2 px-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-amber-400 text-slate-950 font-black shadow-md ring-2 ring-amber-300 scale-105'
-                              : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
-                          }`}
-                          title={`RPE ${p.rpe} = RIR ${p.rir}`}
-                        >
-                          {p.rpe}
-                        </button>
-                      );
-                    })}
-                  </div>
+                    {/* Seletor direto RPE 6 a 10 */}
+                    <div className="flex items-center gap-1.5 flex-1 max-w-xs justify-end">
+                      {RPE_PRESETS.map((p) => {
+                        const isSelected = currentRpeNum === p.rpe;
+                        const isTarget = targetMuscleRir !== undefined && p.rir === targetMuscleRir;
+                        return (
+                          <button
+                            key={p.rpe}
+                            type="button"
+                            onClick={() => handleUpdateRpe(logKey, p.rpe)}
+                            className={`flex-1 py-2 px-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer relative ${
+                              isSelected
+                                ? 'bg-amber-400 text-slate-950 font-black shadow-md ring-2 ring-amber-300 scale-105'
+                                : isTarget
+                                ? 'bg-amber-500/15 border-2 border-amber-500/60 text-amber-300 hover:bg-amber-500/25'
+                                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
+                            title={`RPE ${p.rpe} = RIR ${p.rir}${isTarget ? ' (Meta configurada para este músculo)' : ''}`}
+                          >
+                            <span>{p.rpe}</span>
+                            {isTarget && !isSelected && (
+                              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                 </div>
               </div>
             </div>

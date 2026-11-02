@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { CardioSession, UserProfile } from '../types/workout';
 import { safeStorage } from '../utils/storage';
+import { wakeLockManager } from '../utils/wakeLock';
+import { soundManager } from '../utils/audio';
 
 interface CardioViewProps {
   user: UserProfile;
@@ -104,6 +106,39 @@ export const CardioView: React.FC<CardioViewProps> = ({ user, onCardioStateChang
     }
   }, [activeData, activeStorageKey, onCardioStateChange]);
 
+  // Keep-alive e WakeLock durante cardio ativo para manter funcionando mesmo com tela bloqueada
+  useEffect(() => {
+    if (activeData.isRunning) {
+      soundManager.startBackgroundKeepAlive();
+      wakeLockManager.request().catch(() => {});
+    } else {
+      soundManager.stopBackgroundKeepAlive();
+    }
+    return () => {
+      soundManager.stopBackgroundKeepAlive();
+    };
+  }, [activeData.isRunning]);
+
+  // Sincronização instantânea ao religar a tela ou focar na aba
+  useEffect(() => {
+    const syncCardioTime = () => {
+      if (activeData.isRunning && activeData.startTime) {
+        const totalSecs = activeData.accumulatedSeconds + Math.floor((Date.now() - activeData.startTime) / 1000);
+        setDisplaySeconds(totalSecs);
+      }
+    };
+
+    document.addEventListener('visibilitychange', syncCardioTime);
+    window.addEventListener('focus', syncCardioTime);
+    window.addEventListener('pageshow', syncCardioTime);
+
+    return () => {
+      document.removeEventListener('visibilitychange', syncCardioTime);
+      window.removeEventListener('focus', syncCardioTime);
+      window.removeEventListener('pageshow', syncCardioTime);
+    };
+  }, [activeData.isRunning, activeData.startTime, activeData.accumulatedSeconds]);
+
   // Timer loop resiliente: calcula o delta real via Date.now()
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
@@ -124,6 +159,8 @@ export const CardioView: React.FC<CardioViewProps> = ({ user, onCardioStateChang
 
   // Iniciar / Retomar
   const handleStart = () => {
+    soundManager.startBackgroundKeepAlive();
+    wakeLockManager.request().catch(() => {});
     setActiveData((prev) => ({
       ...prev,
       isRunning: true,
@@ -252,6 +289,17 @@ export const CardioView: React.FC<CardioViewProps> = ({ user, onCardioStateChang
   const totalDistance = history.reduce((acc, curr) => acc + (curr.distanceKm || 0), 0);
   const totalCalories = history.reduce((acc, curr) => acc + (curr.calories || 0), 0);
 
+  // Métricas dinâmicas em tempo real durante a corrida/cardio
+  const liveHours = displaySeconds / 3600;
+  const currentTypeConfig = CARDIO_TYPES.find((t) => t.id === activeData.type) || CARDIO_TYPES[0];
+  const intensityMult = activeData.intensity === 'hiit' ? 1.3 : activeData.intensity === 'intenso' ? 1.15 : activeData.intensity === 'leve' ? 0.8 : 1.0;
+  const liveDistance = activeData.autoEstimate && liveHours > 0
+    ? (activeData.speedKmh * liveHours).toFixed(2)
+    : (activeData.distanceKm ? activeData.distanceKm.toFixed(2) : '0.00');
+  const liveCalories = activeData.autoEstimate && liveHours > 0
+    ? Math.round(currentTypeConfig.kcalPerHour * liveHours * intensityMult)
+    : Math.round(activeData.calories || 0);
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-16 px-1">
       {/* Banner de Aviso de Persistência */}
@@ -335,23 +383,23 @@ export const CardioView: React.FC<CardioViewProps> = ({ user, onCardioStateChang
             <input
               type="number"
               step="0.05"
-              value={activeData.distanceKm || ''}
+              value={activeData.isRunning ? liveDistance : (activeData.distanceKm || '')}
               placeholder="0.00"
-              onChange={(e) => setActiveData((p) => ({ ...p, distanceKm: parseFloat(e.target.value) || 0 }))}
+              onChange={(e) => setActiveData((p) => ({ ...p, distanceKm: parseFloat(e.target.value) || 0, autoEstimate: false }))}
               className="w-full bg-transparent text-xl font-mono font-black text-white focus:outline-none"
             />
             <div className="flex gap-1 mt-1 pt-1 border-t border-slate-800/60">
               <button
                 type="button"
-                onClick={() => setActiveData((p) => ({ ...p, distanceKm: parseFloat((p.distanceKm + 0.5).toFixed(2)) }))}
-                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 hover:bg-slate-700"
+                onClick={() => setActiveData((p) => ({ ...p, distanceKm: parseFloat(((p.distanceKm || 0) + 0.5).toFixed(2)), autoEstimate: false }))}
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 hover:bg-slate-700 cursor-pointer"
               >
                 +0.5
               </button>
               <button
                 type="button"
-                onClick={() => setActiveData((p) => ({ ...p, distanceKm: parseFloat((p.distanceKm + 1.0).toFixed(2)) }))}
-                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 hover:bg-slate-700"
+                onClick={() => setActiveData((p) => ({ ...p, distanceKm: parseFloat(((p.distanceKm || 0) + 1.0).toFixed(2)), autoEstimate: false }))}
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 hover:bg-slate-700 cursor-pointer"
               >
                 +1.0
               </button>
@@ -370,23 +418,23 @@ export const CardioView: React.FC<CardioViewProps> = ({ user, onCardioStateChang
             <input
               type="number"
               step="5"
-              value={activeData.calories || ''}
+              value={activeData.isRunning ? liveCalories : (activeData.calories || '')}
               placeholder="0"
-              onChange={(e) => setActiveData((p) => ({ ...p, calories: parseInt(e.target.value, 10) || 0 }))}
+              onChange={(e) => setActiveData((p) => ({ ...p, calories: parseInt(e.target.value, 10) || 0, autoEstimate: false }))}
               className="w-full bg-transparent text-xl font-mono font-black text-white focus:outline-none"
             />
             <div className="flex gap-1 mt-1 pt-1 border-t border-slate-800/60">
               <button
                 type="button"
-                onClick={() => setActiveData((p) => ({ ...p, calories: p.calories + 25 }))}
-                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-rose-300 hover:bg-slate-700"
+                onClick={() => setActiveData((p) => ({ ...p, calories: (p.calories || 0) + 25, autoEstimate: false }))}
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-rose-300 hover:bg-slate-700 cursor-pointer"
               >
                 +25
               </button>
               <button
                 type="button"
-                onClick={() => setActiveData((p) => ({ ...p, calories: p.calories + 50 }))}
-                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-rose-300 hover:bg-slate-700"
+                onClick={() => setActiveData((p) => ({ ...p, calories: (p.calories || 0) + 50, autoEstimate: false }))}
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-rose-300 hover:bg-slate-700 cursor-pointer"
               >
                 +50
               </button>

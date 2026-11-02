@@ -4,6 +4,15 @@ import App from './App.tsx';
 import { I18nProvider } from './utils/i18n.tsx';
 import './index.css';
 
+// Registra Service Worker para suporte PWA offline nativo
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Ignora falhas silenciosamente em ambiente de preview
+    });
+  });
+}
+
 interface ErrorBoundaryProps {
   children: React.ReactNode;
 }

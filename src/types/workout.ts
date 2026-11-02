@@ -128,6 +128,7 @@ export interface WorkoutSessionSummary {
   notes?: string;
   completedExercises: {
     name: string;
+    muscleKey?: MuscleGroup;
     muscleGroup: string;
     sets: { weight: number; reps: number; rpe?: string; rir?: string }[];
   }[];
@@ -145,6 +146,26 @@ export interface CardioSession {
   notes?: string;
 }
 
+export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'heavy' | 'athlete';
+export type NutritionGoal = 'cutting' | 'cutting_aggressive' | 'maintenance' | 'bulking_clean' | 'bulking_aggressive';
+
+export interface NutritionPlan {
+  tmb: number; // Taxa Metabólica Basal
+  tdee: number; // Gasto Energético Total
+  targetCalories: number;
+  goal: NutritionGoal;
+  activityLevel: ActivityLevel;
+  age: number;
+  bodyFatPercent?: number;
+  proteinGrams: number;
+  proteinPerKg: number;
+  carbsGrams: number;
+  fatsGrams: number;
+  fatsPerKg: number;
+  waterMl: number;
+  calculatedAt: string;
+}
+
 export interface UserProfile {
   id: string;
   username: string;
@@ -152,6 +173,8 @@ export interface UserProfile {
   password: string;
   weightKg: number;
   heightM: number;
+  age?: number;
+  bodyFatPercent?: number;
   gender?: GenderOption;
   level?: LevelOption;
   focus?: FocusOption;
@@ -160,6 +183,8 @@ export interface UserProfile {
   exercisesPerMuscle?: 1 | 2; // 1 = 1 exercício por músculo, 2 = Base + Complementar
   weeklyBudget: number; // e.g. 80, 96, 120, 144, 160, 192 sets
   muscleBudgets: Record<MuscleGroup, number>; // sets allocated per muscle group
+  muscleTargetRir?: Partial<Record<MuscleGroup, number>>; // RIR alvo customizado por músculo (0 a 4)
+  nutritionPlan?: NutritionPlan;
   isVisitor?: boolean; // Se o atleta entrou como visitante
   createdAt: string;
 }
@@ -174,6 +199,7 @@ export interface BodyMeasurement {
   thighsCm?: number;
   calvesCm?: number;
   hipsCm?: number;
+  bodyFatPercent?: number;
   photoFront?: string; // base64
   photoBack?: string;  // base64
   photoSide?: string;  // base64

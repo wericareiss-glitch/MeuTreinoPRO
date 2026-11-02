@@ -19,6 +19,7 @@ import {
   Maximize2 
 } from 'lucide-react';
 import { soundManager } from '../utils/audio';
+import { wakeLockManager } from '../utils/wakeLock';
 
 interface RestTimerDockProps {
   initialSeconds: number;
@@ -43,6 +44,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
   const prevTriggerRef = useRef(triggerKey);
   const endTimeRef = useRef<number | null>(null);
   const lastBeepSecRef = useRef<number | null>(null);
+  const hasFinishedAlertedRef = useRef<boolean>(false);
 
   // Auto start or reset timer when triggerKey changes (e.g. set completed)
   useEffect(() => {
@@ -52,9 +54,12 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
       setTotalTime(initialSeconds);
       endTimeRef.current = Date.now() + initialSeconds * 1000;
       lastBeepSecRef.current = null;
+      hasFinishedAlertedRef.current = false;
       setIsRunning(true);
       setHasStartedEver(true);
       setIsPip(false);
+      soundManager.startBackgroundKeepAlive();
+      wakeLockManager.request().catch(() => {});
     }
   }, [triggerKey, initialSeconds]);
 
@@ -69,21 +74,57 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
     }
   }, []);
 
-  // Sync remaining time when tab becomes visible after being backgrounded
+  // Gerenciamento de WakeLock e Áudio contínuo em background durante o descanso
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && isRunning && endTimeRef.current) {
+    if (isRunning) {
+      soundManager.startBackgroundKeepAlive();
+      wakeLockManager.request().catch(() => {});
+    } else {
+      soundManager.stopBackgroundKeepAlive();
+    }
+  }, [isRunning]);
+
+  const triggerCompletionAlert = () => {
+    if (hasFinishedAlertedRef.current) return;
+    hasFinishedAlertedRef.current = true;
+    soundManager.playTimerFinish();
+    soundManager.vibrate([300, 150, 300, 150, 500]);
+
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification('⏰ Descanso Concluído — MeuTreino Pro', {
+          body: 'Seu tempo de descanso acabou! Hora da próxima série, foco!',
+          tag: 'rest-timer-alert',
+        });
+      } catch (err) {
+        console.warn('Erro ao disparar notificação:', err);
+      }
+    }
+  };
+
+  // Sync remaining time whenever the app wakes up (screen unlocked, tab visible, window focused)
+  useEffect(() => {
+    const syncTime = () => {
+      if (isRunning && endTimeRef.current) {
         const remaining = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
         setTimeLeft(remaining);
         if (remaining <= 0) {
           setIsRunning(false);
-          soundManager.playTimerFinish();
-          soundManager.vibrate([300, 150, 300, 150, 500]);
+          endTimeRef.current = null;
+          triggerCompletionAlert();
         }
       }
     };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+
+    document.addEventListener('visibilitychange', syncTime);
+    window.addEventListener('focus', syncTime);
+    window.addEventListener('pageshow', syncTime);
+
+    return () => {
+      document.removeEventListener('visibilitychange', syncTime);
+      window.removeEventListener('focus', syncTime);
+      window.removeEventListener('pageshow', syncTime);
+    };
   }, [isRunning]);
 
   // Timer countdown loop based on wall-clock time
@@ -92,6 +133,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
 
     if (!endTimeRef.current) {
       endTimeRef.current = Date.now() + timeLeft * 1000;
+      hasFinishedAlertedRef.current = false;
     }
 
     const interval = setInterval(() => {
@@ -103,20 +145,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
         clearInterval(interval);
         setIsRunning(false);
         endTimeRef.current = null;
-        soundManager.playTimerFinish();
-        soundManager.vibrate([300, 150, 300, 150, 500]);
-
-        // Disparar Notificação Local para alertar mesmo com o celular no bolso
-        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          try {
-            new Notification('⏰ Descanso Concluído — MeuTreino Pro', {
-              body: 'Seu tempo de descanso acabou! Hora da próxima série, bora!',
-              tag: 'rest-timer-alert',
-            });
-          } catch (err) {
-            console.warn('Erro ao disparar notificação:', err);
-          }
-        }
+        triggerCompletionAlert();
       } else if (remaining <= 3 && remaining >= 1) {
         if (lastBeepSecRef.current !== remaining) {
           lastBeepSecRef.current = remaining;

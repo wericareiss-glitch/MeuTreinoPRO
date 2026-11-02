@@ -13,6 +13,7 @@ import {
   WorkoutItem,
   UserProfile,
   FocusOption,
+  Exercise,
 } from '../types/workout';
 import { EXERCISE_DATABASE, MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { calculateDefaultBudget, getPresetWeights } from './auth';
@@ -100,11 +101,14 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
   const restSeconds = params.restSeconds || 30;
 
   // 1. Determina a divisão muscular solicitada (Split)
+  // Padrão biomecânico: 2x ou 4x = Upper/Lower; 3x ou 6x = PPL; 5x = ABCDE (sempre corpo inteiro equilibrado)
   const requestedSplit: SplitOption = params.split || user.preferredSplit || (
     focus === 'glutes' 
       ? 'lower' 
-      : frequency <= 3 
-      ? 'fullbody' 
+      : frequency === 3 || frequency === 6
+      ? 'ppl' 
+      : frequency === 5
+      ? 'abcde'
       : 'upper_lower'
   );
 
@@ -296,11 +300,9 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       const totalMuscleBudget = muscleBudgets[mKey] || 0;
       if (totalMuscleBudget <= 0) return; // Músculo não recebeu cota neste orçamento reduzido
 
-      const occurrences = dayPlans.filter((p) => p.muscleGroups.includes(mKey));
-      const timesMuscleTrained = Math.max(1, occurrences.length);
-
-      // Calcula quantas sessões desse músculo ainda restam daqui para frente
-      const sessionsRemaining = occurrences.filter((_, idx) => idx >= planIdx).length || 1;
+      // Calcula quantas sessões desse músculo ainda restam daqui para frente de forma correta
+      const futureOccurrences = dayPlans.slice(planIdx).filter((p) => p.muscleGroups.includes(mKey)).length;
+      const sessionsRemaining = Math.max(1, futureOccurrences);
       const budgetRemaining = totalMuscleBudget - (allocatedSoFar[mKey] || 0);
 
       if (budgetRemaining <= 0) return;
@@ -321,9 +323,24 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       if (pool.length === 0) pool = muscleList;
       if (pool.length === 0) return;
 
-      // Rotaciona a escolha do exercício com base no dia para variedade motora
-      const exIndex = planIdx % pool.length;
-      const chosen = pool[exIndex] || pool[0];
+      // Seleção Inteligente Baseada na Curva de Resistência (Alongamento vs. Encurtamento)
+      // Alterna o perfil entre os treinos da semana para o grupamento:
+      // Dias ímpares priorizam Alongamento (hipertrofia mediada por estiramento)
+      // Dias pares priorizam Encurtamento / Tensão Contínua (pico concêntrico e oclusão)
+      const prefersLengthened = planIdx % 2 === 0;
+      let chosen: Exercise | null = null;
+      if (prefersLengthened) {
+        chosen = pool.find((e) => e.profile.toLowerCase().includes('alongamento')) || null;
+      } else {
+        chosen = pool.find((e) => 
+          e.profile.toLowerCase().includes('encurtamento') || 
+          e.profile.toLowerCase().includes('contínua')
+        ) || null;
+      }
+      if (!chosen) {
+        const exIndex = planIdx % pool.length;
+        chosen = pool[exIndex] || pool[0];
+      }
 
       const repRange = '8 a 10';
       const rir = level === 'beginner' ? 'RIR 2' : level === 'intermediate' ? 'RIR 1-2' : 'RIR 0-1';
@@ -350,7 +367,9 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       });
     });
 
-    const totalSets = items.reduce((acc, curr) => acc + curr.sets, 0);
+    // Ordenação Biomecânica da Fadiga: Compostos Pesados > Isolados > Core/Panturrilha
+    const sortedItems = sortWorkoutItemsByFatigueHierarchy(items);
+    const totalSets = sortedItems.reduce((acc, curr) => acc + curr.sets, 0);
     const estimatedMinutes = Math.round((totalSets * (45 + restSeconds)) / 60);
 
     return {
@@ -360,13 +379,93 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       subtitle: plan.subtitle,
       split: plan.split,
       muscleGroups: plan.muscleGroups,
-      items,
+      items: sortedItems,
       totalSets,
       estimatedMinutes: Math.max(20, estimatedMinutes),
     };
   });
 
   return routines;
+}
+
+/**
+ * Ordenação Biomecânica da Fadiga:
+ * Classifica os exercícios por demanda neural e fadiga sistêmica decrescente:
+ * 1. Compostos axiais pesados (Agachamentos, Stiff, Leg Press, Hip Thrust)
+ * 2. Compostos de tronco (Supinos, Remadas pesadas, Desenvolvimento)
+ * 3. Compostos em máquinas/polias guiadas (Puxadas, Supino máquina)
+ * 4. Isoladores articulares maiores (Extensora, Flexora, Elevação Lateral, Crucifixo)
+ * 5. Isoladores de braços (Bíceps e Tríceps)
+ * 6. Estabilizadores e Core ao final (Panturrilhas, Abdômen/Core) para não fadigar a postura espinhal antes dos levantamentos pesados
+ */
+export function getExerciseFatigueRank(item: WorkoutItem): number {
+  const ex = item.exercise;
+  const name = ex.name.toLowerCase();
+  const cat = (ex.category || '').toLowerCase();
+  const mKey = item.muscleKey;
+
+  // Rank 1: Carga axial pesada de membros inferiores / quadril
+  if (
+    name.includes('hack') ||
+    name.includes('leg press') ||
+    name.includes('agachamento') ||
+    name.includes('rdl') ||
+    name.includes('stiff') ||
+    name.includes('terra') ||
+    name.includes('thrust')
+  ) {
+    return 1;
+  }
+
+  // Rank 2: Compostos pesados de tronco livres/banco
+  if (
+    (mKey === 'chest' && (name.includes('supino') || name.includes('press') || name.includes('paralelas'))) ||
+    (mKey === 'back' && (name.includes('remada') || name.includes('row') || name.includes('apoiada'))) ||
+    (mKey === 'shoulders' && (name.includes('desenvolvimento') || name.includes('press')))
+  ) {
+    return 2;
+  }
+
+  // Rank 3: Guiados / Puxadas / Cabos multiarticulares
+  if (
+    name.includes('puxada') ||
+    name.includes('pulldown') ||
+    name.includes('máquina') ||
+    cat.includes('máquina')
+  ) {
+    return 3;
+  }
+
+  // Rank 4: Isoladores principais de tronco e pernas
+  if (
+    name.includes('extensora') ||
+    name.includes('flexora') ||
+    name.includes('abdutora') ||
+    name.includes('crossover') ||
+    name.includes('crucifixo') ||
+    name.includes('elevação lateral') ||
+    name.includes('face pull')
+  ) {
+    return 4;
+  }
+
+  // Rank 5: Braços (Bíceps e Tríceps)
+  if (mKey === 'biceps' || mKey === 'triceps' || name.includes('rosca') || name.includes('tríceps')) {
+    return 5;
+  }
+
+  // Rank 6: Panturrilhas e Core/Abdômen (sempre no final)
+  if (mKey === 'calves' || mKey === 'abs' || name.includes('panturrilha') || name.includes('gêmeos') || name.includes('crunch') || name.includes('core')) {
+    return 6;
+  }
+
+  return 3;
+}
+
+export function sortWorkoutItemsByFatigueHierarchy(items: WorkoutItem[]): WorkoutItem[] {
+  return [...items].sort((a, b) => {
+    return getExerciseFatigueRank(a) - getExerciseFatigueRank(b);
+  });
 }
 
 /**

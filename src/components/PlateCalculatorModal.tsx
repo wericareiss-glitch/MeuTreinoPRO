@@ -192,10 +192,49 @@ export const PlateCalculatorModal: React.FC<PlateCalculatorModalProps> = ({
         </div>
 
         {/* Visual Plate Representation */}
-        <div className="space-y-2 mb-5">
-          <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+        <div className="space-y-3 mb-5">
+          <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
             Anilhas a colocar em CADA lado:
           </div>
+
+          {/* Gráfico Visual da Barra com Anilhas Empilhadas */}
+          {platesPerSide.length > 0 && (
+            <div className="bg-[#080d17] border border-slate-800 rounded-2xl p-3.5 mb-2 flex items-center justify-center overflow-x-auto shadow-inner">
+              <div className="flex items-center py-2">
+                {/* Eixo central da barra */}
+                <div className="w-8 sm:w-12 h-3 bg-slate-400 rounded-l-sm shrink-0" />
+                {/* Colar / Trava interna da barra */}
+                <div className="w-3.5 h-14 bg-slate-300 rounded-sm border border-slate-400 shadow-md shrink-0" />
+                {/* Anilhas na ponta da manga */}
+                <div className="flex items-center gap-1 pl-1 shrink-0">
+                  {platesPerSide.flatMap((p) =>
+                    Array.from({ length: p.count }).map((_, i) => {
+                      const hClass = 
+                        p.weight === 25 ? 'h-24 w-5' :
+                        p.weight === 20 ? 'h-20 w-5' :
+                        p.weight === 15 ? 'h-18 w-4' :
+                        p.weight === 10 ? 'h-16 w-4' :
+                        p.weight === 5 ? 'h-12 w-3.5' :
+                        p.weight === 2.5 ? 'h-10 w-3' : 'h-8 w-2.5';
+                      return (
+                        <div
+                          key={`${p.weight}-${i}`}
+                          className={`${hClass} rounded-sm border shadow-lg flex items-center justify-center text-[8px] font-black font-mono transition-transform hover:scale-105 shrink-0 ${getPlateColor(
+                            p.weight
+                          )}`}
+                          title={`${p.weight} kg`}
+                        >
+                          <span className="-rotate-90 select-none whitespace-nowrap">{p.weight}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                {/* Ponta final da manga da barra */}
+                <div className="w-10 sm:w-16 h-3 bg-slate-500 rounded-r-md border-l border-slate-600 shrink-0" />
+              </div>
+            </div>
+          )}
 
           {platesPerSide.length === 0 ? (
             <div className="text-xs text-slate-500 py-3 text-center">

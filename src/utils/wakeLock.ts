@@ -9,19 +9,48 @@
 class ScreenWakeLockManager {
   private sentinel: any = null;
   private isRequested = false;
+  private listeners: Set<(active: boolean) => void> = new Set();
+
+  public isSupported(): boolean {
+    return typeof window !== 'undefined' && 'wakeLock' in navigator;
+  }
+
+  public isActive(): boolean {
+    return !!this.sentinel;
+  }
+
+  public subscribe(cb: (active: boolean) => void): () => void {
+    this.listeners.add(cb);
+    cb(this.isActive());
+    return () => this.listeners.delete(cb);
+  }
+
+  private notify() {
+    const active = this.isActive();
+    this.listeners.forEach((cb) => {
+      try {
+        cb(active);
+      } catch {}
+    });
+  }
 
   async request(): Promise<boolean> {
-    if (typeof window === 'undefined' || !('wakeLock' in navigator)) {
+    if (!this.isSupported()) {
       return false;
     }
 
     try {
       this.isRequested = true;
+      if (this.sentinel) {
+        return true;
+      }
       this.sentinel = await (navigator as any).wakeLock.request('screen');
-      
+      this.notify();
+
       this.sentinel.addEventListener('release', () => {
-        // Se foi liberado pelo sistema (ex: troca de app), tenta readquirir se ainda estiver ativo
         this.sentinel = null;
+        this.notify();
+        // Se foi liberado pelo sistema (ex: tela bloqueada ou troca de app), readquire automaticamente ao voltar
         if (this.isRequested && document.visibilityState === 'visible') {
           this.request().catch(() => {});
         }
@@ -40,6 +69,7 @@ class ScreenWakeLockManager {
         await this.sentinel.release();
       } catch {}
       this.sentinel = null;
+      this.notify();
     }
   }
 
@@ -51,8 +81,21 @@ class ScreenWakeLockManager {
       }
     };
 
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible' && this.isRequested && !this.sentinel) {
+        this.request().catch(() => {});
+      }
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('pageshow', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pageshow', handleFocus);
+    };
   }
 }
 

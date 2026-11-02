@@ -156,10 +156,20 @@ Data de Envio: ${new Date().toLocaleString('pt-BR')}
       setTitle('');
       setShowOptionalTitle(false);
     } else {
-      // Se envio direto falhou (ex: bloqueador de anúncio ou offline), abre o app de e-mail de forma silenciosa
+      // Se envio direto falhou (ex: bloqueador de anúncio ou offline), aciona o cliente de e-mail de forma segura
       const subject = encodeURIComponent(`[MeuTreino Pro - ${typeItem.label}] ${finalTitle}`);
       const body = encodeURIComponent(fullBody);
-      window.location.href = `mailto:${RECIPIENT_ADDRESS}?subject=${subject}&body=${body}`;
+      try {
+        const mailLink = document.createElement('a');
+        mailLink.href = `mailto:${RECIPIENT_ADDRESS}?subject=${subject}&body=${body}`;
+        mailLink.target = '_blank';
+        mailLink.rel = 'noopener noreferrer';
+        document.body.appendChild(mailLink);
+        mailLink.click();
+        document.body.removeChild(mailLink);
+      } catch {
+        // Fallback para dispositivos sem app de email
+      }
 
       setFeedbackStatus({
         type: 'info',

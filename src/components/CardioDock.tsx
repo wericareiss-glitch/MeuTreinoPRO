@@ -51,7 +51,7 @@ export const CardioDock: React.FC<CardioDockProps> = ({ userId, onOpenCardio }) 
   const [displaySeconds, setDisplaySeconds] = useState(0);
   const [isDismissed, setIsDismissed] = useState(false);
 
-  // Poll storage periodically or on mount/interval to stay in sync
+  // Poll storage periodically and on visibility/focus to stay 100% in sync after screen-off
   useEffect(() => {
     const syncFromStorage = () => {
       const data = safeStorage.get<ActiveCardioData | null>(activeStorageKey, null);
@@ -68,7 +68,17 @@ export const CardioDock: React.FC<CardioDockProps> = ({ userId, onOpenCardio }) 
 
     syncFromStorage();
     const interval = setInterval(syncFromStorage, 500);
-    return () => clearInterval(interval);
+
+    document.addEventListener('visibilitychange', syncFromStorage);
+    window.addEventListener('focus', syncFromStorage);
+    window.addEventListener('pageshow', syncFromStorage);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', syncFromStorage);
+      window.removeEventListener('focus', syncFromStorage);
+      window.removeEventListener('pageshow', syncFromStorage);
+    };
   }, [activeStorageKey]);
 
   if (isDismissed || !activeData || (!activeData.isRunning && activeData.accumulatedSeconds === 0)) {
