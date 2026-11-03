@@ -476,15 +476,15 @@ export function subscribeToRealtimeSync(
 }
 
 // ============================================================================
-// BUFFER DE MUTAÇÕES LOCAIS EM INTERVALOS DE 5 SEGUNDOS (5000ms)
-// Agrupa e funde (coalesce) todas as mutações locais em um buffer em memória +
-// persistência offline, enviando 1 único commit (Upsert) a cada janela de 5s
-// para otimizar o consumo de bateria (rádio móvel) e requisições de rede.
+// FILA DE MUTAÇÕES OTIMIZADA COM DEBOUNCE DE 5 SEGUNDOS (5000ms) E
+// PRIORIZAÇÃO CRÍTICA NO MODO 'FINISH WORKOUT' ('sessions' & 'measurements')
 // ============================================================================
 const OFFLINE_QUEUE_KEY_PREFIX = 'meutreino_offline_delta_queue_';
 const OFFLINE_BYTES_SAVED_KEY = 'meutreino_delta_bytes_saved';
 const BATCHED_CALLS_SAVED_KEY = 'meutreino_batched_calls_saved';
-export const COMMIT_BATCH_WINDOW_MS = 5000; // Janela fixa de 5 segundos para o buffer de mutações locais
+export const COMMIT_BATCH_WINDOW_MS = 5000; // Debounce padrão de 5 segundos (5000ms)
+export const FINISH_WORKOUT_PRIORITY_DEBOUNCE_MS = 120; // Micro-janela de 120ms para envio prioritário imediato no modo 'finish workout'
+const FINISH_WORKOUT_MODE_TTL_MS = 45000; // Janela de 45s de prioridade máxima após concluir treino
 
 export type SyncDeltaEntity =
   | 'currentLogs'
@@ -493,8 +493,28 @@ export type SyncDeltaEntity =
   | 'sessions'
   | 'measurements'
   | 'workoutNotes'
-  | 'settings'
-  | 'activeRoutineId';
+  | 'activeRoutineId'
+  | 'settings';
+
+export const CRITICAL_FINISH_WORKOUT_ENTITIES: readonly SyncDeltaEntity[] = [
+  'sessions',
+  'measurements',
+];
+
+const ENTITY_PRIORITY_WEIGHTS: Record<SyncDeltaEntity, number> = {
+  sessions: 100,
+  measurements: 95,
+  historyLogs: 70,
+  routines: 60,
+  workoutNotes: 40,
+  settings: 30,
+  activeRoutineId: 20,
+  currentLogs: 10,
+};
+
+export function isCriticalPriorityEntity(entity: SyncDeltaEntity): boolean {
+  return entity === 'sessions' || entity === 'measurements';
+}
 
 export interface OfflineDeltaMutation {
   id: string;
@@ -504,27 +524,135 @@ export interface OfflineDeltaMutation {
   updatedAt: string;
   approxBytes: number;
   mergedCount: number;
+  priority?: 'critical' | 'normal';
 }
 
 export interface BatchSyncMetrics {
   pendingEntitiesCount: number;
+  criticalPendingCount: number;
   totalMergedMutations: number;
   batchedCallsSaved: number;
   bytesSaved: number;
   isBatchTimerActive: boolean;
+  isFinishWorkoutPriorityMode: boolean;
   batchWindowMs: number;
   nextFlushAt: number | null;
 }
 
-// Buffer em memória indexado por userId -> Map<SyncDeltaEntity, OfflineDeltaMutation>
+// Fila de mutações otimizada em memória: userId -> Map<SyncDeltaEntity, OfflineDeltaMutation>
 const localMutationBufferMap = new Map<string, Map<SyncDeltaEntity, OfflineDeltaMutation>>();
 
+// Estado do modo 'finish workout' por usuário para priorização de 'sessions' e 'measurements'
+interface FinishWorkoutState {
+  active: boolean;
+  activatedAt: number;
+  expireTimer: ReturnType<typeof setTimeout> | null;
+}
+const finishWorkoutModeMap = new Map<string, FinishWorkoutState>();
+
 let isFlushingQueue = false;
+let pendingFlushAfterCurrent = false;
 let batchCommitTimer: ReturnType<typeof setTimeout> | null = null;
+let priorityCommitTimer: ReturnType<typeof setTimeout> | null = null;
 let bufferPersistTimer: ReturnType<typeof setTimeout> | null = null;
 let nextBatchFlushTimestamp: number | null = null;
 let activeBatchUserId: string | null = null;
 let activeBatchUserProfile: any = null;
+
+/**
+ * Verifica se o usuário está atualmente no modo 'finish workout' (conclusão de treino).
+ * Também detecta automaticamente se a tela de resumo pós-treino está aberta ou se há
+ * uma sessão recém-finalizada na fila.
+ */
+export function isFinishWorkoutSyncMode(userId: string): boolean {
+  if (!userId) return false;
+  const state = finishWorkoutModeMap.get(userId);
+  if (state?.active) {
+    if (Date.now() - state.activatedAt <= FINISH_WORKOUT_MODE_TTL_MS) {
+      return true;
+    }
+    state.active = false;
+  }
+  return false;
+}
+
+/**
+ * Ativa ou desativa explicitamente o modo 'finish workout' para priorizar o upload imediato
+ * de 'sessions' e 'measurements' antes de quaisquer outros dados secundários.
+ */
+export function setFinishWorkoutSyncMode(
+  userId: string,
+  active: boolean,
+  userProfile?: any
+): void {
+  if (!userId) return;
+  if (userProfile !== undefined) {
+    activeBatchUserProfile = userProfile;
+  }
+  activeBatchUserId = userId;
+
+  const existing = finishWorkoutModeMap.get(userId);
+  if (existing?.expireTimer) {
+    clearTimeout(existing.expireTimer);
+  }
+
+  if (!active) {
+    finishWorkoutModeMap.set(userId, {
+      active: false,
+      activatedAt: 0,
+      expireTimer: null,
+    });
+    notifyQueueListeners(userId);
+    return;
+  }
+
+  const expireTimer = setTimeout(() => {
+    const curr = finishWorkoutModeMap.get(userId);
+    if (curr) {
+      curr.active = false;
+      curr.expireTimer = null;
+      notifyQueueListeners(userId);
+    }
+  }, FINISH_WORKOUT_MODE_TTL_MS);
+
+  finishWorkoutModeMap.set(userId, {
+    active: true,
+    activatedAt: Date.now(),
+    expireTimer,
+  });
+
+  // Se já existirem mutações críticas ('sessions' ou 'measurements') na fila e estiver online,
+  // agenda o envio prioritário imediato passando na frente dos demais dados.
+  const userBuffer = getOrHydrateUserBuffer(userId);
+  const hasCriticalPending =
+    userBuffer.has('sessions') || userBuffer.has('measurements');
+
+  const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  if (hasCriticalPending && isOnline && isSupabaseConfigured()) {
+    schedulePriorityFinishWorkoutCommit(userId, userProfile);
+  } else {
+    notifyQueueListeners(userId);
+  }
+}
+
+function sortMutationsByPriority(
+  mutations: OfflineDeltaMutation[],
+  prioritizeCritical: boolean
+): OfflineDeltaMutation[] {
+  return [...mutations].sort((a, b) => {
+    if (prioritizeCritical) {
+      const weightDiff =
+        (ENTITY_PRIORITY_WEIGHTS[b.entity] || 0) -
+        (ENTITY_PRIORITY_WEIGHTS[a.entity] || 0);
+      if (weightDiff !== 0) return weightDiff;
+    } else {
+      const aCrit = isCriticalPriorityEntity(a.entity) ? 1 : 0;
+      const bCrit = isCriticalPriorityEntity(b.entity) ? 1 : 0;
+      if (bCrit !== aCrit) return bCrit - aCrit;
+    }
+    return a.updatedAt.localeCompare(b.updatedAt);
+  });
+}
 
 function getOrHydrateUserBuffer(userId: string): Map<SyncDeltaEntity, OfflineDeltaMutation> {
   let userBuffer = localMutationBufferMap.get(userId);
@@ -536,7 +664,10 @@ function getOrHydrateUserBuffer(userId: string): Map<SyncDeltaEntity, OfflineDel
     );
     for (const item of persisted) {
       if (item && item.entity) {
-        userBuffer.set(item.entity, item);
+        userBuffer.set(item.entity, {
+          ...item,
+          priority: isCriticalPriorityEntity(item.entity) ? 'critical' : 'normal',
+        });
       }
     }
     localMutationBufferMap.set(userId, userBuffer);
@@ -546,7 +677,10 @@ function getOrHydrateUserBuffer(userId: string): Map<SyncDeltaEntity, OfflineDel
 
 function persistUserBufferToStorage(userId: string): OfflineDeltaMutation[] {
   const userBuffer = getOrHydrateUserBuffer(userId);
-  const serializedArray = Array.from(userBuffer.values());
+  const serializedArray = sortMutationsByPriority(
+    Array.from(userBuffer.values()),
+    isFinishWorkoutSyncMode(userId)
+  );
   safeStorage.set(`${OFFLINE_QUEUE_KEY_PREFIX}${userId}`, serializedArray);
   return serializedArray;
 }
@@ -562,16 +696,38 @@ function scheduleDebouncedBufferPersistence(userId: string): void {
   }, 250);
 }
 
-function clearUserMutationBuffer(userId: string): void {
+function clearUserMutationBuffer(userId: string, flushedSnapshot?: Map<SyncDeltaEntity, string>): boolean {
   if (bufferPersistTimer) {
     clearTimeout(bufferPersistTimer);
     bufferPersistTimer = null;
   }
   const userBuffer = localMutationBufferMap.get(userId);
-  if (userBuffer) {
-    userBuffer.clear();
+  if (!userBuffer) {
+    safeStorage.set(`${OFFLINE_QUEUE_KEY_PREFIX}${userId}`, []);
+    return false;
   }
-  safeStorage.set(`${OFFLINE_QUEUE_KEY_PREFIX}${userId}`, []);
+
+  if (!flushedSnapshot) {
+    userBuffer.clear();
+    safeStorage.set(`${OFFLINE_QUEUE_KEY_PREFIX}${userId}`, []);
+    return false;
+  }
+
+  // Remove apenas as mutações cujo timestamp coincide com o snapshot enviado.
+  // Se uma entidade recebeu nova mutação durante o envio de rede, preserva-a na fila.
+  for (const [entity, flushedUpdatedAt] of flushedSnapshot.entries()) {
+    const current = userBuffer.get(entity);
+    if (current && current.updatedAt === flushedUpdatedAt) {
+      userBuffer.delete(entity);
+    }
+  }
+
+  const remaining = sortMutationsByPriority(
+    Array.from(userBuffer.values()),
+    isFinishWorkoutSyncMode(userId)
+  );
+  safeStorage.set(`${OFFLINE_QUEUE_KEY_PREFIX}${userId}`, remaining);
+  return remaining.length > 0;
 }
 
 function requestServiceWorkerBackgroundSync(): void {
@@ -606,7 +762,10 @@ function notifyQueueListeners(userId: string) {
 export function getOfflineMutationQueue(userId: string): OfflineDeltaMutation[] {
   if (!userId) return [];
   const userBuffer = getOrHydrateUserBuffer(userId);
-  return Array.from(userBuffer.values());
+  return sortMutationsByPriority(
+    Array.from(userBuffer.values()),
+    isFinishWorkoutSyncMode(userId)
+  );
 }
 
 export function getEstimatedMobileDataSavedBytes(): number {
@@ -619,41 +778,107 @@ export function getBatchedNetworkCallsSaved(): number {
 
 export function getBatchSyncMetrics(userId: string): BatchSyncMetrics {
   const queue = getOfflineMutationQueue(userId);
+  const criticalPendingCount = queue.filter((item) =>
+    isCriticalPriorityEntity(item.entity)
+  ).length;
   const totalMergedMutations = queue.reduce((acc, item) => acc + (item.mergedCount || 1), 0);
+  const finishMode = isFinishWorkoutSyncMode(userId);
   return {
     pendingEntitiesCount: queue.length,
+    criticalPendingCount,
     totalMergedMutations,
     batchedCallsSaved: getBatchedNetworkCallsSaved(),
     bytesSaved: getEstimatedMobileDataSavedBytes(),
-    isBatchTimerActive: batchCommitTimer !== null,
-    batchWindowMs: COMMIT_BATCH_WINDOW_MS,
+    isBatchTimerActive: batchCommitTimer !== null || priorityCommitTimer !== null,
+    isFinishWorkoutPriorityMode: finishMode,
+    batchWindowMs: finishMode && criticalPendingCount > 0
+      ? FINISH_WORKOUT_PRIORITY_DEBOUNCE_MS
+      : COMMIT_BATCH_WINDOW_MS,
     nextFlushAt: nextBatchFlushTimestamp,
   };
 }
 
 /**
- * Agenda o flush do buffer em intervalos fixos de 5 segundos (COMMIT_BATCH_WINDOW_MS = 5000ms).
- * Se uma janela de 5 segundos já estiver aberta e ativa, novas mutações entram no mesmo buffer
- * sem adiar indefinidamente o envio, garantindo commits previsíveis a cada 5s.
+ * Agendamento prioritário para o modo 'finish workout':
+ * Cancela a espera de 5s para 'sessions' e 'measurements' e dispara o envio prioritário
+ * em 120ms (permitindo agrupar 'sessions' + 'measurements' disparados no mesmo frame)
+ * antes de processar dados secundários.
  */
-function scheduleBatchedCommit(userId: string, userProfile?: any): void {
+function schedulePriorityFinishWorkoutCommit(userId: string, userProfile?: any): void {
   activeBatchUserId = userId;
-  if (userProfile) {
+  if (userProfile !== undefined) {
     activeBatchUserProfile = userProfile;
   }
 
-  // Se o timer de 5 segundos já está rodando, apenas anexa ao buffer atual sem reiniciar o ciclo
-  if (batchCommitTimer !== null) {
+  if (isFlushingQueue) {
+    pendingFlushAfterCurrent = true;
     return;
   }
 
+  if (batchCommitTimer !== null) {
+    clearTimeout(batchCommitTimer);
+    batchCommitTimer = null;
+  }
+  if (priorityCommitTimer !== null) {
+    clearTimeout(priorityCommitTimer);
+    priorityCommitTimer = null;
+  }
+
+  nextBatchFlushTimestamp = Date.now() + FINISH_WORKOUT_PRIORITY_DEBOUNCE_MS;
+  notifyQueueListeners(userId);
+
+  priorityCommitTimer = setTimeout(() => {
+    priorityCommitTimer = null;
+    nextBatchFlushTimestamp = null;
+    const targetUid = activeBatchUserId || userId;
+    const targetProfile = activeBatchUserProfile ?? userProfile;
+    flushOfflineMutationQueue(targetUid, targetProfile).catch(() => {});
+  }, FINISH_WORKOUT_PRIORITY_DEBOUNCE_MS);
+}
+
+/**
+ * Mecanismo de Debounce baseado em tempo de 5 segundos (COMMIT_BATCH_WINDOW_MS = 5000ms).
+ * A cada nova mutação local consecutiva, o timer anterior é cancelado e reiniciado para +5000ms,
+ * garantindo que múltiplas alterações consecutivas sejam reduzidas a um único commit no Supabase.
+ * Quando o modo 'finish workout' é detectado e há 'sessions' ou 'measurements' pendentes,
+ * prioriza automaticamente o envio crítico imediato.
+ */
+function scheduleBatchedCommit(userId: string, userProfile?: any): void {
+  activeBatchUserId = userId;
+  if (userProfile !== undefined) {
+    activeBatchUserProfile = userProfile;
+  }
+
+  const userBuffer = getOrHydrateUserBuffer(userId);
+  const hasCriticalEntities =
+    userBuffer.has('sessions') || userBuffer.has('measurements');
+
+  // Se o app está no modo 'finish workout' e existem dados críticos ('sessions' / 'measurements'),
+  // usa a via expressa prioritária para garantir que o progresso chegue à nuvem primeiro.
+  if (isFinishWorkoutSyncMode(userId) && hasCriticalEntities) {
+    schedulePriorityFinishWorkoutCommit(userId, userProfile);
+    return;
+  }
+
+  // Se um commit de rede já está em andamento, marca para agendar novo ciclo assim que concluir
+  if (isFlushingQueue) {
+    pendingFlushAfterCurrent = true;
+  }
+
+  // Debounce real: reinicia a contagem de 5 segundos a cada mutação consecutiva
+  if (batchCommitTimer !== null) {
+    clearTimeout(batchCommitTimer);
+    batchCommitTimer = null;
+  }
+
   nextBatchFlushTimestamp = Date.now() + COMMIT_BATCH_WINDOW_MS;
+  notifyQueueListeners(userId);
 
   batchCommitTimer = setTimeout(() => {
     batchCommitTimer = null;
     nextBatchFlushTimestamp = null;
     const targetUid = activeBatchUserId || userId;
-    const targetProfile = activeBatchUserProfile || userProfile;
+    const targetProfile = activeBatchUserProfile ?? userProfile;
     flushOfflineMutationQueue(targetUid, targetProfile).catch(() => {});
   }, COMMIT_BATCH_WINDOW_MS);
 }
@@ -666,9 +891,15 @@ if (typeof window !== 'undefined') {
       bufferPersistTimer = null;
       persistUserBufferToStorage(activeBatchUserId);
     }
-    if (batchCommitTimer && activeBatchUserId) {
-      clearTimeout(batchCommitTimer);
-      batchCommitTimer = null;
+    if ((batchCommitTimer || priorityCommitTimer) && activeBatchUserId) {
+      if (batchCommitTimer) {
+        clearTimeout(batchCommitTimer);
+        batchCommitTimer = null;
+      }
+      if (priorityCommitTimer) {
+        clearTimeout(priorityCommitTimer);
+        priorityCommitTimer = null;
+      }
       nextBatchFlushTimestamp = null;
       flushOfflineMutationQueue(activeBatchUserId, activeBatchUserProfile).catch(() => {});
     }
@@ -681,6 +912,19 @@ if (typeof window !== 'undefined') {
   });
   window.addEventListener('pagehide', flushOnBackground);
 
+  // Escuta evento global de modo 'finish workout' disparado pela interface
+  window.addEventListener('meutreino:finish-workout-mode', (ev: Event) => {
+    const customEv = ev as CustomEvent;
+    const detail = customEv.detail;
+    if (detail && detail.userId) {
+      setFinishWorkoutSyncMode(
+        detail.userId,
+        detail.active !== false,
+        detail.userProfile
+      );
+    }
+  });
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'SW_FLUSH_MUTATION_BUFFER' && activeBatchUserId) {
@@ -691,25 +935,60 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Insere ou mescla uma mutação no buffer em memória + persistência local.
+ * Mescla objetos de dicionário em até 2 níveis (ex: logs de séries por exercício/dia)
+ * para evitar perda de chaves intermediárias durante mutações locais consecutivas.
+ */
+function mergeDictionaryPayloads(prevObj: Record<string, any>, nextObj: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = { ...prevObj };
+  for (const key of Object.keys(nextObj)) {
+    const prevVal = result[key];
+    const nextVal = nextObj[key];
+    if (
+      prevVal &&
+      nextVal &&
+      typeof prevVal === 'object' &&
+      typeof nextVal === 'object' &&
+      !Array.isArray(prevVal) &&
+      !Array.isArray(nextVal)
+    ) {
+      result[key] = { ...prevVal, ...nextVal };
+    } else {
+      result[key] = nextVal;
+    }
+  }
+  return result;
+}
+
+function estimatePayloadBytes(payload: any): number {
+  if (payload === null || payload === undefined) return 16;
+  if (typeof payload === 'string') return Math.max(32, payload.length * 2);
+  if (Array.isArray(payload)) return Math.max(128, payload.length * 180);
+  if (typeof payload === 'object') return Math.max(96, Object.keys(payload).length * 96);
+  return 32;
+}
+
+/**
+ * Insere ou funde (coalesce) uma mutação na fila em memória, retornando true se houve alteração.
  */
 function upsertMutationIntoBuffer(
   userId: string,
   entity: SyncDeltaEntity,
   deltaPayload: any
-): void {
+): boolean {
   const userBuffer = getOrHydrateUserBuffer(userId);
   const nowIso = new Date().toISOString();
-
-  let serializedLen = 96;
-  if (typeof deltaPayload === 'string') {
-    serializedLen = deltaPayload.length;
-  } else if (Array.isArray(deltaPayload)) {
-    serializedLen = Math.max(128, deltaPayload.length * 180);
-  }
+  const serializedLen = estimatePayloadBytes(deltaPayload);
+  const priority: 'critical' | 'normal' = isCriticalPriorityEntity(entity)
+    ? 'critical'
+    : 'normal';
 
   const prev = userBuffer.get(entity);
   if (prev) {
+    // Evita contagens redundantes se for exatamente a mesma referência ou primitivo idêntico
+    if (prev.deltaPayload === deltaPayload && typeof deltaPayload !== 'object') {
+      return false;
+    }
+
     let mergedPayload = deltaPayload;
     if (
       (entity === 'currentLogs' || entity === 'historyLogs' || entity === 'settings') &&
@@ -720,40 +999,83 @@ function upsertMutationIntoBuffer(
       typeof deltaPayload === 'object' &&
       !Array.isArray(deltaPayload)
     ) {
-      mergedPayload = { ...prev.deltaPayload, ...deltaPayload };
+      mergedPayload = mergeDictionaryPayloads(prev.deltaPayload, deltaPayload);
     }
+
     userBuffer.set(entity, {
       ...prev,
       deltaPayload: mergedPayload,
       updatedAt: nowIso,
-      approxBytes: serializedLen,
+      approxBytes: estimatePayloadBytes(mergedPayload),
       mergedCount: (prev.mergedCount || 1) + 1,
+      priority,
     });
-  } else {
-    userBuffer.set(entity, {
-      id: `${entity}_${Date.now()}`,
-      userId,
-      entity,
-      deltaPayload,
-      updatedAt: nowIso,
-      approxBytes: serializedLen,
-      mergedCount: 1,
-    });
+    return true;
+  }
+
+  userBuffer.set(entity, {
+    id: `${entity}_${Date.now()}`,
+    userId,
+    entity,
+    deltaPayload,
+    updatedAt: nowIso,
+    approxBytes: serializedLen,
+    mergedCount: 1,
+    priority,
+  });
+  return true;
+}
+
+/**
+ * Aplica uma lista de mutações sobre uma bundle base.
+ */
+function applyMutationsToBundle(
+  targetBundle: MeuTreinoSyncBundle,
+  mutations: OfflineDeltaMutation[]
+): void {
+  for (const item of mutations) {
+    if (item.entity === 'currentLogs' && item.deltaPayload) {
+      targetBundle.currentLogs = mergeDictionaryPayloads(
+        targetBundle.currentLogs || {},
+        item.deltaPayload
+      );
+    } else if (item.entity === 'historyLogs' && item.deltaPayload) {
+      targetBundle.historyLogs = mergeDictionaryPayloads(
+        targetBundle.historyLogs || {},
+        item.deltaPayload
+      );
+    } else if (item.entity === 'settings' && item.deltaPayload) {
+      targetBundle.settings = {
+        ...(targetBundle.settings || {}),
+        ...item.deltaPayload,
+      };
+    } else if (item.entity === 'routines') {
+      targetBundle.routines = item.deltaPayload;
+    } else if (item.entity === 'sessions') {
+      targetBundle.sessions = item.deltaPayload;
+    } else if (item.entity === 'measurements') {
+      targetBundle.measurements = item.deltaPayload;
+    } else if (item.entity === 'workoutNotes') {
+      targetBundle.workoutNotes = item.deltaPayload;
+    } else if (item.entity === 'activeRoutineId') {
+      targetBundle.activeRoutineId = item.deltaPayload;
+    }
   }
 }
 
 /**
- * Agrupa uma bundle inteira dentro do buffer de 5 segundos em uma única escrita de armazenamento.
+ * Agrupa uma bundle inteira dentro da fila com debounce de 5 segundos em uma única operação.
  */
 function bufferBundleMutations(bundle: MeuTreinoSyncBundle): void {
   if (!bundle || !bundle.userId) return;
   const uid = bundle.userId;
 
-  if (bundle.routines !== undefined) upsertMutationIntoBuffer(uid, 'routines', bundle.routines);
+  // Insere primeiro as entidades críticas ('sessions' e 'measurements')
   if (bundle.sessions !== undefined) upsertMutationIntoBuffer(uid, 'sessions', bundle.sessions);
+  if (bundle.measurements !== undefined) upsertMutationIntoBuffer(uid, 'measurements', bundle.measurements);
+  if (bundle.routines !== undefined) upsertMutationIntoBuffer(uid, 'routines', bundle.routines);
   if (bundle.historyLogs !== undefined) upsertMutationIntoBuffer(uid, 'historyLogs', bundle.historyLogs);
   if (bundle.currentLogs !== undefined) upsertMutationIntoBuffer(uid, 'currentLogs', bundle.currentLogs);
-  if (bundle.measurements !== undefined) upsertMutationIntoBuffer(uid, 'measurements', bundle.measurements);
   if (bundle.workoutNotes !== undefined) upsertMutationIntoBuffer(uid, 'workoutNotes', bundle.workoutNotes);
   if (bundle.settings !== undefined) upsertMutationIntoBuffer(uid, 'settings', bundle.settings);
   if (bundle.activeRoutineId !== undefined) {
@@ -771,21 +1093,33 @@ function bufferBundleMutations(bundle: MeuTreinoSyncBundle): void {
 }
 
 /**
- * Registra qualquer mutação local no buffer de agrupamento de 5 segundos (5000ms).
- * Funde (coalesce) alterações repetidas na mesma entidade para minimizar o payload e chamadas de rede.
+ * Enfileira uma mutação local com debounce de 5 segundos (5000ms).
+ * Quando detecta que o usuário está concluindo o treino ('finish workout' mode ou mutação de 'sessions'),
+ * ativa automaticamente a priorização de 'sessions' e 'measurements' para que cheguem à nuvem primeiro.
  */
 export function enqueueOfflineMutation(
   userId: string,
   entity: SyncDeltaEntity,
   deltaPayload: any,
-  userProfile?: any
+  userProfile?: any,
+  options?: { isFinishWorkout?: boolean }
 ): void {
   if (!userId) return;
+
+  // Detecta automaticamente o modo 'finish workout' quando uma nova sessão concluída é enfileirada
+  // ou quando explicitamente sinalizado via options.isFinishWorkout
+  if (options?.isFinishWorkout || entity === 'sessions') {
+    setFinishWorkoutSyncMode(userId, true, userProfile);
+  } else if (entity === 'activeRoutineId' && deltaPayload === null) {
+    const buf = getOrHydrateUserBuffer(userId);
+    if (buf.has('sessions') || buf.has('measurements')) {
+      setFinishWorkoutSyncMode(userId, true, userProfile);
+    }
+  }
 
   upsertMutationIntoBuffer(userId, entity, deltaPayload);
   scheduleDebouncedBufferPersistence(userId);
 
-  // Se estiver online, agenda o envio agrupado no intervalo de 5 segundos (5000ms)
   const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
   if (isOnline && isSupabaseConfigured()) {
     scheduleBatchedCommit(userId, userProfile);
@@ -795,20 +1129,38 @@ export function enqueueOfflineMutation(
 }
 
 /**
- * Executa o commit em lote (Batch Flush) de todas as mutações locais acumuladas no buffer de 5s
- * em uma única requisição de rede (Upsert direto) ao Supabase.
+ * Executa o commit em lote (Batch Flush) das mutações locais acumuladas.
+ * No modo 'finish workout', particiona a fila para fazer o upload prioritário de
+ * 'sessions' e 'measurements' PRIMEIRO (Stage 1), garantindo que o progresso mais crítico
+ * seja salvo na nuvem imediatamente antes dos demais dados secundários (Stage 2).
  */
 export async function flushOfflineMutationQueue(
   userId: string,
   userProfile?: any
-): Promise<{ flushedCount: number; mergedOperations: number; bytesSaved: number; error?: string }> {
+): Promise<{
+  flushedCount: number;
+  criticalFlushedCount?: number;
+  mergedOperations: number;
+  bytesSaved: number;
+  prioritizedFinishWorkout?: boolean;
+  error?: string;
+}> {
   if (batchCommitTimer) {
     clearTimeout(batchCommitTimer);
     batchCommitTimer = null;
-    nextBatchFlushTimestamp = null;
+  }
+  if (priorityCommitTimer) {
+    clearTimeout(priorityCommitTimer);
+    priorityCommitTimer = null;
+  }
+  nextBatchFlushTimestamp = null;
+
+  if (!userId) {
+    return { flushedCount: 0, mergedOperations: 0, bytesSaved: 0 };
   }
 
-  if (!userId || isFlushingQueue) {
+  if (isFlushingQueue) {
+    pendingFlushAfterCurrent = true;
     return { flushedCount: 0, mergedOperations: 0, bytesSaved: 0 };
   }
 
@@ -820,10 +1172,11 @@ export async function flushOfflineMutationQueue(
       flushedCount: 0,
       mergedOperations: 0,
       bytesSaved: 0,
-      error: 'Dispositivo offline. Mutações mantidas no buffer para sincronização automática.',
+      error: 'Dispositivo offline. Mutações mantidas na fila para sincronização automática.',
     };
   }
 
+  const inFinishWorkoutMode = isFinishWorkoutSyncMode(userId);
   const queue = getOfflineMutationQueue(userId);
   if (queue.length === 0) {
     notifyQueueListeners(userId);
@@ -831,39 +1184,90 @@ export async function flushOfflineMutationQueue(
   }
 
   isFlushingQueue = true;
+  pendingFlushAfterCurrent = false;
+
+  // Separa as mutações críticas ('sessions' e 'measurements') das mutações secundárias
+  const criticalMutations = queue.filter((item) => isCriticalPriorityEntity(item.entity));
+  const secondaryMutations = queue.filter((item) => !isCriticalPriorityEntity(item.entity));
+  const shouldRunTwoStagePriority =
+    inFinishWorkoutMode && criticalMutations.length > 0 && secondaryMutations.length > 0;
+
   try {
     const client = getSupabaseClient();
-    const consolidatedBundle = buildLocalSyncBundle(userId, userProfile);
+    const resolvedProfile = userProfile ?? activeBatchUserProfile;
 
-    // Aplica todos os deltas acumulados no buffer de 5s sobre a bundle consolidada local
-    for (const item of queue) {
-      if (item.entity === 'currentLogs' && item.deltaPayload) {
-        consolidatedBundle.currentLogs = {
-          ...(consolidatedBundle.currentLogs || {}),
-          ...item.deltaPayload,
-        };
-      } else if (item.entity === 'historyLogs' && item.deltaPayload) {
-        consolidatedBundle.historyLogs = {
-          ...(consolidatedBundle.historyLogs || {}),
-          ...item.deltaPayload,
-        };
-      } else if (item.entity === 'settings' && item.deltaPayload) {
-        consolidatedBundle.settings = {
-          ...(consolidatedBundle.settings || {}),
-          ...item.deltaPayload,
-        };
-      } else if (item.entity === 'routines') {
-        consolidatedBundle.routines = item.deltaPayload;
-      } else if (item.entity === 'sessions') {
-        consolidatedBundle.sessions = item.deltaPayload;
-      } else if (item.entity === 'measurements') {
-        consolidatedBundle.measurements = item.deltaPayload;
-      } else if (item.entity === 'workoutNotes') {
-        consolidatedBundle.workoutNotes = item.deltaPayload;
-      } else if (item.entity === 'activeRoutineId') {
-        consolidatedBundle.activeRoutineId = item.deltaPayload;
+    // =========================================================================
+    // ESTÁGIO 1 (MODO 'FINISH WORKOUT'): Upload Prioritário de 'sessions' & 'measurements'
+    // Garante que o treino concluído e as medidas corporais cheguem à nuvem PRIMEIRO
+    // e sejam confirmados antes de processar logs secundários ou configurações.
+    // =========================================================================
+    if (shouldRunTwoStagePriority) {
+      const criticalSnapshot = new Map<SyncDeltaEntity, string>();
+      for (const critItem of criticalMutations) {
+        criticalSnapshot.set(critItem.entity, critItem.updatedAt);
       }
+
+      const priorityBundle = buildLocalSyncBundle(userId, resolvedProfile);
+      applyMutationsToBundle(priorityBundle, criticalMutations);
+      priorityBundle.updatedAt = new Date().toISOString();
+      priorityBundle.version = (priorityBundle.version || 2) + 1;
+
+      notifyServiceWorkerWorkoutSnapshot(priorityBundle);
+
+      if (syncBroadcastChannel) {
+        try {
+          syncBroadcastChannel.postMessage({
+            type: 'LOCAL_DELTA_SYNC_BROADCAST',
+            userId,
+            priorityStage: 'critical_sessions_measurements',
+            deltas: criticalMutations,
+            bundle: priorityBundle,
+          });
+        } catch {}
+      }
+
+      if (client) {
+        const { error: critError } = await client.from('meutreino_sync').upsert(
+          {
+            user_id: userId,
+            data: priorityBundle,
+            updated_at: priorityBundle.updatedAt,
+          },
+          { onConflict: 'user_id' }
+        );
+
+        if (critError) {
+          isFlushingQueue = false;
+          notifyQueueListeners(userId);
+          return {
+            flushedCount: 0,
+            criticalFlushedCount: 0,
+            mergedOperations: 0,
+            bytesSaved: 0,
+            prioritizedFinishWorkout: true,
+            error: critError.message,
+          };
+        }
+      }
+
+      // Remove imediatamente 'sessions' e 'measurements' da fila local pois já estão seguros na nuvem!
+      clearUserMutationBuffer(userId, criticalSnapshot);
+      safeStorage.set(SUPABASE_LAST_SYNC_KEY, priorityBundle.updatedAt);
+      notifyQueueListeners(userId);
     }
+
+    // =========================================================================
+    // ESTÁGIO 2 (ou Lote Único Consolidado): Upload das entidades restantes na ordem de prioridade
+    // =========================================================================
+    const remainingQueue = shouldRunTwoStagePriority ? secondaryMutations : queue;
+    const flushedSnapshot = new Map<SyncDeltaEntity, string>();
+    for (const item of remainingQueue) {
+      flushedSnapshot.set(item.entity, item.updatedAt);
+    }
+
+    const consolidatedBundle = buildLocalSyncBundle(userId, resolvedProfile);
+    // Aplica em ordem de prioridade ('sessions' e 'measurements' sempre prevalecem)
+    applyMutationsToBundle(consolidatedBundle, queue);
 
     consolidatedBundle.updatedAt = new Date().toISOString();
     consolidatedBundle.version = (consolidatedBundle.version || 2) + 1;
@@ -874,7 +1278,7 @@ export async function flushOfflineMutationQueue(
     const savedNow = Math.max(256, fullBundleSize * totalMergedOps - deltaSize);
     const callsSavedNow = Math.max(0, totalMergedOps - 1);
 
-    // Atualiza o cache Stale-While-Revalidate do Service Worker com o lote consolidado
+    // Atualiza o cache Stale-While-Revalidate do Service Worker com o lote consolidado final
     notifyServiceWorkerWorkoutSnapshot(consolidatedBundle);
 
     // Transmite o lote consolidado para outras abas locais via BroadcastChannel
@@ -883,14 +1287,13 @@ export async function flushOfflineMutationQueue(
         syncBroadcastChannel.postMessage({
           type: 'LOCAL_DELTA_SYNC_BROADCAST',
           userId,
-          deltas: queue,
+          deltas: remainingQueue,
           bundle: consolidatedBundle,
         });
       } catch {}
     }
 
-    // Faz 1 ÚNICA requisição de rede (Upsert direto) ao Supabase com todas as mutações agrupadas nos 5s
-    if (client) {
+    if (client && remainingQueue.length > 0) {
       const { error } = await client.from('meutreino_sync').upsert(
         {
           user_id: userId,
@@ -903,13 +1306,35 @@ export async function flushOfflineMutationQueue(
       if (error) {
         isFlushingQueue = false;
         notifyQueueListeners(userId);
+        // Se o Estágio 1 crítico já havia sido enviado com sucesso, retorna o progresso crítico salvo
+        if (shouldRunTwoStagePriority) {
+          return {
+            flushedCount: criticalMutations.length,
+            criticalFlushedCount: criticalMutations.length,
+            mergedOperations: criticalMutations.reduce((a, c) => a + (c.mergedCount || 1), 0),
+            bytesSaved: Math.round(savedNow / 2),
+            prioritizedFinishWorkout: true,
+            error: error.message,
+          };
+        }
         return { flushedCount: 0, mergedOperations: 0, bytesSaved: 0, error: error.message };
       }
     }
 
-    // Limpa o buffer confirmado e contabiliza economia de chamadas de rede (bateria) e dados móveis
+    // Remove do buffer apenas as mutações que foram confirmadas neste commit
     const flushedCount = queue.length;
-    clearUserMutationBuffer(userId);
+    const hasRemainingMutations = clearUserMutationBuffer(userId, flushedSnapshot);
+
+    // Se todas as mutações críticas do finish workout foram enviadas, desativa o flag de urgência
+    const updatedBuffer = getOrHydrateUserBuffer(userId);
+    if (
+      inFinishWorkoutMode &&
+      !updatedBuffer.has('sessions') &&
+      !updatedBuffer.has('measurements')
+    ) {
+      setFinishWorkoutSyncMode(userId, false);
+    }
+
     const prevSavedBytes = getEstimatedMobileDataSavedBytes();
     safeStorage.set(OFFLINE_BYTES_SAVED_KEY, prevSavedBytes + savedNow);
     if (callsSavedNow > 0) {
@@ -920,7 +1345,19 @@ export async function flushOfflineMutationQueue(
     isFlushingQueue = false;
     notifyQueueListeners(userId);
 
-    return { flushedCount, mergedOperations: totalMergedOps, bytesSaved: savedNow };
+    // Se novas mutações chegaram enquanto o request de rede estava em andamento, agenda novo ciclo
+    if (hasRemainingMutations || pendingFlushAfterCurrent) {
+      pendingFlushAfterCurrent = false;
+      scheduleBatchedCommit(userId, resolvedProfile);
+    }
+
+    return {
+      flushedCount,
+      criticalFlushedCount: criticalMutations.length,
+      mergedOperations: totalMergedOps,
+      bytesSaved: savedNow,
+      prioritizedFinishWorkout: inFinishWorkoutMode && criticalMutations.length > 0,
+    };
   } catch (err: any) {
     isFlushingQueue = false;
     notifyQueueListeners(userId);
@@ -928,7 +1365,7 @@ export async function flushOfflineMutationQueue(
       flushedCount: 0,
       mergedOperations: 0,
       bytesSaved: 0,
-      error: err?.message || 'Erro ao processar buffer de sincronização.',
+      error: err?.message || 'Erro ao processar fila de sincronização.',
     };
   }
 }

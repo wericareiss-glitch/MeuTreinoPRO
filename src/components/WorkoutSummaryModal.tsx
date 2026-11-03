@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { FixedSizeList as List, ListChildComponentProps } from 'react-window';
 import { 
   Trophy, 
   Share2, 
@@ -17,13 +18,88 @@ import {
   Loader2,
   MessageCircle,
   FileSpreadsheet,
-  FileDown
+  FileDown,
+  History,
+  Calendar
 } from 'lucide-react';
 import { WorkoutSessionSummary } from '../types/workout';
 import { generateWorkoutCardImage } from '../utils/generateWorkoutCardImage';
 import { extractSessionPRs } from '../utils/prEngine';
 import { exportCompletedSessionToPDF } from '../utils/pdfExport';
 import { WorkoutPdfExportModal } from './WorkoutPdfExportModal';
+
+interface ExercisePerformanceHistoryEntry {
+  sessionId: string;
+  dateIso: string;
+  formattedDate: string;
+  splitName: string;
+  isCurrentSession: boolean;
+  setsCount: number;
+  topWeight: number;
+  topReps: number;
+  topRpe?: string;
+  estimated1RM: number;
+  volumeLoadKg: number;
+  setsDetail: string;
+}
+
+const HISTORY_ROW_HEIGHT = 76;
+
+const VirtualizedExerciseHistoryRow = React.memo(
+  ({ index, style, data }: ListChildComponentProps<ExercisePerformanceHistoryEntry[]>) => {
+    const entry = data[index];
+    if (!entry) return null;
+
+    return (
+      <div style={style} className="px-1 py-1">
+        <div
+          className={`h-full px-3 py-2 rounded-xl border flex items-center justify-between gap-2.5 transition-colors ${
+            entry.isCurrentSession
+              ? 'bg-emerald-950/35 border-emerald-500/45 shadow-sm'
+              : 'bg-[#090f1d] border-slate-800/90 hover:border-slate-700'
+          }`}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-bold text-white flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-sky-400 shrink-0" />
+                <span>{entry.formattedDate}</span>
+              </span>
+              {entry.isCurrentSession && (
+                <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  Sessão Atual
+                </span>
+              )}
+              <span className="text-[10px] text-slate-400 truncate max-w-[140px]">
+                · {entry.splitName}
+              </span>
+            </div>
+
+            <div className="text-[10px] text-slate-400 font-mono truncate mt-0.5">
+              {entry.setsCount} {entry.setsCount === 1 ? 'série' : 'séries'}: {entry.setsDetail}
+            </div>
+          </div>
+
+          <div className="text-right shrink-0 font-mono">
+            <div className="text-xs font-black text-emerald-400">
+              {entry.topWeight} kg &times; {entry.topReps}
+              {entry.topRpe ? (
+                <span className="text-[10px] text-amber-300 ml-1">@{entry.topRpe}</span>
+              ) : null}
+            </div>
+            <div className="text-[10px] text-slate-400 flex items-center justify-end gap-1.5">
+              <span>1RM ~{entry.estimated1RM}kg</span>
+              <span>·</span>
+              <span className="text-sky-400 font-bold">
+                {entry.volumeLoadKg.toLocaleString('pt-BR')}kg
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+);
 
 interface WorkoutSummaryModalProps {
   isOpen: boolean;
@@ -48,6 +124,123 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
+  const [selectedExerciseName, setSelectedExerciseName] = useState<string>('');
+  const historyContainerRef = useRef<HTMLDivElement | null>(null);
+  const [historyListWidth, setHistoryListWidth] = useState<number>(460);
+
+  // Seleciona automaticamente o primeiro exercício da sessão ao abrir o modal
+  useEffect(() => {
+    if (session && session.completedExercises.length > 0) {
+      setSelectedExerciseName((prev) => {
+        const exists = session.completedExercises.some((e) => e.name === prev);
+        return exists ? prev : session.completedExercises[0].name;
+      });
+    } else {
+      setSelectedExerciseName('');
+    }
+  }, [session]);
+
+  // Ajusta dinamicamente a largura do FixedSizeList (react-window) ao tamanho do modal
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'details') return;
+    const el = historyContainerRef.current;
+    if (!el) return;
+
+    const updateWidth = () => {
+      if (el.clientWidth > 0) {
+        setHistoryListWidth(el.clientWidth);
+      }
+    };
+    updateWidth();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateWidth);
+      observer.observe(el);
+      return () => observer.disconnect();
+    } else {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+  }, [isOpen, activeTab, selectedExerciseName]);
+
+  // Histórico completo de performance do exercício selecionado (suporta centenas de registros sem travar)
+  const selectedExerciseHistory = useMemo<ExercisePerformanceHistoryEntry[]>(() => {
+    if (!session || !selectedExerciseName) return [];
+    const targetKey = selectedExerciseName.trim().toLowerCase();
+
+    const sessionMap = new Map<string, WorkoutSessionSummary>();
+    sessionMap.set(session.id, session);
+    for (const prev of previousSessions) {
+      if (prev && prev.id && !sessionMap.has(prev.id)) {
+        sessionMap.set(prev.id, prev);
+      }
+    }
+
+    const sortedSessions = Array.from(sessionMap.values()).sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+
+    const entries: ExercisePerformanceHistoryEntry[] = [];
+    for (const sess of sortedSessions) {
+      const matchedEx = sess.completedExercises?.find(
+        (ex) => ex.name.trim().toLowerCase() === targetKey
+      );
+      if (!matchedEx || !matchedEx.sets || matchedEx.sets.length === 0) continue;
+
+      let topWeight = 0;
+      let topReps = 0;
+      let topRpe: string | undefined;
+      let best1RM = 0;
+      let volumeLoadKg = 0;
+
+      for (const st of matchedEx.sets) {
+        const w = Number(st.weight) || 0;
+        const r = Number(st.reps) || 0;
+        volumeLoadKg += w * r;
+        const est1RM = r > 0 ? Math.round(w * (1 + r / 30)) : w;
+        if (w > topWeight || (w === topWeight && r > topReps)) {
+          topWeight = w;
+          topReps = r;
+          topRpe = st.rpe;
+        }
+        if (est1RM > best1RM) {
+          best1RM = est1RM;
+        }
+      }
+
+      const d = new Date(sess.date);
+      const formattedDate = d.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'short',
+        year: '2-digit',
+      });
+
+      const setsDetail = matchedEx.sets
+        .map((st) => `${st.weight || 0}kg×${st.reps || 0}`)
+        .join(' · ');
+
+      entries.push({
+        sessionId: sess.id,
+        dateIso: sess.date,
+        formattedDate,
+        splitName: sess.splitName,
+        isCurrentSession: sess.id === session.id,
+        setsCount: matchedEx.sets.length,
+        topWeight,
+        topReps,
+        topRpe,
+        estimated1RM: best1RM,
+        volumeLoadKg: Math.round(volumeLoadKg),
+        setsDetail,
+      });
+    }
+
+    return entries;
+  }, [session, previousSessions, selectedExerciseName]);
+
+  const handleSelectExercise = useCallback((name: string) => {
+    setSelectedExerciseName(name);
+  }, []);
 
   // Extrai recordes pessoais batidos nesta sessão
   const sessionPRs = useMemo(() => {
@@ -461,11 +654,16 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               </div>
             )}
 
-            {/* Exercise-by-Exercise Highlights */}
+            {/* Exercise-by-Exercise Highlights (Clicáveis para ver o histórico de performance) */}
             <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Desempenho dos Exercícios</span>
+              <div className="flex items-center justify-between gap-2 mb-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Desempenho dos Exercícios</span>
+                </div>
+                <span className="text-[10px] text-slate-400">
+                  Toque em um exercício para ver seu histórico
+                </span>
               </div>
 
               <div className="space-y-2">
@@ -474,11 +672,18 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                   ex.sets.forEach((s) => {
                     if (s.weight > (topSet?.weight || 0)) topSet = s;
                   });
+                  const isSelected = selectedExerciseName === ex.name;
 
                   return (
-                    <div
+                    <button
                       key={idx}
-                      className="p-3 rounded-xl bg-[#0b1220] border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                      type="button"
+                      onClick={() => handleSelectExercise(ex.name)}
+                      className={`w-full text-left p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-emerald-950/25 border-emerald-500/60 ring-1 ring-emerald-500/30 shadow-md'
+                          : 'bg-[#0b1220] border-slate-800/80 hover:border-slate-700'
+                      }`}
                     >
                       <div>
                         <div className="flex items-center gap-2 mb-0.5">
@@ -504,11 +709,80 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                           {topSet?.rpe ? ` @RPE ${topSet.rpe}` : ''}
                         </strong>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             </div>
+
+            {/* Histórico de Performance Virtualizado (react-window) para o Exercício Selecionado */}
+            {selectedExerciseName && (
+              <div className="bg-[#0b1220] border border-slate-800/90 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="p-1.5 rounded-xl bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0">
+                      <History className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-black text-white truncate">
+                        Histórico de Performance: {selectedExerciseName}
+                      </h4>
+                      <span className="text-[10px] text-slate-400 block">
+                        {selectedExerciseHistory.length}{' '}
+                        {selectedExerciseHistory.length === 1
+                          ? 'registro encontrado'
+                          : 'registros encontrados'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Seletor rápido de exercício caso haja mais de 1 exercício na sessão */}
+                  {session.completedExercises.length > 1 && (
+                    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+                      {session.completedExercises.map((ex, i) => {
+                        const active = ex.name === selectedExerciseName;
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => handleSelectExercise(ex.name)}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold shrink-0 transition-all cursor-pointer ${
+                              active
+                                ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                            }`}
+                          >
+                            {ex.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div ref={historyContainerRef} className="w-full">
+                  {selectedExerciseHistory.length > 0 ? (
+                    <List
+                      height={Math.min(
+                        HISTORY_ROW_HEIGHT * 4,
+                        Math.max(HISTORY_ROW_HEIGHT, selectedExerciseHistory.length * HISTORY_ROW_HEIGHT)
+                      )}
+                      itemCount={selectedExerciseHistory.length}
+                      itemSize={HISTORY_ROW_HEIGHT}
+                      width={historyListWidth}
+                      itemData={selectedExerciseHistory}
+                      overscanCount={4}
+                    >
+                      {VirtualizedExerciseHistoryRow}
+                    </List>
+                  ) : (
+                    <div className="py-6 text-center text-xs text-slate-400">
+                      Nenhum histórico anterior registrado para este exercício.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

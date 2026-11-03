@@ -51,7 +51,8 @@ import {
   buildLocalSyncBundle, 
   pushSyncBundleToSupabase, 
   enqueueOfflineMutation, 
-  flushOfflineMutationQueue 
+  flushOfflineMutationQueue,
+  setFinishWorkoutSyncMode
 } from './services/supabaseSync';
 
 import { Header } from './components/Header';
@@ -122,6 +123,12 @@ import { TabType } from './types/navigation';
 import { useI18n } from './utils/i18n';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { useTheme } from './utils/theme';
+import { BiometricLockScreen } from './components/BiometricLockScreen';
+import {
+  isBiometricAppLockEnabled,
+  isBiometricSessionUnlocked,
+  onBiometricChange,
+} from './utils/biometricAuth';
 
 export default function App() {
   const { t } = useI18n();
@@ -138,6 +145,26 @@ export default function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [isAddExerciseOpen, setIsAddExerciseOpen] = useState(false);
+  const [isBiometricLocked, setIsBiometricLocked] = useState<boolean>(() => {
+    const u = authStorage.getActiveUser();
+    if (!u) return false;
+    return isBiometricAppLockEnabled(u.id) && !isBiometricSessionUnlocked(u.id);
+  });
+
+  useEffect(() => {
+    const syncBiometricLock = () => {
+      if (!currentUser) {
+        setIsBiometricLocked(false);
+        return;
+      }
+      setIsBiometricLocked(
+        isBiometricAppLockEnabled(currentUser.id) &&
+          !isBiometricSessionUnlocked(currentUser.id)
+      );
+    };
+    syncBiometricLock();
+    return onBiometricChange(syncBiometricLock);
+  }, [currentUser]);
 
   // Verificador global de lembretes Push agendados (funciona em qualquer aba do app)
   useEffect(() => {
@@ -1106,9 +1133,14 @@ export default function App() {
     setSummaryModalSession(newSession);
     showToast(`🏆 Parabéns! Sessão Concluída — Volume: ${totalVolumeLoad.toLocaleString()} kg.`);
 
-    // Enfileira os deltas da sessão concluída e sincroniza com o Supabase (ou aguarda conexão se offline)
+    // Ativa o modo 'finish workout' no sincronizador para priorizar o upload de 'sessions' e 'measurements'
+    // sobre os demais dados secundários, garantindo que o progresso mais crítico chegue à nuvem primeiro
     try {
-      enqueueOfflineMutation(uid, 'sessions', updatedSessions, currentUser);
+      setFinishWorkoutSyncMode(uid, true, currentUser);
+      enqueueOfflineMutation(uid, 'sessions', updatedSessions, currentUser, { isFinishWorkout: true });
+      if (measurements.length > 0) {
+        enqueueOfflineMutation(uid, 'measurements', measurements, currentUser, { isFinishWorkout: true });
+      }
       enqueueOfflineMutation(uid, 'historyLogs', finalLogs, currentUser);
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         flushOfflineMutationQueue(uid, currentUser).catch(() => {
@@ -1582,6 +1614,14 @@ export default function App() {
         isOpen={isAuthOpen}
         onSuccess={handleAuthSuccess}
       />
+
+      {currentUser && isBiometricLocked && !isAuthOpen && (
+        <BiometricLockScreen
+          user={currentUser}
+          onUnlocked={() => setIsBiometricLocked(false)}
+          onSwitchAccount={handleLogout}
+        />
+      )}
 
       <React.Suspense fallback={null}>
         {currentUser && isProfileOpen && (

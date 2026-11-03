@@ -6,7 +6,7 @@
  * 3. App Shell Offline Navigation Fallback + Background Sync ('sync') + Notificações Push Locais
  */
 
-const SW_VERSION = 'meutreino-sw-v4.1';
+const SW_VERSION = 'meutreino-sw-v4.4';
 const STATIC_CACHE_NAME = `${SW_VERSION}-static-assets`;
 const WORKOUT_DATA_CACHE_NAME = `${SW_VERSION}-workout-data`;
 const APP_SHELL_CACHE_NAME = `${SW_VERSION}-app-shell`;
@@ -63,6 +63,16 @@ async function trimCache(cacheName, maxItems) {
  * que deve ser servido com a estratégia 'Cache First'.
  */
 function isStaticResourceRequest(request, url) {
+  if (
+    url.pathname.startsWith('/src/') ||
+    url.pathname.includes('/node_modules/') ||
+    url.pathname.includes('@vite') ||
+    url.searchParams.has('v') ||
+    url.searchParams.has('t')
+  ) {
+    return false;
+  }
+
   const dest = request.destination;
   if (
     dest === 'style' ||
@@ -331,12 +341,13 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (!url.protocol.startsWith('http')) return;
 
-  // Ignora endpoints de autenticação, WebSockets/Realtime ou hot-reload de desenvolvimento
+  // Ignora endpoints de autenticação, WebSockets/Realtime ou módulos não-empacotados de desenvolvimento Vite (/src/)
   if (
     url.pathname.includes('__vite') ||
     url.pathname.includes('@vite') ||
     url.pathname.includes('@react-refresh') ||
-    url.pathname.includes('/node_modules/.vite/') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.includes('/node_modules/') ||
     (url.hostname.includes('supabase.co') &&
       (url.pathname.includes('/auth/') || url.pathname.includes('/realtime/')))
   ) {

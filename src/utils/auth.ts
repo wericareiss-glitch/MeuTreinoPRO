@@ -404,6 +404,17 @@ export const authStorage = {
     return { user: sanitizeUserProfile(found) };
   },
 
+  loginWithBiometricUserId(userId: string): { user?: UserProfile; error?: string } {
+    const users = this._getRawUsers();
+    const found = users.find((u) => u.id === userId);
+    if (!found) {
+      return { error: 'Perfil vinculado à biometria não foi encontrado neste aparelho.' };
+    }
+    this.setActiveUserId(found.id);
+    setPrivacyShieldState(true);
+    return { user: sanitizeUserProfile(found) };
+  },
+
   logout(): void {
     this.setActiveUserId(null);
     setPrivacyShieldState(true);

@@ -7,9 +7,23 @@ import './index.css';
 // Registra Service Worker (/sw.js) com escopo raiz para suporte PWA offline nativo e instalação WebAPK no Android
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    if ('caches' in window) {
+      caches
+        .keys()
+        .then((names) => {
+          names.forEach((name) => {
+            if (!name.includes('meutreino-sw-v4.4')) {
+              caches.delete(name);
+            }
+          });
+        })
+        .catch(() => {});
+    }
+
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
       .then((registration) => {
+        registration.update().catch(() => {});
         registration.addEventListener('updatefound', () => {
           const installingWorker = registration.installing;
           if (!installingWorker) return;
@@ -47,6 +61,27 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('App Uncaught Error:', error, errorInfo);
+    const msg = error?.message || '';
+    if (
+      typeof window !== 'undefined' &&
+      (msg.includes("reading 'useState'") ||
+        msg.includes('Invalid hook call') ||
+        msg.includes('Failed to fetch dynamically imported module'))
+    ) {
+      const reloadKey = 'meutreino_vite_chunk_reload';
+      const lastReload = Number(sessionStorage.getItem(reloadKey) || '0');
+      if (Date.now() - lastReload > 10000) {
+        sessionStorage.setItem(reloadKey, String(Date.now()));
+        if (typeof window.caches !== 'undefined') {
+          window.caches
+            .keys()
+            .then((names) => Promise.all(names.map((n) => window.caches.delete(n))))
+            .finally(() => window.location.reload());
+          return;
+        }
+        window.location.reload();
+      }
+    }
   }
 
   handleReset = () => {

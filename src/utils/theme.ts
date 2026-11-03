@@ -79,9 +79,116 @@ export function getStoredAccentColor(): AccentColor {
   return 'emerald';
 }
 
+const ACCENT_RGB_MAP: Record<AccentColor, { base: string; hover: string; hex: string; hoverHex: string }> = {
+  emerald: { base: '16, 185, 129', hover: '52, 211, 153', hex: '#10b981', hoverHex: '#34d399' },
+  gold: { base: '245, 158, 11', hover: '251, 191, 36', hex: '#f59e0b', hoverHex: '#fbbf24' },
+  cyan: { base: '6, 182, 212', hover: '34, 211, 238', hex: '#06b6d4', hoverHex: '#22d3ee' },
+  crimson: { base: '244, 63, 94', hover: '251, 113, 133', hex: '#f43f5e', hoverHex: '#fb7185' },
+};
+
 export function applyAccentToDOM(accent: AccentColor) {
   if (typeof document === 'undefined') return;
-  document.documentElement.setAttribute('data-accent', accent);
+  const palette = ACCENT_RGB_MAP[accent] || ACCENT_RGB_MAP.emerald;
+  const thumbIdle = `rgba(${palette.base}, 0.55)`;
+  const thumbHover = `rgba(${palette.hover}, 0.85)`;
+  const thumbActive = palette.hoverHex;
+
+  const root = document.documentElement;
+  root.setAttribute('data-accent', accent);
+  root.style.setProperty('--accent-rgb', palette.base);
+  root.style.setProperty('--accent-hover-rgb', palette.hover);
+  root.style.setProperty('--accent-primary', palette.hex);
+  root.style.setProperty('--accent-hover', palette.hoverHex);
+  root.style.setProperty('--scrollbar-track', 'transparent');
+  root.style.setProperty('--scrollbar-thumb', thumbIdle);
+  root.style.setProperty('--scrollbar-thumb-hover', thumbHover);
+  root.style.setProperty('--scrollbar-thumb-active', thumbActive);
+
+  if (document.body) {
+    document.body.setAttribute('data-accent', accent);
+  }
+
+  // Garante injeção direta de regras ::-webkit-scrollbar sem variáveis aninhadas para WebKit/Blink
+  let styleEl = document.getElementById('meutreino-scrollbar-theme') as HTMLStyleElement | null;
+  if (!styleEl && document.head) {
+    styleEl = document.createElement('style');
+    styleEl.id = 'meutreino-scrollbar-theme';
+    document.head.appendChild(styleEl);
+  }
+  if (styleEl) {
+    styleEl.textContent = `
+      @supports (-moz-appearance: none) {
+        *, *::before, *::after {
+          scrollbar-width: thin !important;
+          scrollbar-color: ${thumbIdle} transparent !important;
+        }
+      }
+      ::-webkit-scrollbar,
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar,
+      *::-webkit-scrollbar,
+      .theme-scrollbar::-webkit-scrollbar {
+        width: 6px !important;
+        height: 6px !important;
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+      ::-webkit-scrollbar-track,
+      ::-webkit-scrollbar-track-piece,
+      html::-webkit-scrollbar-track,
+      html::-webkit-scrollbar-track-piece,
+      body::-webkit-scrollbar-track,
+      body::-webkit-scrollbar-track-piece,
+      *::-webkit-scrollbar-track,
+      *::-webkit-scrollbar-track-piece,
+      .theme-scrollbar::-webkit-scrollbar-track,
+      .theme-scrollbar::-webkit-scrollbar-track-piece {
+        background: transparent !important;
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+      ::-webkit-scrollbar-thumb,
+      html::-webkit-scrollbar-thumb,
+      body::-webkit-scrollbar-thumb,
+      *::-webkit-scrollbar-thumb,
+      .theme-scrollbar::-webkit-scrollbar-thumb {
+        background: ${thumbIdle} !important;
+        background-color: ${thumbIdle} !important;
+        border-radius: 9999px !important;
+        border: none !important;
+      }
+      ::-webkit-scrollbar-thumb:hover,
+      html::-webkit-scrollbar-thumb:hover,
+      body::-webkit-scrollbar-thumb:hover,
+      *::-webkit-scrollbar-thumb:hover,
+      .theme-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: ${thumbHover} !important;
+        background-color: ${thumbHover} !important;
+      }
+      ::-webkit-scrollbar-thumb:active,
+      html::-webkit-scrollbar-thumb:active,
+      body::-webkit-scrollbar-thumb:active,
+      *::-webkit-scrollbar-thumb:active,
+      .theme-scrollbar::-webkit-scrollbar-thumb:active {
+        background: ${thumbActive} !important;
+        background-color: ${thumbActive} !important;
+      }
+      ::-webkit-scrollbar-button,
+      ::-webkit-scrollbar-corner,
+      html::-webkit-scrollbar-button,
+      html::-webkit-scrollbar-corner,
+      body::-webkit-scrollbar-button,
+      body::-webkit-scrollbar-corner,
+      *::-webkit-scrollbar-button,
+      *::-webkit-scrollbar-corner {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        background: transparent !important;
+      }
+    `;
+  }
 }
 
 /**
@@ -156,6 +263,10 @@ export function applyThemeToDOM(theme: Theme) {
 
   const root = document.documentElement;
   root.setAttribute('data-theme', theme);
+  root.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+  if (document.body) {
+    document.body.setAttribute('data-theme', theme);
+  }
   
   if (theme === 'light') {
     root.classList.remove('dark', 'theme-oled');

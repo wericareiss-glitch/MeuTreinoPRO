@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LogIn, 
   UserPlus, 
@@ -16,10 +16,21 @@ import {
   Calendar,
   Layers,
   Hash,
-  Upload
+  Upload,
+  Fingerprint,
+  ScanFace
 } from 'lucide-react';
 import { UserProfile, GenderOption, LevelOption, FocusOption, SplitOption } from '../types/workout';
 import { authStorage, calculateDefaultBudget } from '../utils/auth';
+import {
+  checkBiometricAvailability,
+  getStoredBiometricCredentials,
+  authenticateWithBiometrics,
+  registerBiometricCredential,
+  markBiometricSessionUnlocked,
+  StoredBiometricCredential,
+  BiometricAvailability,
+} from '../utils/biometricAuth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -35,6 +46,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   // Login form
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [enableBiometricOnLogin, setEnableBiometricOnLogin] = useState(false);
+  const [enableBiometricOnRegister, setEnableBiometricOnRegister] = useState(false);
+  const [isBiometricLoading, setIsBiometricLoading] = useState(false);
+
+  const [biometricAvailability, setBiometricAvailability] = useState<BiometricAvailability>({
+    isWebAuthnSupported: false,
+    isPlatformAuthenticatorAvailable: false,
+    biometricLabel: 'Face ID / Impressão Digital',
+  });
+  const [savedCredentials, setSavedCredentials] = useState<StoredBiometricCredential[]>(() =>
+    getStoredBiometricCredentials()
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSavedCredentials(getStoredBiometricCredentials());
+    checkBiometricAvailability().then((res) => {
+      setBiometricAvailability(res);
+    });
+  }, [isOpen]);
 
   // Register form
   const [regName, setRegName] = useState('');
@@ -77,7 +108,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
     reader.readAsText(file);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleBiometricQuickLogin = async (targetUserId?: string) => {
+    setError(null);
+    setIsBiometricLoading(true);
+    const res = await authenticateWithBiometrics({
+      userId: targetUserId,
+      username: !targetUserId && loginUsername.trim() ? loginUsername.trim() : undefined,
+    });
+    setIsBiometricLoading(false);
+
+    if (!res.success || !res.user) {
+      setError(res.error || 'Não foi possível validar sua biometria.');
+      return;
+    }
+
+    markBiometricSessionUnlocked(res.user.id, true);
+    onSuccess(res.user);
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const res = authStorage.login(loginUsername, loginPassword);
@@ -86,11 +135,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       return;
     }
     if (res.user) {
+      markBiometricSessionUnlocked(res.user.id, true);
+      if (enableBiometricOnLogin && biometricAvailability.isWebAuthnSupported) {
+        await registerBiometricCredential(res.user);
+      }
       onSuccess(res.user);
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -122,6 +175,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
     }
 
     if (res.user) {
+      markBiometricSessionUnlocked(res.user.id, true);
+      if (enableBiometricOnRegister && biometricAvailability.isWebAuthnSupported) {
+        await registerBiometricCredential(res.user);
+      }
       onSuccess(res.user);
     }
   };
@@ -202,6 +259,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
         {/* Login Tab */}
         {tab === 'login' ? (
           <form onSubmit={handleLogin} className="space-y-4">
+            {/* Acesso Rápido Biométrico (Face ID / Impressão Digital) */}
+            {biometricAvailability.isWebAuthnSupported && savedCredentials.length > 0 && (
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/50 via-[#0b1324] to-[#0b1324] border border-emerald-500/40 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      <Fingerprint className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-extrabold text-white block">
+                        Acesso Rápido sem Senha
+                      </span>
+                      <span className="text-[10px] text-emerald-300/90 block">
+                        Desbloqueie com {biometricAvailability.biometricLabel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2">
+                  {savedCredentials.map((cred) => (
+                    <button
+                      key={cred.credentialId}
+                      type="button"
+                      disabled={isBiometricLoading}
+                      onClick={() => handleBiometricQuickLogin(cred.userId)}
+                      className="w-full py-2.5 px-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98]"
+                    >
+                      <ScanFace className="w-4 h-4" />
+                      <span>
+                        {isBiometricLoading
+                          ? 'Verificando Biometria...'
+                          : `Entrar como ${cred.userDisplayName || cred.username} (${biometricAvailability.biometricLabel})`}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-semibold text-slate-300 block mb-1">
                 Nome de Usuário
@@ -223,18 +320,49 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
               <label className="text-xs font-semibold text-slate-300 block mb-1">
                 Senha
               </label>
-              <div className="relative flex items-center">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3" />
-                <input
-                  type="password"
-                  required
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="••••••"
-                  className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                />
+              <div className="relative flex items-center gap-2">
+                <div className="relative flex-1 flex items-center">
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3" />
+                  <input
+                    type="password"
+                    required
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="••••••"
+                    className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                {biometricAvailability.isWebAuthnSupported && (
+                  <button
+                    type="button"
+                    disabled={isBiometricLoading}
+                    onClick={() => handleBiometricQuickLogin()}
+                    className="px-3 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer shrink-0 active:scale-95"
+                    title={`Entrar com ${biometricAvailability.biometricLabel}`}
+                  >
+                    <Fingerprint className="w-4 h-4 text-emerald-400" />
+                    <span className="hidden sm:inline">Biometria</span>
+                  </button>
+                )}
               </div>
             </div>
+
+            {biometricAvailability.isWebAuthnSupported && savedCredentials.length === 0 && (
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[#0b1220] border border-slate-800 cursor-pointer hover:border-emerald-500/40 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={enableBiometricOnLogin}
+                  onChange={(e) => setEnableBiometricOnLogin(e.target.checked)}
+                  className="rounded accent-emerald-500 w-4 h-4 cursor-pointer"
+                />
+                <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                  <Fingerprint className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>
+                    Ativar <strong className="text-white">{biometricAvailability.biometricLabel}</strong> neste aparelho para entrar sem senha nas próximas vezes
+                  </span>
+                </div>
+              </label>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
               <button
@@ -607,6 +735,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
                 </p>
               </div>
             </div>
+
+            {biometricAvailability.isWebAuthnSupported && (
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[#0b1220] border border-slate-800 cursor-pointer hover:border-emerald-500/40 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={enableBiometricOnRegister}
+                  onChange={(e) => setEnableBiometricOnRegister(e.target.checked)}
+                  className="rounded accent-emerald-500 w-4 h-4 cursor-pointer"
+                />
+                <div className="flex items-center gap-1.5 text-xs text-slate-300">
+                  <Fingerprint className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>
+                    Vincular <strong className="text-white">{biometricAvailability.biometricLabel}</strong> ao criar meu perfil para desbloqueio rápido
+                  </span>
+                </div>
+              </label>
+            )}
 
             <button
               type="submit"

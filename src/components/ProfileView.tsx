@@ -57,6 +57,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { ProfilePushNotificationManager } from './ProfilePushNotificationManager';
 import { SupabaseSyncManager } from './SupabaseSyncManager';
 import { PrivacyShieldControl } from './PrivacyShieldControl';
+import { BiometricSettingsCard } from './BiometricSettingsCard';
 import {
   usePrivacyMode,
   maskSensitiveValue,
@@ -1468,6 +1469,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         <ThemeToggle variant="profile-card" />
       </div>
+
+      {/* 🔐 Desbloqueio Biométrico (Face ID / Impressão Digital via WebAuthn) */}
+      <BiometricSettingsCard user={user} variant="full" />
 
       {/* ☁️ Sincronização em Nuvem (Supabase Realtime) */}
       <SupabaseSyncManager user={user} />

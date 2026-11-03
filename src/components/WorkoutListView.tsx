@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef, Suspense } from 'react';
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import { FixedSizeList as List, ListChildComponentProps, ListOnItemsRenderedProps } from 'react-window';
 import { 
   Play, 
   Dumbbell, 
@@ -24,8 +24,9 @@ import {
   Search,
   X,
   History,
-  ArrowUp,
-  Target
+  Target,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { GeneratedWorkoutRoutine, UserProfile } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
@@ -143,7 +144,7 @@ const RoutineCard = React.memo<RoutineCardProps>(({
       onDragOver={(e) => onCardDragOver(visualIdx, e)}
       onDrop={(e) => onCardDrop(visualIdx, e)}
       onDragEnd={onCardDragEnd}
-      className={`p-4 sm:p-5 rounded-3xl border transition-all relative flex flex-col justify-between h-full ${
+      className={`p-4 sm:p-5 rounded-3xl border transition-all relative flex flex-col justify-between h-full overflow-hidden ${
         isDraggingThis ? 'card-dragging' : ''
       } ${isDropTargetThis ? 'card-drop-target' : ''} ${
         isActive
@@ -151,9 +152,9 @@ const RoutineCard = React.memo<RoutineCardProps>(({
           : 'bg-[#101828] border-[#1e2c45] hover:border-slate-700 shadow-lg'
       }`}
     >
-      <div>
+      <div className="flex flex-col flex-1 min-h-0">
         {/* Header do Card com Alça de Segurar e Arrastar + Menu de 3 Pontos */}
-        <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="flex items-start justify-between gap-2 mb-2.5 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             {canReorder && (
               <button
@@ -207,7 +208,7 @@ const RoutineCard = React.memo<RoutineCardProps>(({
           {/* Botão de 3 Pontos e Menu Dropdown */}
           <div className="relative shrink-0">
             {isActive && (
-              <span className="mr-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/40 animate-pulse">
+              <span className="mr-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/40">
                 ATIVO
               </span>
             )}
@@ -320,7 +321,7 @@ const RoutineCard = React.memo<RoutineCardProps>(({
         </div>
 
         {/* Badges de Grupos Musculares */}
-        <div className="flex flex-wrap gap-1 mb-3">
+        <div className="flex flex-wrap gap-1 mb-2.5 shrink-0">
           {routine.muscleGroups.map((m) => (
             <span
               key={m}
@@ -332,7 +333,7 @@ const RoutineCard = React.memo<RoutineCardProps>(({
         </div>
 
         {/* Informações de Séries & Tempo */}
-        <div className="flex items-center gap-3 text-xs text-slate-400 font-mono py-2 px-3 rounded-xl bg-[#0b1220] border border-slate-800/70 mb-3">
+        <div className="flex items-center gap-3 text-xs text-slate-400 font-mono py-2 px-3 rounded-xl bg-[#0b1220] border border-slate-800/70 mb-2.5 shrink-0">
           <span className="flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-sky-400" />
             <strong className="text-white">{routine.items.length}</strong> {routine.items.length === 1 ? 'exercício' : 'exercícios'}
@@ -350,7 +351,7 @@ const RoutineCard = React.memo<RoutineCardProps>(({
         </div>
 
         {/* Preview dos Exercícios */}
-        <div className="space-y-1 mb-4">
+        <div className="flex-1 min-h-0 overflow-y-auto theme-scrollbar space-y-1 mb-3 pr-1">
           <div className="flex items-center justify-between gap-2 mb-1">
             <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500">
               Exercícios programados:
@@ -372,7 +373,7 @@ const RoutineCard = React.memo<RoutineCardProps>(({
                 <span className="text-slate-500 text-[10px]">•</span>
                 <span className="font-medium text-slate-200 truncate">{it.exercise.name}</span>
               </div>
-              <span className="text-[11px] text-slate-400 font-mono shrink-0 font-bold">
+              <span className="text-[11px] text-slate-400 font-mono shrink-0 font-bold tabular-nums">
                 {it.sets}s × {it.reps}
               </span>
             </div>
@@ -386,11 +387,11 @@ const RoutineCard = React.memo<RoutineCardProps>(({
       </div>
 
       {/* Ações: Iniciar Treino + Editar/Alterar + Ficha PDF */}
-      <div className="pt-2 border-t border-slate-800/60 flex items-center gap-2">
+      <div className="pt-2.5 border-t border-slate-800/60 flex items-center gap-2 shrink-0">
         <button
           type="button"
           onClick={() => onStartWorkout(routine)}
-          className={`flex-1 py-3.5 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg active:scale-[0.98] ${
+          className={`flex-1 py-3 px-4 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg active:scale-[0.98] ${
             isActive
               ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 ring-2 ring-emerald-400/40'
               : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
@@ -404,7 +405,7 @@ const RoutineCard = React.memo<RoutineCardProps>(({
           <button
             type="button"
             onClick={() => onEditRoutine(routine)}
-            className="py-3.5 px-3 rounded-xl font-bold text-xs bg-slate-800/90 hover:bg-slate-700 text-amber-300 border border-amber-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-95"
+            className="py-3 px-3 rounded-xl font-bold text-xs bg-slate-800/90 hover:bg-slate-700 text-amber-300 border border-amber-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-95"
             title="Editar treino, reordenar ou alterar exercícios"
           >
             <Pencil className="w-4 h-4 text-amber-400" />
@@ -415,7 +416,7 @@ const RoutineCard = React.memo<RoutineCardProps>(({
         <button
           type="button"
           onClick={() => onOpenPdfModal(routine)}
-          className="py-3.5 px-3 rounded-xl font-bold text-xs bg-slate-800/90 hover:bg-slate-700 text-sky-300 border border-sky-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-95"
+          className="py-3 px-3 rounded-xl font-bold text-xs bg-slate-800/90 hover:bg-slate-700 text-sky-300 border border-sky-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-95"
           title="Exportar ficha de treino em PDF A4 ou imprimir"
         >
           <FileDown className="w-4 h-4 text-sky-400" />
@@ -427,6 +428,67 @@ const RoutineCard = React.memo<RoutineCardProps>(({
 }, areRoutineCardPropsEqual);
 
 RoutineCard.displayName = 'RoutineCard';
+
+interface CarouselItemData {
+  entries: RoutineVisualEntry[];
+  activeRoutineId: string | null;
+  openMenuId: string | null;
+  confirmDeleteId: string | null;
+  draggingIdx: number | null;
+  dropTargetIdx: number | null;
+  canReorder: boolean;
+  hasEditHandler: boolean;
+  hasDeleteHandler: boolean;
+  onToggleMenu: (routineId: string) => void;
+  onCloseMenu: () => void;
+  onRequestDeleteConfirm: (routineId: string | null) => void;
+  onConfirmDelete: (routineId: string) => void;
+  onStartWorkout: (routine: GeneratedWorkoutRoutine) => void;
+  onEditRoutine?: (routine: GeneratedWorkoutRoutine) => void;
+  onOpenPdfModal: (routine: GeneratedWorkoutRoutine) => void;
+  onShareRoutineClick: (routine: GeneratedWorkoutRoutine) => void;
+  onPointerDownGrip: (visualIdx: number, e: React.PointerEvent<HTMLButtonElement>) => void;
+  onCardDragStart: (visualIdx: number, e: React.DragEvent<HTMLDivElement>) => void;
+  onCardDragOver: (visualIdx: number, e: React.DragEvent<HTMLDivElement>) => void;
+  onCardDrop: (visualIdx: number, e: React.DragEvent<HTMLDivElement>) => void;
+  onCardDragEnd: () => void;
+}
+
+const HorizontalRoutineSlot = React.memo(({ index, style, data }: ListChildComponentProps<CarouselItemData>) => {
+  const entry = data.entries[index];
+  if (!entry) return null;
+
+  return (
+    <div style={style} className="pr-3 sm:pr-4 pt-1 pb-3">
+      <RoutineCard
+        entry={entry}
+        isActive={data.activeRoutineId === entry.routine.id}
+        isMenuOpen={data.openMenuId === entry.routine.id}
+        isConfirmingDelete={data.confirmDeleteId === entry.routine.id}
+        isDraggingThis={data.draggingIdx === entry.visualIdx}
+        isDropTargetThis={data.dropTargetIdx === entry.visualIdx && data.draggingIdx !== entry.visualIdx}
+        canReorder={data.canReorder}
+        hasEditHandler={data.hasEditHandler}
+        hasDeleteHandler={data.hasDeleteHandler}
+        onToggleMenu={data.onToggleMenu}
+        onCloseMenu={data.onCloseMenu}
+        onRequestDeleteConfirm={data.onRequestDeleteConfirm}
+        onConfirmDelete={data.onConfirmDelete}
+        onStartWorkout={data.onStartWorkout}
+        onEditRoutine={data.onEditRoutine}
+        onOpenPdfModal={data.onOpenPdfModal}
+        onShareRoutineClick={data.onShareRoutineClick}
+        onPointerDownGrip={data.onPointerDownGrip}
+        onCardDragStart={data.onCardDragStart}
+        onCardDragOver={data.onCardDragOver}
+        onCardDrop={data.onCardDrop}
+        onCardDragEnd={data.onCardDragEnd}
+      />
+    </div>
+  );
+});
+
+HorizontalRoutineSlot.displayName = 'HorizontalRoutineSlot';
 
 export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   user,
@@ -441,7 +503,10 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   onShareRoutine,
   onReorderRoutines,
 }) => {
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const listRef = useRef<List<CarouselItemData>>(null);
+  const outerListRef = useRef<HTMLDivElement>(null);
+  const carouselContainerRef = useRef<HTMLDivElement>(null);
+
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [copiedToast, setCopiedToast] = useState(false);
@@ -450,19 +515,34 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [versionFilter, setVersionFilter] = useState<VersionFilterMode>('all');
-  const [isDesktopGrid, setIsDesktopGrid] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)').matches : false
+  const [containerWidth, setContainerWidth] = useState<number>(() =>
+    typeof window !== 'undefined' ? Math.min(896, Math.max(320, window.innerWidth - 32)) : 360
   );
+  const [currentVisibleIdx, setCurrentVisibleIdx] = useState<number>(0);
 
-  // Detecta breakpoint md (768px) para virtualizar 1 card por linha no mobile e 2 cards por linha no desktop
+  // Mede dinamicamente a largura do container do carrossel horizontal (react-window)
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mediaQuery = window.matchMedia('(min-width: 768px)');
-    const handleChange = (e: MediaQueryListEvent) => setIsDesktopGrid(e.matches);
-    setIsDesktopGrid(mediaQuery.matches);
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
+    const el = carouselContainerRef.current;
+    if (!el) return;
+
+    const updateWidth = () => {
+      const nextWidth = el.clientWidth;
+      if (nextWidth > 0) {
+        setContainerWidth(nextWidth);
+      }
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => updateWidth());
+      observer.observe(el);
+      return () => observer.disconnect();
+    } else {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+  }, [routines.length]);
 
   const handleShareClick = useCallback((routine: GeneratedWorkoutRoutine) => {
     if (onShareRoutine) {
@@ -538,43 +618,62 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     });
   }, [sortedEntries, versionFilter, activeRoutineId, searchQuery]);
 
-  // Em dispositivos mobile (<768px), cada item virtualizado do Virtuoso contém exatamente 1 card,
-  // garantindo medição individual de altura e reciclagem de nós DOM para milhares de rotinas.
-  // No desktop (>=768px), agrupa 2 cards por linha para preservar o grid de 2 colunas.
-  const columnsPerRow = isDesktopGrid ? 2 : 1;
-
-  const virtualizedRows = useMemo<RoutineVisualEntry[][]>(() => {
-    const rows: RoutineVisualEntry[][] = [];
-    for (let i = 0; i < filteredEntries.length; i += columnsPerRow) {
-      rows.push(filteredEntries.slice(i, i + columnsPerRow));
+  // Calcula largura responsiva de cada card no carrossel horizontal
+  // Mobile (<640px): 1 card principal com leve visualização do próximo card para incentivar o deslize lateral
+  // Tablet/Desktop (>=768px): até 2 cards lado a lado no carrossel
+  const itemWidth = useMemo(() => {
+    if (filteredEntries.length === 1) {
+      return Math.min(containerWidth, 520);
     }
-    return rows;
-  }, [filteredEntries, columnsPerRow]);
+    if (containerWidth < 640) {
+      return Math.max(276, containerWidth - 28);
+    }
+    if (containerWidth < 860) {
+      return Math.floor(containerWidth * 0.64);
+    }
+    return Math.floor(containerWidth / 2);
+  }, [containerWidth, filteredEntries.length]);
 
-  // Índice da linha virtual onde está o treino ativo (para salto rápido com VirtuosoHandle)
-  const activeVirtualRowIdx = useMemo<number>(() => {
+  const carouselHeight = 438;
+
+  // Índice do card onde está o treino ativo no carrossel
+  const activeCardIdx = useMemo<number>(() => {
     if (!activeRoutineId) return -1;
-    return virtualizedRows.findIndex((row) =>
-      row.some((entry) => entry.routine.id === activeRoutineId)
-    );
-  }, [virtualizedRows, activeRoutineId]);
+    return filteredEntries.findIndex((entry) => entry.routine.id === activeRoutineId);
+  }, [filteredEntries, activeRoutineId]);
+
+  const scrollToRoutineIndex = useCallback(
+    (targetIdx: number) => {
+      const clampedIdx = Math.max(0, Math.min(filteredEntries.length - 1, targetIdx));
+      setCurrentVisibleIdx(clampedIdx);
+      if (outerListRef.current) {
+        const targetLeft = Math.max(0, clampedIdx * itemWidth - (containerWidth - itemWidth) / 2);
+        outerListRef.current.scrollTo({
+          left: targetLeft,
+          behavior: 'smooth',
+        });
+      } else {
+        listRef.current?.scrollToItem(clampedIdx, 'center');
+      }
+    },
+    [filteredEntries.length, itemWidth, containerWidth]
+  );
 
   const handleScrollToActiveRoutine = useCallback(() => {
-    if (activeVirtualRowIdx < 0) return;
-    virtuosoRef.current?.scrollToIndex({
-      index: activeVirtualRowIdx,
-      align: 'center',
-      behavior: 'smooth',
-    });
-  }, [activeVirtualRowIdx]);
+    if (activeCardIdx < 0) return;
+    scrollToRoutineIndex(activeCardIdx);
+  }, [activeCardIdx, scrollToRoutineIndex]);
 
-  const handleScrollToTop = useCallback(() => {
-    virtuosoRef.current?.scrollToIndex({
-      index: 0,
-      align: 'start',
-      behavior: 'smooth',
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handlePrevCard = useCallback(() => {
+    scrollToRoutineIndex(currentVisibleIdx - 1);
+  }, [currentVisibleIdx, scrollToRoutineIndex]);
+
+  const handleNextCard = useCallback(() => {
+    scrollToRoutineIndex(currentVisibleIdx + 1);
+  }, [currentVisibleIdx, scrollToRoutineIndex]);
+
+  const handleItemsRendered = useCallback(({ visibleStartIndex }: ListOnItemsRenderedProps) => {
+    setCurrentVisibleIdx(visibleStartIndex);
   }, []);
 
   const handleReorderVisualCards = useCallback(
@@ -591,7 +690,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     [routines.length, onReorderRoutines]
   );
 
-  // Pointer Hold-and-Drag on Routine Card Grip Handle (Mobile Touch + Desktop Mouse)
+  // Pointer Hold-and-Drag on Routine Card Grip Handle (Mobile Touch + Desktop Mouse) com auto-scroll horizontal
   const handlePointerDownRoutineHandle = useCallback(
     (startVisualIdx: number, e: React.PointerEvent<HTMLButtonElement>) => {
       e.preventDefault();
@@ -603,11 +702,11 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
       let latestTarget = startVisualIdx;
 
       const handlePointerMove = (moveEvt: PointerEvent) => {
-        const viewportH = window.innerHeight;
-        if (moveEvt.clientY < 90) {
-          window.scrollBy({ top: -14, behavior: 'auto' });
-        } else if (moveEvt.clientY > viewportH - 90) {
-          window.scrollBy({ top: 14, behavior: 'auto' });
+        const viewportW = window.innerWidth;
+        if (moveEvt.clientX < 72) {
+          outerListRef.current?.scrollBy({ left: -16, behavior: 'auto' });
+        } else if (moveEvt.clientX > viewportW - 72) {
+          outerListRef.current?.scrollBy({ left: 16, behavior: 'auto' });
         }
 
         const elUnder = document.elementFromPoint(moveEvt.clientX, moveEvt.clientY);
@@ -700,8 +799,57 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   const hasEditHandler = Boolean(onEditRoutine);
   const hasDeleteHandler = Boolean(onDeleteRoutine);
 
+  const carouselItemData = useMemo<CarouselItemData>(
+    () => ({
+      entries: filteredEntries,
+      activeRoutineId,
+      openMenuId,
+      confirmDeleteId,
+      draggingIdx,
+      dropTargetIdx,
+      canReorder,
+      hasEditHandler,
+      hasDeleteHandler,
+      onToggleMenu: handleToggleMenu,
+      onCloseMenu: handleCloseMenu,
+      onRequestDeleteConfirm: setConfirmDeleteId,
+      onConfirmDelete: handleConfirmDelete,
+      onStartWorkout,
+      onEditRoutine,
+      onOpenPdfModal: setPdfModalRoutine,
+      onShareRoutineClick: handleShareClick,
+      onPointerDownGrip: handlePointerDownRoutineHandle,
+      onCardDragStart: handleCardDragStart,
+      onCardDragOver: handleCardDragOver,
+      onCardDrop: handleCardDrop,
+      onCardDragEnd: handleCardDragEnd,
+    }),
+    [
+      filteredEntries,
+      activeRoutineId,
+      openMenuId,
+      confirmDeleteId,
+      draggingIdx,
+      dropTargetIdx,
+      canReorder,
+      hasEditHandler,
+      hasDeleteHandler,
+      handleToggleMenu,
+      handleCloseMenu,
+      handleConfirmDelete,
+      onStartWorkout,
+      onEditRoutine,
+      handleShareClick,
+      handlePointerDownRoutineHandle,
+      handleCardDragStart,
+      handleCardDragOver,
+      handleCardDrop,
+      handleCardDragEnd,
+    ]
+  );
+
   return (
-    <div className="space-y-5 animate-fadeIn pb-24 max-w-4xl mx-auto relative">
+    <div className="space-y-4 animate-fadeIn pb-24 max-w-4xl mx-auto relative">
       {copiedToast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-emerald-500 text-slate-950 font-black text-xs shadow-2xl flex items-center gap-1.5 animate-fadeIn border border-emerald-400">
           <span>✓</span>
@@ -717,7 +865,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
           <div>
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <span className="text-[10px] font-mono font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-                Rotinas Acumuladas ({routines.length}) · {user.frequency || 4}x por semana
+                Rotinas da Semana ({routines.length}) · {user.frequency || 4}x por semana
               </span>
               <span className="text-[10px] font-bold text-sky-300 bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/20">
                 {user.focus === 'glutes' 
@@ -733,7 +881,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
               Seus Treinos & Rotinas
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              Escolha uma rotina para treinar, segure e arraste para reordenar ou toque em &ldquo;Alterar&rdquo; para editar exercícios.
+              Deslize para o lado para navegar pelos treinos da semana sem precisar rolar a página.
             </p>
           </div>
 
@@ -744,7 +892,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                 type="button"
                 onClick={onGenerateQuickWorkout}
                 className="py-2.5 px-3.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md active:scale-95"
-                title="Gera um treino aleatório e equilibrado de corpo inteiro estilo dobradiça/push/pull"
+                title="Gera um treino aleatório e equilibrado de corpo inteiro"
               >
                 <Zap className="w-3.5 h-3.5 fill-slate-950" />
                 <span>⚡ Treino Rápido</span>
@@ -773,7 +921,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
           </div>
         </div>
 
-        {/* Barra de Busca e Filtros de Versão (otimizada para listas extensas de rotinas versionadas) */}
+        {/* Barra de Busca e Filtros de Versão */}
         {routines.length > 1 && (
           <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-2.5">
             <div className="relative">
@@ -809,7 +957,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                   }`}
                 >
                   <History className="w-3 h-3" />
-                  <span>Todas as Versões ({routines.length})</span>
+                  <span>Todas ({routines.length})</span>
                 </button>
 
                 <button
@@ -841,20 +989,20 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
-                {activeVirtualRowIdx >= 0 && (
+                {activeCardIdx >= 0 && (
                   <button
                     type="button"
                     onClick={handleScrollToActiveRoutine}
                     className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 transition-colors cursor-pointer"
-                    title="Rolar diretamente para o treino ativo na lista virtualizada"
+                    title="Centralizar o treino ativo no carrossel"
                   >
                     <Target className="w-3 h-3" />
                     <span>Ir ao Ativo</span>
                   </button>
                 )}
 
-                <span className="text-[11px] font-mono text-slate-500">
-                  Exibindo <strong className="text-slate-300">{filteredEntries.length}</strong> de {routines.length}
+                <span className="text-[11px] font-mono text-slate-500 tabular-nums">
+                  <strong className="text-slate-300">{filteredEntries.length}</strong> de {routines.length}
                 </span>
               </div>
             </div>
@@ -920,61 +1068,85 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
           )}
         </div>
       ) : (
-        /* Lista Virtualizada de Treinos Acumulados (react-virtuoso com useWindowScroll e reciclagem mobile individual) */
-        <>
-          <Virtuoso
-            ref={virtuosoRef}
-            useWindowScroll
-            data={virtualizedRows}
-            defaultItemHeight={320}
-            increaseViewportBy={{ top: 320, bottom: 480 }}
-            computeItemKey={(rowIdx, row) => row.map((r) => r.routine.id).join('_') || String(rowIdx)}
-            itemContent={(_, row) => (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
-                {row.map((entry) => (
-                  <RoutineCard
-                    key={entry.routine.id}
-                    entry={entry}
-                    isActive={activeRoutineId === entry.routine.id}
-                    isMenuOpen={openMenuId === entry.routine.id}
-                    isConfirmingDelete={confirmDeleteId === entry.routine.id}
-                    isDraggingThis={draggingIdx === entry.visualIdx}
-                    isDropTargetThis={dropTargetIdx === entry.visualIdx && draggingIdx !== entry.visualIdx}
-                    canReorder={canReorder}
-                    hasEditHandler={hasEditHandler}
-                    hasDeleteHandler={hasDeleteHandler}
-                    onToggleMenu={handleToggleMenu}
-                    onCloseMenu={handleCloseMenu}
-                    onRequestDeleteConfirm={setConfirmDeleteId}
-                    onConfirmDelete={handleConfirmDelete}
-                    onStartWorkout={onStartWorkout}
-                    onEditRoutine={onEditRoutine}
-                    onOpenPdfModal={setPdfModalRoutine}
-                    onShareRoutineClick={handleShareClick}
-                    onPointerDownGrip={handlePointerDownRoutineHandle}
-                    onCardDragStart={handleCardDragStart}
-                    onCardDragOver={handleCardDragOver}
-                    onCardDrop={handleCardDrop}
-                    onCardDragEnd={handleCardDragEnd}
-                  />
-                ))}
+        /* Carrossel Horizontal Virtualizado de Treinos (react-window com layout="horizontal") */
+        <div className="space-y-2.5">
+          {/* Barra de Navegação Rápida do Carrossel Semanal */}
+          {filteredEntries.length > 1 && (
+            <div className="flex items-center justify-between gap-2 px-1">
+              <div className="flex items-center gap-1.5 overflow-x-auto theme-scrollbar py-1 pr-2">
+                {filteredEntries.map((entry, idx) => {
+                  const isCurrent = idx === currentVisibleIdx;
+                  const isActiveRoutine = entry.routine.id === activeRoutineId;
+                  return (
+                    <button
+                      key={entry.routine.id}
+                      type="button"
+                      onClick={() => scrollToRoutineIndex(idx)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer border ${
+                        isCurrent
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md shadow-emerald-500/20'
+                          : isActiveRoutine
+                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                          : 'bg-[#101828] text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <span className="font-black">{entry.routine.letter}</span>
+                      <span className="max-w-[96px] truncate font-semibold opacity-90">
+                        {entry.routine.name.replace(/^Treino\s+[A-Z]\s*[-–—]?\s*/i, '') || entry.routine.name}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            )}
-          />
 
-          {filteredEntries.length > 10 && (
-            <div className="flex justify-center pt-2">
-              <button
-                type="button"
-                onClick={handleScrollToTop}
-                className="px-4 py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <ArrowUp className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Voltar ao topo da lista ({filteredEntries.length} rotinas)</span>
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handlePrevCard}
+                  disabled={currentVisibleIdx <= 0}
+                  className="w-9 h-9 rounded-xl bg-[#101828] hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none text-slate-200 border border-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                  aria-label="Treino anterior"
+                  title="Treino anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-[11px] font-mono font-bold text-slate-400 px-1 tabular-nums">
+                  {Math.min(currentVisibleIdx + 1, filteredEntries.length)}/{filteredEntries.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleNextCard}
+                  disabled={currentVisibleIdx >= filteredEntries.length - 1}
+                  className="w-9 h-9 rounded-xl bg-[#101828] hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none text-slate-200 border border-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                  aria-label="Próximo treino"
+                  title="Próximo treino"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
-        </>
+
+          {/* Container Medido para o FixedSizeList Horizontal */}
+          <div ref={carouselContainerRef} className="w-full overflow-hidden">
+            <List
+              ref={listRef}
+              outerRef={outerListRef}
+              layout="horizontal"
+              className="theme-scrollbar"
+              height={carouselHeight}
+              width={containerWidth}
+              itemCount={filteredEntries.length}
+              itemSize={itemWidth}
+              itemData={carouselItemData}
+              itemKey={(index, data) => data.entries[index]?.routine.id ?? String(index)}
+              onItemsRendered={handleItemsRendered}
+              overscanCount={2}
+            >
+              {HorizontalRoutineSlot}
+            </List>
+          </div>
+        </div>
       )}
 
       {/* Modal de Exportação e Impressão de Ficha A4 PDF (Lazy Loaded) */}
@@ -991,4 +1163,5 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     </div>
   );
 };
+
 

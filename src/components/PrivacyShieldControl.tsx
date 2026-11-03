@@ -4,10 +4,15 @@
  */
 
 import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, ShieldCheck, KeyRound, X, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Lock, ShieldCheck, KeyRound, X, AlertCircle, Fingerprint } from 'lucide-react';
 import { UserProfile } from '../types/workout';
 import { usePrivacyMode } from '../utils/privacy';
 import { authStorage } from '../utils/auth';
+import {
+  hasUserBiometricEnabled,
+  authenticateWithBiometrics,
+  getDeviceBiometricLabel,
+} from '../utils/biometricAuth';
 
 interface PrivacyShieldControlProps {
   user: UserProfile | null;
@@ -22,6 +27,10 @@ export const PrivacyShieldControl: React.FC<PrivacyShieldControlProps> = ({
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isBiometricScanning, setIsBiometricScanning] = useState(false);
+
+  const canUseBiometricUnlock = Boolean(user && hasUserBiometricEnabled(user.id));
+  const biometricLabel = getDeviceBiometricLabel();
 
   const handleRequestToggle = () => {
     if (!isPrivacyHidden) {
@@ -30,7 +39,7 @@ export const PrivacyShieldControl: React.FC<PrivacyShieldControlProps> = ({
       return;
     }
 
-    // If user is a registered account (not a visitor), require password verification to reveal sensitive data
+    // If user is a registered account (not a visitor), require password or biometric verification to reveal sensitive data
     if (user && !user.isVisitor) {
       setPasswordInput('');
       setErrorMsg(null);
@@ -38,6 +47,24 @@ export const PrivacyShieldControl: React.FC<PrivacyShieldControlProps> = ({
     } else {
       unlockPrivacy();
     }
+  };
+
+  const handleBiometricUnlock = async () => {
+    if (!user) return;
+    setErrorMsg(null);
+    setIsBiometricScanning(true);
+    const res = await authenticateWithBiometrics({ userId: user.id });
+    setIsBiometricScanning(false);
+
+    if (!res.success) {
+      setErrorMsg(res.error || 'Falha na leitura biométrica.');
+      return;
+    }
+
+    setPasswordInput('');
+    setErrorMsg(null);
+    setShowVerifyModal(false);
+    unlockPrivacy();
   };
 
   const handleConfirmPassword = (e: React.FormEvent) => {
@@ -204,8 +231,26 @@ export const PrivacyShieldControl: React.FC<PrivacyShieldControlProps> = ({
             </div>
 
             <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-              Digite a senha do seu perfil para visualizar ou editar informações corporais e dados pessoais protegidos.
+              {canUseBiometricUnlock
+                ? `Use seu ${biometricLabel} ou digite a senha do perfil para visualizar informações corporais protegidas.`
+                : 'Digite a senha do seu perfil para visualizar ou editar informações corporais e dados pessoais protegidos.'}
             </p>
+
+            {canUseBiometricUnlock && (
+              <button
+                type="button"
+                disabled={isBiometricScanning}
+                onClick={handleBiometricUnlock}
+                className="w-full mb-3 py-3 px-4 rounded-2xl font-black text-xs bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+              >
+                <Fingerprint className="w-4 h-4" />
+                <span>
+                  {isBiometricScanning
+                    ? 'Lendo Biometria...'
+                    : `Desbloquear com ${biometricLabel}`}
+                </span>
+              </button>
+            )}
 
             {errorMsg && (
               <div className="p-2.5 mb-3 rounded-xl bg-rose-950/40 border border-rose-900/60 text-rose-300 text-xs flex items-center gap-2">
@@ -217,12 +262,12 @@ export const PrivacyShieldControl: React.FC<PrivacyShieldControlProps> = ({
             <form onSubmit={handleConfirmPassword} className="space-y-3">
               <div>
                 <label className="text-[11px] font-bold text-slate-400 block mb-1">
-                  Senha da Conta
+                  {canUseBiometricUnlock ? 'Ou use a Senha da Conta' : 'Senha da Conta'}
                 </label>
                 <input
                   type="password"
                   required
-                  autoFocus
+                  autoFocus={!canUseBiometricUnlock}
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
                   placeholder="••••••••"

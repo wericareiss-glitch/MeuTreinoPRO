@@ -25,6 +25,7 @@ import { UserProfile, GenderOption, LevelOption, FocusOption } from '../types/wo
 import { authStorage, calculateDefaultBudget, getPresetWeights, scaleWeightsToBudget } from '../utils/auth';
 import { ThemeToggle } from './ThemeToggle';
 import { PrivacyShieldControl } from './PrivacyShieldControl';
+import { BiometricSettingsCard } from './BiometricSettingsCard';
 import { usePrivacyMode, maskUsername, maskDisplayName, maskSensitiveValue } from '../utils/privacy';
 
 interface ProfileModalProps {
@@ -473,6 +474,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               {user.weeklyBudget}s / sem
             </span>
           </button>
+
+          <BiometricSettingsCard user={user} variant="compact" onLockAppNow={onClose} />
         </div>
 
         {/* Change Password Collapsible */}
