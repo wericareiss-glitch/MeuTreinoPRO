@@ -5,7 +5,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Disc, 
   Share2, 
   Volume2, 
   VolumeX, 
@@ -43,11 +42,9 @@ interface HeaderProps {
   onSelectTab: (tab: TabType) => void;
   onOpenProfile: () => void;
   onOpenVolumeBudget: () => void;
-  onOpenPlateCalc: () => void;
   onOpenHistory: () => void;
   onOpenAnalytics?: () => void;
   onOpenMeasurements?: () => void;
-  onOpenCadence?: () => void;
   onOpenDeloadAssistant?: () => void;
   isDeloadActive?: boolean;
   onOpenNutrition?: () => void;
@@ -66,11 +63,9 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectTab,
   onOpenProfile,
   onOpenVolumeBudget,
-  onOpenPlateCalc,
   onOpenHistory,
   onOpenAnalytics,
   onOpenMeasurements,
-  onOpenCadence,
   onOpenDeloadAssistant,
   isDeloadActive = false,
   onOpenNutrition,
@@ -161,8 +156,8 @@ export const Header: React.FC<HeaderProps> = ({
           className="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer group"
           title="Ir para o Início"
         >
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform">
-            <Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-slate-950 stroke-[2.5]" />
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-transparent border border-emerald-500/35 hover:bg-emerald-500/10 flex items-center justify-center text-emerald-400 font-black shadow-sm group-hover:scale-105 transition-all">
+            <Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 stroke-[2.5]" />
           </div>
           <div>
             <div className="flex items-center gap-1 sm:gap-2">
@@ -371,42 +366,6 @@ export const Header: React.FC<HeaderProps> = ({
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">
                       Treino & Cargas
                     </span>
-
-                    {onOpenPlateCalc && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToolsMenuOpen(false);
-                          onOpenPlateCalc();
-                        }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-sky-300 hover:bg-sky-950/40 transition-colors text-left cursor-pointer"
-                      >
-                        <Disc className="w-4 h-4 text-sky-400 shrink-0" />
-                        <div className="flex-1">
-                          <span className="block font-bold">Calculadora de Anilhas</span>
-                          <span className="block text-[10px] text-slate-400">Distribuição precisa na barra</span>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                      </button>
-                    )}
-
-                    {onOpenCadence && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToolsMenuOpen(false);
-                          onOpenCadence();
-                        }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-purple-300 hover:bg-purple-950/40 transition-colors text-left cursor-pointer"
-                      >
-                        <Activity className="w-4 h-4 text-purple-400 shrink-0" />
-                        <div className="flex-1">
-                          <span className="block font-bold">Metrônomo de Cadência</span>
-                          <span className="block text-[10px] text-slate-400">Tempo sob tensão (TUT)</span>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                      </button>
-                    )}
 
                     {onOpenHistory && (
                       <button
@@ -763,46 +722,6 @@ export const Header: React.FC<HeaderProps> = ({
                     <div className="flex-1">
                       <span className="block text-xs font-bold text-white">Medições Corporais</span>
                       <span className="block text-[10px] text-slate-400">Peso, dobras e circunferências</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
-                  </button>
-                )}
-
-                {onOpenPlateCalc && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      onOpenPlateCalc();
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-[#121c33] hover:bg-[#16233f] border border-slate-750 text-left transition-colors cursor-pointer min-h-[48px]"
-                  >
-                    <div className="p-2 rounded-xl bg-sky-500/15 text-sky-400 shrink-0">
-                      <Disc className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1">
-                      <span className="block text-xs font-bold text-white">Calculadora de Anilhas</span>
-                      <span className="block text-[10px] text-slate-400">Distribuição exata na barra</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
-                  </button>
-                )}
-
-                {onOpenCadence && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      onOpenCadence();
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-[#121c33] hover:bg-[#16233f] border border-slate-750 text-left transition-colors cursor-pointer min-h-[48px]"
-                  >
-                    <div className="p-2 rounded-xl bg-purple-500/15 text-purple-400 shrink-0">
-                      <Activity className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1">
-                      <span className="block text-xs font-bold text-white">Metrônomo de Cadência</span>
-                      <span className="block text-[10px] text-slate-400">Tempo sob tensão (TUT 3-0-1-0)</span>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-600" />
                   </button>

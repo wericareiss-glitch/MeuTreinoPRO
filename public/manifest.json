@@ -1,20 +1,65 @@
 {
-  "name": "MeuTreino Pro - Hipertrofia Individualizada",
-  "short_name": "MeuTreino Pro",
+  "id": "/",
+  "name": "MeuTreino Pro",
+  "short_name": "MeuTreino",
+  "description": "Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva.",
+  "lang": "pt-BR",
+  "dir": "ltr",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#090d16",
-  "theme_color": "#090d16",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#0d1424",
+  "theme_color": "#0d1424",
+  "prefer_related_applications": false,
+  "categories": ["fitness", "health", "sports"],
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/pwa-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/pwa-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Meus Treinos",
+      "short_name": "Treinos",
+      "description": "Abrir fichas de treino acumuladas",
+      "url": "/?tab=treino",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Iniciar Treino Rápido",
+      "short_name": "Treinar",
+      "description": "Ir direto para o treino do dia",
+      "url": "/?action=start-workout",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

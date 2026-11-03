@@ -47,36 +47,75 @@ import {
 import { authStorage, ALL_MUSCLE_GROUPS } from './utils/auth';
 import { soundManager } from './utils/audio';
 import { generateWeeklyRoutines, generateQuickWorkoutRoutine } from './utils/routineGenerator';
+import { 
+  buildLocalSyncBundle, 
+  pushSyncBundleToSupabase, 
+  enqueueOfflineMutation, 
+  flushOfflineMutationQueue 
+} from './services/supabaseSync';
 
 import { Header } from './components/Header';
-import { VolumeDashboard } from './components/VolumeDashboard';
-import { WorkoutConfig } from './components/WorkoutConfig';
-import { ExerciseCard } from './components/ExerciseCard';
 import { RestTimerDock } from './components/RestTimerDock';
 import { CardioDock } from './components/CardioDock';
-import { FeedbackView } from './components/FeedbackView';
-import { WarmupModal } from './components/WarmupModal';
-import { PlateCalculatorModal } from './components/PlateCalculatorModal';
-import { NutritionModal } from './components/NutritionModal';
-import { DonationModal } from './components/DonationModal';
-import { HistoryModal } from './components/HistoryModal';
-import { SwapExerciseModal } from './components/SwapExerciseModal';
 import { AuthModal } from './components/AuthModal';
-import { ProfileModal } from './components/ProfileModal';
-import { VolumeBudgetModal } from './components/VolumeBudgetModal';
-import { AddExerciseModal } from './components/AddExerciseModal';
-import { WorkoutSummaryModal } from './components/WorkoutSummaryModal';
-import { ExerciseAnalyticsModal } from './components/ExerciseAnalyticsModal';
-import { BodyMeasurementsModal } from './components/BodyMeasurementsModal';
-import { ManualWorkoutModal } from './components/ManualWorkoutModal';
-import { CadenceModal } from './components/CadenceModal';
 import { NavigationTabs } from './components/NavigationTabs';
 import { HomeView } from './components/HomeView';
-import { WorkoutListView } from './components/WorkoutListView';
-import { ActiveWorkoutView } from './components/ActiveWorkoutView';
-import { CardioView } from './components/CardioView';
-import { ProfileView } from './components/ProfileView';
-import { DeloadAssistantModal } from './components/DeloadAssistantModal';
+
+// Code Splitting de Abas Secundárias e Modais sob demanda (reduz significativamente o pacote inicial mobile)
+const WorkoutListView = React.lazy(() =>
+  import('./components/WorkoutListView').then((m) => ({ default: m.WorkoutListView }))
+);
+const ActiveWorkoutView = React.lazy(() =>
+  import('./components/ActiveWorkoutView').then((m) => ({ default: m.ActiveWorkoutView }))
+);
+const CardioView = React.lazy(() =>
+  import('./components/CardioView').then((m) => ({ default: m.CardioView }))
+);
+const ProfileView = React.lazy(() =>
+  import('./components/ProfileView').then((m) => ({ default: m.ProfileView }))
+);
+const FeedbackView = React.lazy(() =>
+  import('./components/FeedbackView').then((m) => ({ default: m.FeedbackView }))
+);
+const WarmupModal = React.lazy(() =>
+  import('./components/WarmupModal').then((m) => ({ default: m.WarmupModal }))
+);
+const NutritionModal = React.lazy(() =>
+  import('./components/NutritionModal').then((m) => ({ default: m.NutritionModal }))
+);
+const DonationModal = React.lazy(() =>
+  import('./components/DonationModal').then((m) => ({ default: m.DonationModal }))
+);
+const HistoryModal = React.lazy(() =>
+  import('./components/HistoryModal').then((m) => ({ default: m.HistoryModal }))
+);
+const SwapExerciseModal = React.lazy(() =>
+  import('./components/SwapExerciseModal').then((m) => ({ default: m.SwapExerciseModal }))
+);
+const ProfileModal = React.lazy(() =>
+  import('./components/ProfileModal').then((m) => ({ default: m.ProfileModal }))
+);
+const VolumeBudgetModal = React.lazy(() =>
+  import('./components/VolumeBudgetModal').then((m) => ({ default: m.VolumeBudgetModal }))
+);
+const AddExerciseModal = React.lazy(() =>
+  import('./components/AddExerciseModal').then((m) => ({ default: m.AddExerciseModal }))
+);
+const WorkoutSummaryModal = React.lazy(() =>
+  import('./components/WorkoutSummaryModal').then((m) => ({ default: m.WorkoutSummaryModal }))
+);
+const ExerciseAnalyticsModal = React.lazy(() =>
+  import('./components/ExerciseAnalyticsModal').then((m) => ({ default: m.ExerciseAnalyticsModal }))
+);
+const BodyMeasurementsModal = React.lazy(() =>
+  import('./components/BodyMeasurementsModal').then((m) => ({ default: m.BodyMeasurementsModal }))
+);
+const ManualWorkoutModal = React.lazy(() =>
+  import('./components/ManualWorkoutModal').then((m) => ({ default: m.ManualWorkoutModal }))
+);
+const DeloadAssistantModal = React.lazy(() =>
+  import('./components/DeloadAssistantModal').then((m) => ({ default: m.DeloadAssistantModal }))
+);
 import { getDeloadState, analyzeFatigueAndDeload, DeloadState } from './utils/deloadEngine';
 import { checkAndTriggerScheduledNotification } from './utils/notifications';
 import { TabType } from './types/navigation';
@@ -86,10 +125,10 @@ import { useTheme } from './utils/theme';
 
 export default function App() {
   const { t } = useI18n();
-  // Inicializa e sincroniza o sistema global de temas
+  // Inicializa e sincroniza o sistema global de temas (Escuro de alto contraste / Claro de alta legibilidade)
   useTheme();
 
-  // Navigation tab state: 'inicio' | 'treino' | 'cardio' | 'perfil' | 'feedback'
+  // Navigation tab state: 'inicio' | 'treino' | 'cardio' | 'perfil'
   const [activeTab, setActiveTab] = useState<TabType>('inicio');
 
   // Current active authenticated user
@@ -100,7 +139,7 @@ export default function App() {
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [isAddExerciseOpen, setIsAddExerciseOpen] = useState(false);
 
-  // Verificador global de lembretes Push agendados
+  // Verificador global de lembretes Push agendados (funciona em qualquer aba do app)
   useEffect(() => {
     if (!currentUser?.id) return;
     const checkNow = () => {
@@ -138,8 +177,7 @@ export default function App() {
       user.periodizationStrategy || (user.focus === 'strength' ? 'strength' : 'hypertrophy')
     );
   });
-  
-  // Padrão de 1 exercício por músculo
+  // Padrão sempre 1 exercício por músculo
   const exercisesPerMuscle: 1 = 1;
   const [weeklyBudget, setWeeklyBudget] = useState<number>(() => {
     const user = authStorage.getActiveUser();
@@ -148,7 +186,7 @@ export default function App() {
   });
   const [level, setLevel] = useState<LevelOption>(() => currentUser?.level || 'intermediate');
   const [equip, setEquip] = useState<EquipmentRequirement>('full_gym');
-  const [restSeconds, setRestSeconds] = useState<number>(30);
+  const [restSeconds, setRestSeconds] = useState<number>(30); // Padrão automático 30s por série
   const [isCardioRunning, setIsCardioRunning] = useState<boolean>(false);
 
   // Geração de Treinos Inteligentes & Treino Ativo
@@ -168,7 +206,7 @@ export default function App() {
     return safeStorage.get(`alex_u_${user.id}_active_routine_started_at`, null);
   });
 
-  // Workout & Log state
+  // Workout & Log state (Isolated per User)
   const [workoutItems, setWorkoutItems] = useState<WorkoutItem[]>([]);
   const [logs, setLogs] = useState<WorkoutLogs>({});
   const [history, setHistory] = useState<WorkoutLogs>({});
@@ -184,9 +222,6 @@ export default function App() {
   // Modals state
   const [isNutritionOpen, setIsNutritionOpen] = useState(false);
   const [isDonationOpen, setIsDonationOpen] = useState(false);
-  const [isCadenceOpen, setIsCadenceOpen] = useState(false);
-  const [isPlateCalcOpen, setIsPlateCalcOpen] = useState(false);
-  const [plateCalcWeight, setPlateCalcWeight] = useState<number | undefined>(undefined);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [analyticsExerciseName, setAnalyticsExerciseName] = useState<string | undefined>(undefined);
@@ -223,11 +258,16 @@ export default function App() {
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => {
       setToastMessage((curr) => (curr === msg ? null : curr));
+      toastTimerRef.current = null;
     }, 2800);
   }, []);
 
@@ -272,13 +312,43 @@ export default function App() {
         ? 'abcde'
         : 'upper_lower'
     );
-    setSplit(safeStorage.get(`alex_u_${uid}_split`, defaultSplit));
-    setStrategy(safeStorage.get(`alex_u_${uid}_strategy`, 'synergy'));
-    setWeeklyBudget(safeStorage.get(`alex_u_${uid}_weekly_budget`, currentUser.weeklyBudget || 80));
-    setLevel(safeStorage.get(`alex_u_${uid}_level`, currentUser.level || 'beginner'));
-    setEquip(safeStorage.get(`alex_u_${uid}_equip`, 'full_gym'));
+    const resolvedSplit = safeStorage.get(`alex_u_${uid}_split`, defaultSplit);
+    const resolvedStrategy = safeStorage.get<StrategyOption>(`alex_u_${uid}_strategy`, 'synergy');
+    const resolvedBudget = safeStorage.get(`alex_u_${uid}_weekly_budget`, currentUser.weeklyBudget || 80);
+    const resolvedLevel = safeStorage.get<LevelOption>(`alex_u_${uid}_level`, currentUser.level || 'beginner');
+    const resolvedEquip = safeStorage.get<EquipmentRequirement>(`alex_u_${uid}_equip`, 'full_gym');
 
-    const storedRoutines = safeStorage.get(`alex_u_${uid}_routines`, []);
+    setSplit(resolvedSplit);
+    setStrategy(resolvedStrategy);
+    setWeeklyBudget(resolvedBudget);
+    setLevel(resolvedLevel);
+    setEquip(resolvedEquip);
+
+    let storedRoutines = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${uid}_routines`, []);
+    const hasInit = safeStorage.get<boolean>(`alex_u_${uid}_has_init_routines`, false);
+    if (storedRoutines.length === 0 && !hasInit) {
+      safeStorage.set(`alex_u_${uid}_has_init_routines`, true);
+      const nowTs = Date.now();
+      const initialGenerated = generateWeeklyRoutines({
+        user: currentUser,
+        split: resolvedSplit,
+        strategy: resolvedStrategy,
+        manualWeeklySets: resolvedBudget,
+        level: resolvedLevel,
+        equip: resolvedEquip,
+        restSeconds: 60,
+      }).map((r, idx) => ({
+        ...r,
+        id: `${r.id}_v1_${nowTs}_${idx}`,
+        version: 1,
+        createdAt: new Date(nowTs + idx).toISOString(),
+      }));
+      storedRoutines = initialGenerated;
+      safeStorage.set(`alex_u_${uid}_routines`, storedRoutines);
+    } else if (storedRoutines.length > 0 && !hasInit) {
+      safeStorage.set(`alex_u_${uid}_has_init_routines`, true);
+    }
+
     setRoutines(storedRoutines);
     setActiveRoutineId(safeStorage.get(`alex_u_${uid}_active_routine_id`, null));
     setActiveRoutineStartedAt(safeStorage.get(`alex_u_${uid}_active_routine_started_at`, null));
@@ -291,14 +361,51 @@ export default function App() {
     setWorkoutNotes(safeStorage.get(`alex_u_${uid}_workout_notes`, ''));
     setMeasurements(safeStorage.get(`alex_u_${uid}_measurements`, []));
 
-    loadedUserIdRef.current = uid;
-  }, [currentUser?.id]);
+    // Escuta sincronizações em tempo real vindas do Supabase ou outras abas
+    const handleRemoteSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && customEvent.detail.userId === uid) {
+        setRoutines(safeStorage.get(`alex_u_${uid}_routines`, []));
+        setWorkoutItems(safeStorage.get(`alex_u_${uid}_workout`, []));
+        setHistory(safeStorage.get(`alex_u_${uid}_history_logs`, {}));
+        setSessions(safeStorage.get(`alex_u_${uid}_sessions`, []));
+        setWorkoutNotes(safeStorage.get(`alex_u_${uid}_workout_notes`, ''));
+        setMeasurements(safeStorage.get(`alex_u_${uid}_measurements`, []));
+        showToast('⚡ Seus treinos foram sincronizados automaticamente!');
+      }
+    };
+    window.addEventListener('meutreino:remote-sync-applied', handleRemoteSync);
 
+    // Escuta hidratação assíncrona do IndexedDB (para históricos/rotinas maiores que o localStorage)
+    const handleIdbHydrated = () => {
+      const idbRoutines = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${uid}_routines`, []);
+      if (idbRoutines.length > 0) setRoutines(idbRoutines);
+      setWorkoutItems(safeStorage.get(`alex_u_${uid}_workout`, []));
+      setLogs(safeStorage.get(`alex_u_${uid}_current_logs`, {}));
+      setHistory(safeStorage.get(`alex_u_${uid}_history_logs`, {}));
+      setSessions(safeStorage.get(`alex_u_${uid}_sessions`, []));
+      setWeeklyCompletedSets(safeStorage.get(`alex_u_${uid}_weekly_volume`, {} as Record<MuscleGroup, number>));
+      setWorkoutNotes(safeStorage.get(`alex_u_${uid}_workout_notes`, ''));
+      setMeasurements(safeStorage.get(`alex_u_${uid}_measurements`, []));
+    };
+    window.addEventListener('meutreino:idb-hydrated', handleIdbHydrated);
+
+    // Marca o ID do usuário cujos dados foram carregados na memória
+    loadedUserIdRef.current = uid;
+
+    return () => {
+      window.removeEventListener('meutreino:remote-sync-applied', handleRemoteSync);
+      window.removeEventListener('meutreino:idb-hydrated', handleIdbHydrated);
+    };
+  }, [currentUser?.id, showToast]);
+
+  // Update sound manager mute state
   useEffect(() => {
     soundManager.setMuted(isMuted);
     safeStorage.set('alex_muted', isMuted);
   }, [isMuted]);
 
+  // Synchronize cardio running state continuously
   useEffect(() => {
     if (!currentUser) {
       setIsCardioRunning(false);
@@ -306,13 +413,15 @@ export default function App() {
     }
     const checkCardio = () => {
       const active = safeStorage.get<{ isRunning?: boolean } | null>(`mtp_cardio_active_${currentUser.id}`, null);
-      setIsCardioRunning(!!active?.isRunning);
+      const nextRunning = !!active?.isRunning;
+      setIsCardioRunning((prev) => (prev === nextRunning ? prev : nextRunning));
     };
     checkCardio();
     const interval = setInterval(checkCardio, 1000);
     return () => clearInterval(interval);
   }, [currentUser?.id]);
 
+  // Persist user-isolated settings + agrupa na janela de 5s do Supabase
   useEffect(() => {
     if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     const uid = currentUser.id;
@@ -322,23 +431,34 @@ export default function App() {
     safeStorage.set(`alex_u_${uid}_weekly_budget`, weeklyBudget);
     safeStorage.set(`alex_u_${uid}_level`, level);
     safeStorage.set(`alex_u_${uid}_equip`, equip);
-  }, [split, strategy, exercisesPerMuscle, weeklyBudget, level, equip, currentUser]);
+    enqueueOfflineMutation(
+      uid,
+      'settings',
+      { split, strategy, weeklyBudget, level, equip, periodizationStrategy },
+      currentUser
+    );
+  }, [split, strategy, exercisesPerMuscle, weeklyBudget, level, equip, periodizationStrategy, currentUser]);
 
+  // Persist routines + enqueue delta
   useEffect(() => {
     if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_routines`, routines);
+    enqueueOfflineMutation(currentUser.id, 'routines', routines, currentUser);
   }, [routines, currentUser]);
 
+  // Persist workout items
   useEffect(() => {
     if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_workout`, workoutItems);
   }, [workoutItems, currentUser]);
 
+  // Persist logs
   useEffect(() => {
     if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_current_logs`, logs);
   }, [logs, currentUser]);
 
+  // Persist workout notes + enqueue delta
   useEffect(() => {
     if (!currentUser) {
       safeStorage.set('alex_guest_workout_notes', workoutNotes);
@@ -346,13 +466,27 @@ export default function App() {
     }
     if (loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_workout_notes`, workoutNotes);
+    enqueueOfflineMutation(currentUser.id, 'workoutNotes', workoutNotes, currentUser);
   }, [workoutNotes, currentUser]);
 
+  // Persist measurements + enqueue delta
   useEffect(() => {
     if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
     safeStorage.set(`alex_u_${currentUser.id}_measurements`, measurements);
+    enqueueOfflineMutation(currentUser.id, 'measurements', measurements, currentUser);
   }, [measurements, currentUser]);
 
+  // Auto-flush da Fila de Sincronização Offline (Delta Queue) assim que a internet retornar
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const handleOnlineFlush = () => {
+      flushOfflineMutationQueue(currentUser.id, currentUser).catch(() => {});
+    };
+    window.addEventListener('online', handleOnlineFlush);
+    return () => window.removeEventListener('online', handleOnlineFlush);
+  }, [currentUser]);
+
+  // Measurement handlers
   const handleSaveMeasurement = useCallback((item: BodyMeasurement) => {
     if (!currentUser) return;
     setMeasurements((prev) => {
@@ -385,6 +519,7 @@ export default function App() {
     setIsAnalyticsOpen(true);
   }, []);
 
+  // Handlers para criação e gerenciamento manual de treinos
   const handleOpenCreateManualRoutine = useCallback(() => {
     setEditingRoutine(null);
     setIsManualWorkoutOpen(true);
@@ -397,20 +532,41 @@ export default function App() {
 
   const handleSaveManualRoutine = useCallback((routine: GeneratedWorkoutRoutine) => {
     setRoutines((prev) => {
-      const existingIdx = prev.findIndex((r) => r.id === routine.id);
+      const stored = currentUser
+        ? safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${currentUser.id}_routines`, [])
+        : [];
+      const baseList = prev.length >= stored.length ? prev : stored;
+      const existingIdx = baseList.findIndex((r) => r.id === routine.id);
       let updated: GeneratedWorkoutRoutine[];
       if (existingIdx >= 0) {
-        updated = [...prev];
-        updated[existingIdx] = routine;
+        updated = [...baseList];
+        updated[existingIdx] = {
+          ...routine,
+          version: routine.version || baseList[existingIdx].version || 1,
+          createdAt: routine.createdAt || baseList[existingIdx].createdAt || new Date().toISOString(),
+        };
       } else {
-        updated = [...prev, routine];
+        const nextVersion = baseList.reduce((maxV, r) => Math.max(maxV, r.version || 1), 0) + 1;
+        const nowTs = Date.now();
+        const stampedRoutine: GeneratedWorkoutRoutine = {
+          ...routine,
+          id: routine.id ? `${routine.id}_v${nextVersion}` : `custom_routine_${nowTs}_v${nextVersion}`,
+          version: nextVersion,
+          createdAt: new Date(nowTs).toISOString(),
+        };
+        updated = [...baseList, stampedRoutine];
       }
       if (currentUser) {
         safeStorage.set(`alex_u_${currentUser.id}_routines`, updated);
+        try {
+          const syncBundle = buildLocalSyncBundle(currentUser.id, currentUser);
+          syncBundle.routines = updated;
+          pushSyncBundleToSupabase(syncBundle).catch(() => {});
+        } catch {}
       }
       return updated;
     });
-    showToast(`Treino "${routine.name}" salvo com sucesso!`);
+    showToast(`Treino "${routine.name}" salvo e acumulado na sua lista!`);
   }, [currentUser, showToast]);
 
   const handleDeleteRoutine = useCallback((routineId: string) => {
@@ -418,12 +574,18 @@ export default function App() {
       const updated = prev.filter((r) => r.id !== routineId);
       if (currentUser) {
         safeStorage.set(`alex_u_${currentUser.id}_routines`, updated);
+        try {
+          const syncBundle = buildLocalSyncBundle(currentUser.id, currentUser);
+          syncBundle.routines = updated;
+          pushSyncBundleToSupabase(syncBundle).catch(() => {});
+        } catch {}
       } else {
         safeStorage.set('alex_guest_routines', updated);
       }
       return updated;
     });
 
+    // Se o treino deletado era o treino ativo, limpa o estado ativo
     setActiveRoutineId((curr) => {
       if (curr === routineId) {
         if (currentUser) {
@@ -438,6 +600,7 @@ export default function App() {
     showToast('Treino removido da lista com sucesso.');
   }, [currentUser, showToast]);
 
+  // Geração de rotinas da semana (ACUMULA com versionamento e timestamp exclusivo sem sobrepor existentes)
   const handleGenerateWeeklyRoutines = useCallback((forcedSplit?: SplitOption) => {
     if (!currentUser) return;
     const splitToUse: SplitOption = forcedSplit || split || currentUser.preferredSplit || (
@@ -459,14 +622,40 @@ export default function App() {
       restSeconds,
     });
     setRoutines((prev) => {
-      const customRoutines = prev.filter((r) => r.isCustom);
-      const updated = [...newRoutines, ...customRoutines];
+      const stored = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${currentUser.id}_routines`, []);
+      const mergedMap = new Map<string, GeneratedWorkoutRoutine>();
+      stored.forEach((r) => mergedMap.set(r.id, r));
+      prev.forEach((r) => mergedMap.set(r.id, r));
+      const existingRoutines = Array.from(mergedMap.values());
+
+      const nextVersion = existingRoutines.reduce((maxV, r) => Math.max(maxV, r.version || 1), 0) + 1;
+      const nowTs = Date.now();
+      const hasExisting = existingRoutines.length > 0;
+
+      const stampedNewRoutines: GeneratedWorkoutRoutine[] = newRoutines.map((r, idx) => ({
+        ...r,
+        id: `routine_${r.letter.toLowerCase()}_v${nextVersion}_${nowTs}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+        name: hasExisting ? `${r.name} • v${nextVersion}` : r.name,
+        version: nextVersion,
+        createdAt: new Date(nowTs + idx).toISOString(),
+      }));
+
+      // Acumula os novos treinos preservando 100% dos treinos anteriores
+      const updated = [...existingRoutines, ...stampedNewRoutines];
       safeStorage.set(`alex_u_${currentUser.id}_routines`, updated);
+
+      try {
+        const syncBundle = buildLocalSyncBundle(currentUser.id, currentUser);
+        syncBundle.routines = updated;
+        pushSyncBundleToSupabase(syncBundle).catch(() => {});
+      } catch {}
+
       return updated;
     });
-    showToast(`Rotinas geradas: ${newRoutines.length} treinos para ${weeklyBudget} séries semanais!`);
+    showToast(`+${newRoutines.length} novos treinos acumulados na sua lista (${weeklyBudget} séries/sem)!`);
   }, [currentUser, split, strategy, weeklyBudget, level, equip, restSeconds, showToast]);
 
+  // Geração de Treino Rápido (Aleatório balanceado Full Body / Dobradiça — sempre acumula com versão única)
   const handleGenerateQuickWorkout = useCallback(() => {
     if (!currentUser) return;
     const quickRoutine = generateQuickWorkoutRoutine({
@@ -475,13 +664,37 @@ export default function App() {
       restSeconds,
     });
     setRoutines((prev) => {
-      const updated = [...prev, quickRoutine];
+      const stored = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${currentUser.id}_routines`, []);
+      const mergedMap = new Map<string, GeneratedWorkoutRoutine>();
+      stored.forEach((r) => mergedMap.set(r.id, r));
+      prev.forEach((r) => mergedMap.set(r.id, r));
+      const existingRoutines = Array.from(mergedMap.values());
+
+      const nextVersion = existingRoutines.reduce((maxV, r) => Math.max(maxV, r.version || 1), 0) + 1;
+      const nowTs = Date.now();
+      const stampedQuick: GeneratedWorkoutRoutine = {
+        ...quickRoutine,
+        id: `quick_routine_v${nextVersion}_${nowTs}_${Math.random().toString(36).slice(2, 6)}`,
+        name: `${quickRoutine.name} #${nextVersion}`,
+        version: nextVersion,
+        createdAt: new Date(nowTs).toISOString(),
+      };
+
+      const updated = [...existingRoutines, stampedQuick];
       safeStorage.set(`alex_u_${currentUser.id}_routines`, updated);
+
+      try {
+        const syncBundle = buildLocalSyncBundle(currentUser.id, currentUser);
+        syncBundle.routines = updated;
+        pushSyncBundleToSupabase(syncBundle).catch(() => {});
+      } catch {}
+
       return updated;
     });
-    showToast(`⚡ Treino Rápido "${quickRoutine.name}" adicionado à sua lista!`);
+    showToast(`⚡ Treino Rápido acumulado na sua lista de treinos!`);
   }, [currentUser, equip, restSeconds, showToast]);
 
+  // Compartilhar treino formatado
   const handleShareRoutine = useCallback((routine: GeneratedWorkoutRoutine) => {
     const shareText = `🏋️ Treino ${routine.letter} - ${routine.name}\n` +
       routine.items.map(i => `• ${i.exercise.name}: ${i.sets} séries × ${i.reps} reps (RIR: ${i.rir})`).join('\n') +
@@ -495,6 +708,7 @@ export default function App() {
     }
   }, [showToast]);
 
+  // Excluir Perfil com limpeza de storage e logout imediato (nunca logar automaticamente em outro usuário)
   const handleDeleteProfile = useCallback((userId: string) => {
     authStorage.deleteUser(userId);
     authStorage.logout();
@@ -504,6 +718,7 @@ export default function App() {
     showToast('Perfil excluído e sessão encerrada com segurança.');
   }, [showToast]);
 
+  // Trocar Perfil exige desconexão imediata para proteger os dados da conta atual
   const handleSwitchProfile = useCallback(() => {
     authStorage.logout();
     setCurrentUser(null);
@@ -512,25 +727,7 @@ export default function App() {
     showToast('Sessão bloqueada. Faça login para acessar outro perfil.');
   }, [showToast]);
 
-  useEffect(() => {
-    if (currentUser) {
-      const hasInit = safeStorage.get(`alex_u_${currentUser.id}_has_init_routines`, false);
-      if (!hasInit && routines.length === 0) {
-        safeStorage.set(`alex_u_${currentUser.id}_has_init_routines`, true);
-        const targetSplit: SplitOption = currentUser.preferredSplit || (
-          currentUser.focus === 'glutes'
-            ? 'lower'
-            : currentUser.frequency === 3 || currentUser.frequency === 6
-            ? 'ppl'
-            : currentUser.frequency === 5
-            ? 'abcde'
-            : 'upper_lower'
-        );
-        handleGenerateWeeklyRoutines(targetSplit);
-      }
-    }
-  }, [currentUser?.id, handleGenerateWeeklyRoutines, routines.length]);
-
+  // Iniciar treino selecionado
   const handleStartWorkout = useCallback((routine: GeneratedWorkoutRoutine) => {
     if (!currentUser) return;
     const uid = currentUser.id;
@@ -547,6 +744,7 @@ export default function App() {
     showToast(`Treino ${routine.letter} iniciado! Bom treino!`);
   }, [currentUser, showToast]);
 
+  // Descartar/Cancelar treino em andamento (confirmação já feita no componente de visualização)
   const handleDiscardActiveWorkout = useCallback(() => {
     if (!currentUser) return;
     const uid = currentUser.id;
@@ -562,6 +760,7 @@ export default function App() {
     showToast('Treino em andamento cancelado.');
   }, [currentUser, showToast]);
 
+  // Identificação do treino ativo
   const activeRoutine = useMemo(() => {
     if (!activeRoutineId) return null;
     return routines.find((r) => r.id === activeRoutineId) || (routines.length > 0 ? routines[0] : null);
@@ -593,9 +792,10 @@ export default function App() {
         rir: phaseCfg.rirTarget,
       }))
     );
-    showToast(`Rep-Target ajustado: ${phaseCfg.label} (${phaseCfg.repBadge})`);
+    showToast(`Meta de repetições ajustada: ${phaseCfg.label} (${phaseCfg.repBadge})`);
   }, [currentUser, showToast]);
 
+  // Log handlers (Sincronização bidirecional automática de RPE 6-10 e RIR 0-4 + Técnica de Intensidade + Delta Sync)
   const handleUpdateLog = useCallback((key: string, field: 'weight' | 'reps' | 'rpe' | 'rir' | 'setType', val: string) => {
     setLogs((prev) => {
       const current = prev[key] || { weight: '', reps: '', done: false };
@@ -607,17 +807,16 @@ export default function App() {
         updated.rpe = rirToRpe(val);
       }
 
+      if (currentUser?.id) {
+        enqueueOfflineMutation(currentUser.id, 'currentLogs', { [key]: updated }, currentUser);
+      }
+
       return {
         ...prev,
         [key]: updated,
       };
     });
-  }, []);
-
-  const handleOpenPlateCalc = useCallback((weight?: number) => {
-    setPlateCalcWeight(weight);
-    setIsPlateCalcOpen(true);
-  }, []);
+  }, [currentUser]);
 
   const handleToggleSet = useCallback((key: string, restSec: number) => {
     setLogs((prev) => {
@@ -635,16 +834,22 @@ export default function App() {
         }
       }
 
+      const nextEntry = {
+        ...current,
+        done: nextDone,
+        timestamp: Date.now(),
+      };
+
+      if (currentUser?.id) {
+        enqueueOfflineMutation(currentUser.id, 'currentLogs', { [key]: nextEntry }, currentUser);
+      }
+
       return {
         ...prev,
-        [key]: {
-          ...current,
-          done: nextDone,
-          timestamp: Date.now(),
-        },
+        [key]: nextEntry,
       };
     });
-  }, [showToast]);
+  }, [showToast, currentUser]);
 
   const handleAddSet = useCallback((itemIndex: number) => {
     setWorkoutItems((prev) => {
@@ -665,6 +870,7 @@ export default function App() {
     });
   }, []);
 
+  // Exercise reordering (Master Controls + Drag & Drop)
   const syncActiveRoutineItems = useCallback((updatedItems: WorkoutItem[]) => {
     if (!activeRoutineId) return;
     setRoutines((prev) =>
@@ -749,6 +955,7 @@ export default function App() {
     showToast(`Exercício "${newItem.exercise.name}" adicionado ao treino!`);
   }, [syncActiveRoutineItems, showToast]);
 
+  // Volume Dashboard Calculations
   const activeWorkoutMuscles = useMemo(() => {
     return Array.from(new Set(workoutItems.map((item) => item.muscleKey)));
   }, [workoutItems]);
@@ -768,6 +975,7 @@ export default function App() {
     return counts;
   }, [workoutItems, logs, weeklyCompletedSets]);
 
+  // Overall progress
   const totalSetsInWorkout = useMemo(() => {
     return workoutItems.reduce((acc, item) => acc + item.sets, 0);
   }, [workoutItems]);
@@ -783,9 +991,23 @@ export default function App() {
     return count;
   }, [workoutItems, logs]);
 
+  const activeExerciseName = useMemo(() => {
+    if (!activeRoutine) return undefined;
+    const pendingItem =
+      workoutItems.find((it) => {
+        for (let s = 1; s <= it.sets; s++) {
+          if (!logs[`${it.exercise.id}_${s}`]?.done) return true;
+        }
+        return false;
+      }) || workoutItems[0];
+    return pendingItem?.exercise.name || activeRoutine.name;
+  }, [activeRoutine, workoutItems, logs]);
+
+  // Finish and save session
   const finishAndSaveSession = () => {
     if (!currentUser) return;
     const uid = currentUser.id;
+    // Merge latest persisted logs from safeStorage with React state so zero keystrokes are lost
     const storedLogs = safeStorage.get<WorkoutLogs>(`alex_u_${uid}_current_logs`, {});
     const finalLogs: WorkoutLogs = { ...storedLogs, ...logs };
     Object.keys(storedLogs).forEach((k) => {
@@ -798,6 +1020,7 @@ export default function App() {
       }
     });
 
+    // Auto-mark any set that has both weight and reps filled as completed
     workoutItems.forEach((item) => {
       for (let s = 1; s <= item.sets; s++) {
         const key = `${item.exercise.id}_${s}`;
@@ -816,6 +1039,7 @@ export default function App() {
 
     const totalVolumeLoad = calculateVolumeLoad(finalLogs);
 
+    // Build completed exercise summary
     const completedExercisesSummary = workoutItems
       .map((item) => {
         const itemSets: { weight: number; reps: number; rpe?: string; rir?: string }[] = [];
@@ -857,14 +1081,17 @@ export default function App() {
     setSessions(updatedSessions);
     safeStorage.set(`alex_u_${uid}_sessions`, updatedSessions);
 
+    // Save logs as history for next time
     const updatedHistory = { ...history, ...finalLogs };
     setHistory(updatedHistory);
     safeStorage.set(`alex_u_${uid}_history_logs`, updatedHistory);
 
+    // Accumulate weekly volume
     const newWeeklyVolume = { ...completedSetsByMuscle };
     setWeeklyCompletedSets(newWeeklyVolume);
     safeStorage.set(`alex_u_${uid}_weekly_volume`, newWeeklyVolume);
 
+    // Finaliza a sessão ativa e remove o treino em andamento (a aba Treino Ativo sumirá)
     setActiveRoutineId(null);
     setActiveRoutineStartedAt(null);
     setLogs({});
@@ -878,9 +1105,24 @@ export default function App() {
     soundManager.vibrate([150, 100, 150, 100, 300]);
     setSummaryModalSession(newSession);
     showToast(`🏆 Parabéns! Sessão Concluída — Volume: ${totalVolumeLoad.toLocaleString()} kg.`);
+
+    // Enfileira os deltas da sessão concluída e sincroniza com o Supabase (ou aguarda conexão se offline)
+    try {
+      enqueueOfflineMutation(uid, 'sessions', updatedSessions, currentUser);
+      enqueueOfflineMutation(uid, 'historyLogs', finalLogs, currentUser);
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        flushOfflineMutationQueue(uid, currentUser).catch(() => {
+          const syncBundle = buildLocalSyncBundle(uid, currentUser);
+          syncBundle.sessions = updatedSessions;
+          pushSyncBundleToSupabase(syncBundle).catch(() => {});
+        });
+      }
+    } catch {}
+
     setActiveTab('inicio');
   };
 
+  // Export & Share
   const buildExportText = () => {
     if (!workoutItems.length) return 'Nenhum treino gerado.';
     const lines = [
@@ -1001,7 +1243,7 @@ export default function App() {
         }
         if (Array.isArray(parsed.workoutItems)) {
           setWorkoutItems(parsed.workoutItems);
-          safeStorage.set(`alex_u_${uid}_workout_items`, parsed.workoutItems);
+          safeStorage.set(`alex_u_${uid}_workout`, parsed.workoutItems);
         }
         if (parsed.workoutNotes !== undefined) {
           setWorkoutNotes(parsed.workoutNotes);
@@ -1017,6 +1259,17 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  const handleResetToday = () => {
+    if (!currentUser) return;
+    const uid = currentUser.id;
+    setLogs({});
+    setWorkoutNotes('');
+    safeStorage.remove(`alex_u_${uid}_current_logs`);
+    safeStorage.remove(`alex_u_${uid}_workout_notes`);
+    showToast('Anotações de hoje foram zeradas.');
+  };
+
+  // Nutrition Plan Save Handler
   const handleSaveNutritionPlan = (plan: NutritionPlan) => {
     if (!currentUser) return;
     const updated = authStorage.updateProfile(currentUser.id, { nutritionPlan: plan });
@@ -1026,6 +1279,7 @@ export default function App() {
     }
   };
 
+  // Profile and Auth Actions
   const handleAuthSuccess = (user: UserProfile) => {
     setCurrentUser(user);
     setIsAuthOpen(false);
@@ -1097,11 +1351,9 @@ export default function App() {
         onSelectTab={setActiveTab}
         onOpenProfile={() => setActiveTab('perfil')}
         onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-        onOpenPlateCalc={() => setIsPlateCalcOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenAnalytics={() => handleOpenAnalytics()}
         onOpenMeasurements={() => setIsMeasurementsOpen(true)}
-        onOpenCadence={() => setIsCadenceOpen(true)}
         onOpenDeloadAssistant={() => setIsDeloadOpen(true)}
         isDeloadActive={!!deloadState?.active}
         onOpenNutrition={() => setIsNutritionOpen(true)}
@@ -1114,7 +1366,7 @@ export default function App() {
         hasActiveWorkout={!!activeRoutineId}
       />
 
-      {/* Responsive Navigation Tabs */}
+      {/* Responsive Navigation Tabs (Subheader on Desktop, Dock on Mobile) */}
       <NavigationTabs
         activeTab={activeTab}
         onSelectTab={setActiveTab}
@@ -1125,8 +1377,9 @@ export default function App() {
         hasActiveWorkout={!!activeRoutineId}
       />
 
-      {/* Main Container */}
+      {/* Main Container - Renders the selected Tab View */}
       <main className="max-w-6xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
+        {/* Banner Flutuante Rápido de Retorno ao Treino Ativo quando o usuário navega para outras abas */}
         {activeRoutine && activeTab !== 'treino_ativo' && (
           <div className="mb-4 p-3 rounded-2xl bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-teal-500/20 border border-amber-400/50 shadow-lg flex items-center justify-between gap-3 animate-fadeIn">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -1159,6 +1412,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ABA 1: INÍCIO (Resumo do atleta, KPIs, acompanhamento de volume e histórico detalhado) */}
         {activeTab === 'inicio' && (
           <HomeView
             user={currentUser}
@@ -1185,123 +1439,137 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'treino' && currentUser && (
-          <WorkoutListView
-            user={currentUser}
-            routines={routines}
-            activeRoutineId={activeRoutineId}
-            onStartWorkout={handleStartWorkout}
-            onGoToProfileGenerator={() => setActiveTab('perfil')}
-            onCreateManualWorkout={handleOpenCreateManualRoutine}
-            onGenerateQuickWorkout={handleGenerateQuickWorkout}
-            onEditRoutine={handleEditRoutine}
-            onDeleteRoutine={handleDeleteRoutine}
-            onShareRoutine={handleShareRoutine}
-            onReorderRoutines={handleReorderRoutines}
-          />
-        )}
+        {/* Abas Secundárias Carregadas Sob Demanda (Lazy + Suspense) */}
+        <React.Suspense
+          fallback={
+            <div className="py-16 text-center text-xs text-slate-400 animate-pulse">
+              Carregando...
+            </div>
+          }
+        >
+          {/* ABA 2: TREINO (Exibe os treinos acumulados da rotina semanal para o usuário escolher e iniciar) */}
+          {activeTab === 'treino' && currentUser && (
+            <WorkoutListView
+              user={currentUser}
+              routines={routines}
+              activeRoutineId={activeRoutineId}
+              onStartWorkout={handleStartWorkout}
+              onGoToProfileGenerator={() => setActiveTab('perfil')}
+              onCreateManualWorkout={handleOpenCreateManualRoutine}
+              onGenerateQuickWorkout={handleGenerateQuickWorkout}
+              onEditRoutine={handleEditRoutine}
+              onDeleteRoutine={handleDeleteRoutine}
+              onShareRoutine={handleShareRoutine}
+              onReorderRoutines={handleReorderRoutines}
+            />
+          )}
 
-        {activeTab === 'treino_ativo' && activeRoutine && (
-          <ActiveWorkoutView
-            routine={activeRoutine}
-            workoutItems={workoutItems}
-            logs={logs}
-            history={history}
-            sessions={sessions}
-            onOpenAnalytics={handleOpenAnalytics}
-            startedAt={activeRoutineStartedAt || Date.now()}
-            workoutNotes={workoutNotes}
-            onUpdateWorkoutNotes={setWorkoutNotes}
-            onOpenAddExercise={() => setIsAddExerciseOpen(true)}
-            onMoveUp={handleMoveUp}
-            onMoveDown={handleMoveDown}
-            onReorderExercises={handleReorderExercises}
-            onDeleteExercise={handleDeleteExercise}
-            onUpdateLog={handleUpdateLog}
-            onToggleSet={handleToggleSet}
-            onUpdateRest={handleUpdateRest}
-            onOpenWarmup={(name, weight) => setWarmupData({ isOpen: true, name, weight })}
-            onOpenSwap={(idx) =>
-              setSwapData({
-                isOpen: true,
-                index: idx,
-                currentExerciseId: workoutItems[idx].exercise.id,
-                muscleKey: workoutItems[idx].muscleKey,
-              })
-            }
-            onAddSet={handleAddSet}
-            onRemoveSet={handleRemoveSet}
-            onOpenCadence={() => setIsCadenceOpen(true)}
-            onOpenPlateCalc={handleOpenPlateCalc}
-            muscleTargetRir={currentUser?.muscleTargetRir}
-            periodizationStrategy={periodizationStrategy}
-            userFocus={currentUser?.focus}
-            onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
-            onFinishSession={finishAndSaveSession}
-            onDiscardSession={handleDiscardActiveWorkout}
-            onBackToList={() => setActiveTab('treino')}
-          />
-        )}
+          {/* ABA 2.5: TREINO ATIVO (Aba dinâmica: SÓ EXISTE quando um treino foi iniciado e some ao concluir ou descartar) */}
+          {activeTab === 'treino_ativo' && activeRoutine && (
+            <ActiveWorkoutView
+              routine={activeRoutine}
+              workoutItems={workoutItems}
+              logs={logs}
+              history={history}
+              sessions={sessions}
+              onOpenAnalytics={handleOpenAnalytics}
+              startedAt={activeRoutineStartedAt || Date.now()}
+              workoutNotes={workoutNotes}
+              onUpdateWorkoutNotes={setWorkoutNotes}
+              onOpenAddExercise={() => setIsAddExerciseOpen(true)}
+              onMoveUp={handleMoveUp}
+              onMoveDown={handleMoveDown}
+              onReorderExercises={handleReorderExercises}
+              onDeleteExercise={handleDeleteExercise}
+              onUpdateLog={handleUpdateLog}
+              onToggleSet={handleToggleSet}
+              onUpdateRest={handleUpdateRest}
+              onOpenWarmup={(name, weight) => setWarmupData({ isOpen: true, name, weight })}
+              onOpenSwap={(idx) =>
+                setSwapData({
+                  isOpen: true,
+                  index: idx,
+                  currentExerciseId: workoutItems[idx].exercise.id,
+                  muscleKey: workoutItems[idx].muscleKey,
+                })
+              }
+              onAddSet={handleAddSet}
+              onRemoveSet={handleRemoveSet}
+              muscleTargetRir={currentUser?.muscleTargetRir}
+              periodizationStrategy={periodizationStrategy}
+              userFocus={currentUser?.focus}
+              onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
+              onFinishSession={finishAndSaveSession}
+              onDiscardSession={handleDiscardActiveWorkout}
+              onBackToList={() => setActiveTab('treino')}
+            />
+          )}
 
-        {activeTab === 'cardio' && currentUser && (
-          <CardioView
-            user={currentUser}
-            onCardioStateChange={setIsCardioRunning}
-          />
-        )}
+          {/* ABA 3: CARDIO (Cronômetro resiliente que nunca reseta ao alternar de aba, métricas e histórico) */}
+          {activeTab === 'cardio' && currentUser && (
+            <CardioView
+              user={currentUser}
+              onCardioStateChange={setIsCardioRunning}
+            />
+          )}
 
-        {activeTab === 'perfil' && currentUser && (
-          <ProfileView
-            user={currentUser}
-            sessions={sessions}
-            onUpdateUser={setCurrentUser}
-            onLogout={handleLogout}
-            onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-            onOpenPlateCalc={() => setIsPlateCalcOpen(true)}
-            onExportBackup={handleExportBackup}
-            onImportBackup={handleImportBackup}
-            onViewSummary={(sess) => setSummaryModalSession(sess)}
-            onClearHistory={() => {
-              if (!currentUser) return;
-              setSessions([]);
-              safeStorage.remove(`alex_u_${currentUser.id}_sessions`);
-              showToast('Histórico do perfil foi apagado.');
-            }}
-            onDeleteProfile={handleDeleteProfile}
-            onSwitchProfile={handleSwitchProfile}
-            split={split}
-            setSplit={setSplit}
-            strategy={strategy}
-            setStrategy={setStrategy}
-            weeklyBudget={weeklyBudget}
-            setWeeklyBudget={setWeeklyBudget}
-            equip={equip}
-            setEquip={setEquip}
-            restSeconds={restSeconds}
-            setRestSeconds={setRestSeconds}
-            onGenerateRoutines={handleGenerateWeeklyRoutines}
-            onGoToWorkoutTab={() => setActiveTab('treino')}
-            onGoToFeedback={() => setActiveTab('feedback')}
-            onOpenNutrition={() => setIsNutritionOpen(true)}
-            onOpenDonation={() => setIsDonationOpen(true)}
-          />
-        )}
+          {/* ABA 4: PERFIL (Metas corporais, GERAÇÃO & PERSONALIZAÇÃO DE TREINOS e histórico) */}
+          {activeTab === 'perfil' && currentUser && (
+            <ProfileView
+              user={currentUser}
+              sessions={sessions}
+              onUpdateUser={setCurrentUser}
+              onLogout={handleLogout}
+              onOpenVolumeBudget={() => setIsBudgetOpen(true)}
+              onExportBackup={handleExportBackup}
+              onImportBackup={handleImportBackup}
+              onViewSummary={(sess) => setSummaryModalSession(sess)}
+              onClearHistory={() => {
+                if (!currentUser) return;
+                setSessions([]);
+                safeStorage.remove(`alex_u_${currentUser.id}_sessions`);
+                showToast('Histórico do perfil foi apagado.');
+              }}
+              onDeleteProfile={handleDeleteProfile}
+              onSwitchProfile={handleSwitchProfile}
+              split={split}
+              setSplit={setSplit}
+              strategy={strategy}
+              setStrategy={setStrategy}
+              weeklyBudget={weeklyBudget}
+              setWeeklyBudget={setWeeklyBudget}
+              equip={equip}
+              setEquip={setEquip}
+              restSeconds={restSeconds}
+              setRestSeconds={setRestSeconds}
+              onGenerateRoutines={handleGenerateWeeklyRoutines}
+              onGoToWorkoutTab={() => setActiveTab('treino')}
+              onGoToFeedback={() => setActiveTab('feedback')}
+              onOpenNutrition={() => setIsNutritionOpen(true)}
+              onOpenDonation={() => setIsDonationOpen(true)}
+            />
+          )}
 
-        {activeTab === 'feedback' && currentUser && (
-          <FeedbackView
-            user={currentUser}
-            routines={routines}
-          />
-        )}
+          {/* ABA 5: SUGESTÕES & BUGS (Envio de ideias e relatos) */}
+          {activeTab === 'feedback' && currentUser && (
+            <FeedbackView
+              user={currentUser}
+              routines={routines}
+            />
+          )}
+        </React.Suspense>
       </main>
 
+      {/* Floating HUD Rest Timer (com MediaSession API para Lockscreen & Smartwatch) */}
       <RestTimerDock
         initialSeconds={timerRestSeconds}
         triggerKey={timerTriggerKey}
         isMuted={isMuted}
         onToggleMute={() => setIsMuted(!isMuted)}
+        activeExerciseName={activeExerciseName}
       />
 
+      {/* Floating Cardio HUD Dock when cardio is active/running and outside the cardio tab */}
       {currentUser && activeTab !== 'cardio' && (
         <CardioDock
           userId={currentUser.id}
@@ -1309,13 +1577,14 @@ export default function App() {
         />
       )}
 
+      {/* Modals (Code Split via React.lazy + Suspense e montados sob demanda) */}
       <AuthModal
         isOpen={isAuthOpen}
         onSuccess={handleAuthSuccess}
       />
 
-      {currentUser && (
-        <>
+      <React.Suspense fallback={null}>
+        {currentUser && isProfileOpen && (
           <ProfileModal
             isOpen={isProfileOpen}
             onClose={() => setIsProfileOpen(false)}
@@ -1324,7 +1593,9 @@ export default function App() {
             onLogout={handleLogout}
             onOpenVolumeBudget={() => setIsBudgetOpen(true)}
           />
+        )}
 
+        {currentUser && isBudgetOpen && (
           <VolumeBudgetModal
             isOpen={isBudgetOpen}
             onClose={() => setIsBudgetOpen(false)}
@@ -1332,120 +1603,127 @@ export default function App() {
             muscleBudgets={currentUser.muscleBudgets}
             onSaveBudgets={handleSaveBudgets}
           />
-        </>
-      )}
+        )}
 
-      <AddExerciseModal
-        isOpen={isAddExerciseOpen}
-        onClose={() => setIsAddExerciseOpen(false)}
-        onAddExercise={handleAddCustomExercise}
-      />
+        {isAddExerciseOpen && (
+          <AddExerciseModal
+            isOpen={isAddExerciseOpen}
+            onClose={() => setIsAddExerciseOpen(false)}
+            onAddExercise={handleAddCustomExercise}
+          />
+        )}
 
-      <PlateCalculatorModal
-        isOpen={isPlateCalcOpen}
-        onClose={() => setIsPlateCalcOpen(false)}
-        initialWeight={plateCalcWeight}
-      />
+        {warmupData.isOpen && (
+          <WarmupModal
+            isOpen={warmupData.isOpen}
+            onClose={() => setWarmupData((d) => ({ ...d, isOpen: false }))}
+            exerciseName={warmupData.name}
+            initialWeight={warmupData.weight}
+          />
+        )}
 
-      <CadenceModal
-        isOpen={isCadenceOpen}
-        onClose={() => setIsCadenceOpen(false)}
-      />
+        {isHistoryOpen && (
+          <HistoryModal
+            isOpen={isHistoryOpen}
+            onClose={() => setIsHistoryOpen(false)}
+            sessions={sessions}
+            onViewSummary={(sess) => {
+              setIsHistoryOpen(false);
+              setSummaryModalSession(sess);
+            }}
+            onClearHistory={() => {
+              if (!currentUser) return;
+              setSessions([]);
+              safeStorage.remove(`alex_u_${currentUser.id}_sessions`);
+              showToast('Histórico deste perfil foi apagado.');
+            }}
+          />
+        )}
 
-      <WarmupModal
-        isOpen={warmupData.isOpen}
-        onClose={() => setWarmupData((d) => ({ ...d, isOpen: false }))}
-        exerciseName={warmupData.name}
-        initialWeight={warmupData.weight}
-      />
+        {swapData.isOpen && (
+          <SwapExerciseModal
+            isOpen={swapData.isOpen}
+            onClose={() => setSwapData((d) => ({ ...d, isOpen: false }))}
+            targetItemIndex={swapData.index}
+            currentExerciseId={swapData.currentExerciseId}
+            muscleKey={swapData.muscleKey}
+            equipmentFilter={equip}
+            onSelectExercise={handleSelectSwapExercise}
+          />
+        )}
 
-      <HistoryModal
-        isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        sessions={sessions}
-        onViewSummary={(sess) => {
-          setIsHistoryOpen(false);
-          setSummaryModalSession(sess);
-        }}
-        onClearHistory={() => {
-          if (!currentUser) return;
-          setSessions([]);
-          safeStorage.remove(`alex_u_${currentUser.id}_sessions`);
-          showToast('Histórico deste perfil foi apagado.');
-        }}
-      />
+        {summaryModalSession !== null && (
+          <WorkoutSummaryModal
+            isOpen={summaryModalSession !== null}
+            onClose={() => setSummaryModalSession(null)}
+            session={summaryModalSession}
+            athleteName={currentUser?.name || 'Atleta'}
+            previousSessions={sessions}
+          />
+        )}
 
-      <SwapExerciseModal
-        isOpen={swapData.isOpen}
-        onClose={() => setSwapData((d) => ({ ...d, isOpen: false }))}
-        targetItemIndex={swapData.index}
-        currentExerciseId={swapData.currentExerciseId}
-        muscleKey={swapData.muscleKey}
-        equipmentFilter={equip}
-        onSelectExercise={handleSelectSwapExercise}
-      />
+        {currentUser && isDeloadOpen && (
+          <DeloadAssistantModal
+            isOpen={isDeloadOpen}
+            onClose={() => setIsDeloadOpen(false)}
+            user={currentUser}
+            analysis={fatigueAnalysis}
+            currentDeload={deloadState}
+            currentBudget={weeklyBudget}
+            onDeloadStateChange={() => {
+              const next = getDeloadState(currentUser.id);
+              setDeloadState(next);
+              showToast(next?.active ? 'Semana de Deload Ativada (-40% séries) 🧘‍♂️' : 'Deload desativado. Volume restaurado!');
+            }}
+          />
+        )}
 
-      <WorkoutSummaryModal
-        isOpen={summaryModalSession !== null}
-        onClose={() => setSummaryModalSession(null)}
-        session={summaryModalSession}
-        athleteName={currentUser?.name || 'Atleta'}
-        previousSessions={sessions}
-      />
+        {isAnalyticsOpen && (
+          <ExerciseAnalyticsModal
+            isOpen={isAnalyticsOpen}
+            onClose={() => setIsAnalyticsOpen(false)}
+            sessions={sessions}
+            initialExerciseName={analyticsExerciseName}
+          />
+        )}
 
-      {currentUser && (
-        <DeloadAssistantModal
-          isOpen={isDeloadOpen}
-          onClose={() => setIsDeloadOpen(false)}
-          user={currentUser}
-          analysis={fatigueAnalysis}
-          currentDeload={deloadState}
-          currentBudget={weeklyBudget}
-          onDeloadStateChange={() => {
-            const next = getDeloadState(currentUser.id);
-            setDeloadState(next);
-            showToast(next?.active ? 'Semana de Deload Ativada (-40% séries) 🧘‍♂️' : 'Deload desativado. Volume restaurado!');
-          }}
-        />
-      )}
+        {isMeasurementsOpen && (
+          <BodyMeasurementsModal
+            isOpen={isMeasurementsOpen}
+            onClose={() => setIsMeasurementsOpen(false)}
+            user={currentUser}
+            measurements={measurements}
+            onSaveMeasurement={handleSaveMeasurement}
+            onDeleteMeasurement={handleDeleteMeasurement}
+          />
+        )}
 
-      <ExerciseAnalyticsModal
-        isOpen={isAnalyticsOpen}
-        onClose={() => setIsAnalyticsOpen(false)}
-        sessions={sessions}
-        initialExerciseName={analyticsExerciseName}
-      />
+        {isManualWorkoutOpen && (
+          <ManualWorkoutModal
+            isOpen={isManualWorkoutOpen}
+            onClose={() => setIsManualWorkoutOpen(false)}
+            onSaveRoutine={handleSaveManualRoutine}
+            editingRoutine={editingRoutine}
+            existingRoutinesCount={routines.length}
+          />
+        )}
 
-      <BodyMeasurementsModal
-        isOpen={isMeasurementsOpen}
-        onClose={() => setIsMeasurementsOpen(false)}
-        user={currentUser}
-        measurements={measurements}
-        onSaveMeasurement={handleSaveMeasurement}
-        onDeleteMeasurement={handleDeleteMeasurement}
-      />
+        {currentUser && isNutritionOpen && (
+          <NutritionModal
+            isOpen={isNutritionOpen}
+            onClose={() => setIsNutritionOpen(false)}
+            user={currentUser}
+            onSavePlan={handleSaveNutritionPlan}
+          />
+        )}
 
-      <ManualWorkoutModal
-        isOpen={isManualWorkoutOpen}
-        onClose={() => setIsManualWorkoutOpen(false)}
-        onSaveRoutine={handleSaveManualRoutine}
-        editingRoutine={editingRoutine}
-        existingRoutinesCount={routines.length}
-      />
-
-      {currentUser && (
-        <NutritionModal
-          isOpen={isNutritionOpen}
-          onClose={() => setIsNutritionOpen(false)}
-          user={currentUser}
-          onSavePlan={handleSaveNutritionPlan}
-        />
-      )}
-
-      <DonationModal
-        isOpen={isDonationOpen}
-        onClose={() => setIsDonationOpen(false)}
-      />
+        {isDonationOpen && (
+          <DonationModal
+            isOpen={isDonationOpen}
+            onClose={() => setIsDonationOpen(false)}
+          />
+        )}
+      </React.Suspense>
     </div>
   );
 }

@@ -16,7 +16,6 @@ import {
   Check, 
   AlertCircle,
   Globe,
-  Disc,
   Download,
   Upload,
   Calendar,
@@ -56,6 +55,7 @@ import { PWAInstallButton } from './PWAInstallButton';
 import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { ThemeToggle } from './ThemeToggle';
 import { ProfilePushNotificationManager } from './ProfilePushNotificationManager';
+import { SupabaseSyncManager } from './SupabaseSyncManager';
 import { PrivacyShieldControl } from './PrivacyShieldControl';
 import {
   usePrivacyMode,
@@ -73,7 +73,6 @@ interface ProfileViewProps {
   onUpdateUser: (updated: UserProfile) => void;
   onLogout: () => void;
   onOpenVolumeBudget: () => void;
-  onOpenPlateCalc: () => void;
   onExportBackup: () => void;
   onImportBackup: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onViewSummary: (session: WorkoutSessionSummary) => void;
@@ -104,7 +103,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUpdateUser,
   onLogout,
   onOpenVolumeBudget,
-  onOpenPlateCalc,
   onExportBackup,
   onImportBackup,
   onViewSummary,
@@ -1458,10 +1456,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-extrabold text-white">
-                Aparência & Modo de Visualização (Dark / Light)
+                Aparência & Tema Visual
               </h2>
               <p className="text-xs text-slate-400">
-                Force o Modo Escuro ou Modo Claro, salvando sua preferência no localStorage e desativando a detecção automática do sistema.
+                Escolha entre o modo escuro ou claro para treinar com mais conforto visual.
               </p>
             </div>
           </div>
@@ -1471,10 +1469,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <ThemeToggle variant="profile-card" />
       </div>
 
-      {/* 🔔 Gerenciador de Permissões e Lembretes Personalizados via Notificações Push */}
+      {/* ☁️ Sincronização em Nuvem (Supabase Realtime) */}
+      <SupabaseSyncManager user={user} />
+
+      {/* 🔔 Gerenciador de Permissões e Lembretes Personalizados via Notificações Push Nativa */}
       <ProfilePushNotificationManager
         userId={user.id}
         userName={user.name}
+        sessions={sessions}
       />
 
       {/* Organizar Treinos & Ferramentas */}
@@ -1502,10 +1504,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div>
               <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
                 <span>Instalar Aplicativo Oficial</span>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-1.5 py-0.2 rounded border border-emerald-500/30">PWA</span>
               </h3>
               <p className="text-[11px] text-slate-400">
-                Acesse direto da tela inicial com tela cheia, desempenho nativo e suporte offline.
+                Acesse direto da tela inicial do celular com tela cheia e funcionamento sem internet.
               </p>
             </div>
           </div>
@@ -1513,21 +1514,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-          {/* Plates */}
-          <button
-            type="button"
-            onClick={onOpenPlateCalc}
-            className="p-4 rounded-2xl bg-[#0a101d] hover:bg-[#121c32] border border-slate-800 hover:border-sky-500/40 text-left transition-all cursor-pointer group"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                <Disc className="w-5 h-5" />
+          {/* Armazenamento Seguro no Aparelho */}
+          <div className="p-4 rounded-2xl bg-[#0a101d] border border-slate-800 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  Protegido & Sem Internet
+                </span>
               </div>
-              <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-sky-400 transition-colors" />
+              <h3 className="text-xs font-bold text-white mb-1">
+                Memória de Alta Capacidade no Aparelho
+              </h3>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Todo o seu histórico de treinos, cargas e evolução fica salvo automaticamente no seu aparelho e funciona mesmo sem sinal de internet.
+              </p>
             </div>
-            <h3 className="text-xs font-bold text-white mb-1">{t.toolPlates}</h3>
-            <p className="text-[11px] text-slate-400 leading-relaxed">{t.toolPlatesDesc}</p>
-          </button>
+          </div>
 
           {/* Backup */}
           <div className="p-4 rounded-2xl bg-[#0a101d] border border-slate-800 flex flex-col justify-between">
@@ -1547,10 +1552,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   type="button"
                   onClick={onExportBackup}
                   className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                  title="Exportar backup completo em JSON"
+                  title="Salvar cópia de segurança dos seus treinos"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Backup JSON</span>
+                  <span>Salvar Cópia</span>
                 </button>
 
                 <label className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 flex items-center justify-center gap-1 transition-colors cursor-pointer text-center">
@@ -1570,10 +1575,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   type="button"
                   onClick={handleExportCSV}
                   className="w-full py-1.5 px-2 rounded-xl text-[11px] font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  title="Exportar todos os treinos em planilha compatível com Excel e Google Sheets"
+                  title="Baixar histórico de treinos em planilha para Excel ou Google Planilhas"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Exportar Planilha (CSV / Excel)</span>
+                  <span>Baixar Planilha (Excel)</span>
                 </button>
               )}
             </div>

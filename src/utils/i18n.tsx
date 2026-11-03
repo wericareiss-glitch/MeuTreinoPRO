@@ -21,7 +21,6 @@ export interface Translations {
 
   // Header
   budgetBtn: string;
-  platesBtn: string;
   historyBtn: string;
   shareBtn: string;
   progressHeader: string;
@@ -125,8 +124,6 @@ export interface Translations {
   // Tools & Organization
   toolsSectionTitle: string;
   toolsSectionSubtitle: string;
-  toolPlates: string;
-  toolPlatesDesc: string;
   toolBackup: string;
   toolBackupDesc: string;
 
@@ -169,7 +166,6 @@ const translations: Record<Language, Translations> = {
     badgePro: 'Hipertrofia Pro',
 
     budgetBtn: 'Séries',
-    platesBtn: 'Anilhas',
     historyBtn: 'Histórico',
     shareBtn: 'Compartilhar',
     progressHeader: 'Progresso',
@@ -210,8 +206,8 @@ const translations: Record<Language, Translations> = {
     emptyWorkoutDesc: 'Escolha os parâmetros acima e clique em "Gerar Treino com Séries Proporcionais" ou monte individualmente adicionando exercícios.',
     finishSessionBtn: 'Concluir Sessão & Salvar',
     resetTodayBtn: 'Zerar Anotações de Hoje',
-    exportBackupBtn: 'Exportar Backup (.json)',
-    importBackupBtn: 'Restaurar Backup',
+    exportBackupBtn: 'Salvar Cópia de Segurança',
+    importBackupBtn: 'Restaurar Cópia',
     backupSuccess: 'Backup do perfil exportado com sucesso!',
     backupRestored: 'Dados restaurados com sucesso para este perfil!',
     resetConfirm: 'Deseja realmente zerar todos os registros de séries e notas de hoje?',
@@ -266,11 +262,9 @@ const translations: Record<Language, Translations> = {
     presetPushPull: 'Foco Empurrar / Puxar',
 
     toolsSectionTitle: 'Organização de Treinos & Ferramentas',
-    toolsSectionSubtitle: 'Calculadoras úteis e preservação de dados.',
-    toolPlates: 'Calculadora de Anilhas',
-    toolPlatesDesc: 'Distribuição exata de anilhas em barras olímpicas ou padrão.',
-    toolBackup: 'Backup do Perfil em .JSON',
-    toolBackupDesc: 'Exporte ou restaure suas anotações e histórico isolados por atleta.',
+    toolsSectionSubtitle: 'Salve uma cópia dos seus dados ou instale o aplicativo no celular.',
+    toolBackup: 'Cópia de Segurança do Perfil',
+    toolBackupDesc: 'Salve ou restaure seus treinos e histórico caso troque de aparelho.',
 
     profileHistoryTitle: 'Histórico Geral do Perfil',
     profileHistorySubtitle: 'Gerencie e consulte todas as sessões salvas na sua conta.',
@@ -329,7 +323,6 @@ const translations: Record<Language, Translations> = {
     badgePro: 'Hypertrophy Pro',
 
     budgetBtn: 'Sets',
-    platesBtn: 'Plates',
     historyBtn: 'History',
     shareBtn: 'Share',
     progressHeader: 'Progress',
@@ -425,9 +418,7 @@ const translations: Record<Language, Translations> = {
     presetPushPull: 'Push / Pull Focus',
 
     toolsSectionTitle: 'Workout Organization & Tools',
-    toolsSectionSubtitle: 'Helpful workout tools and profile data backup.',
-    toolPlates: 'Plate Calculator',
-    toolPlatesDesc: 'Exact barbell weight plate breakdown per side.',
+    toolsSectionSubtitle: 'IndexedDB storage and profile data backup.',
     toolBackup: 'Profile Backup (.json)',
     toolBackupDesc: 'Export or restore isolated athlete training logs and history.',
 
@@ -488,7 +479,6 @@ const translations: Record<Language, Translations> = {
     badgePro: 'Hipertrofia Pro',
 
     budgetBtn: 'Series',
-    platesBtn: 'Discos',
     historyBtn: 'Historial',
     shareBtn: 'Compartir',
     progressHeader: 'Progreso',
@@ -585,9 +575,7 @@ const translations: Record<Language, Translations> = {
     presetPushPull: 'Enfoque Empuje / Tirón',
 
     toolsSectionTitle: 'Organización de Entrenamientos y Herramientas',
-    toolsSectionSubtitle: 'Herramientas útiles y copia de seguridad de datos.',
-    toolPlates: 'Calculadora de Discos',
-    toolPlatesDesc: 'Distribución precisa de discos en barra olímpica o estándar.',
+    toolsSectionSubtitle: 'Almacenamiento IndexedDB y copia de seguridad de datos.',
     toolBackup: 'Copia del Perfil en .JSON',
     toolBackupDesc: 'Exporta o restaura tus registros e historial aislados por atleta.',
 

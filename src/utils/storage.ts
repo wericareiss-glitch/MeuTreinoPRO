@@ -8,19 +8,26 @@ import { WorkoutLogs } from '../types/workout';
 const ENC_PREFIX = '__mtp_sec_v1__:';
 const CIPHER_KEY = 'MTP_PRO_2026_PRIVATE_VAULT_KEY_#9812';
 
+const sharedEncoder = new TextEncoder();
+const sharedDecoder = new TextDecoder();
+const CIPHER_KEY_BYTES = sharedEncoder.encode(CIPHER_KEY);
+const CHUNK_SIZE = 0x8000; // 32KB chunks for fast String.fromCharCode conversion
+
 function encodePayload(rawJson: string): string {
   try {
-    const utf8Bytes = new TextEncoder().encode(rawJson);
-    const keyBytes = new TextEncoder().encode(CIPHER_KEY);
-    const out = new Uint8Array(utf8Bytes.length);
-    for (let i = 0; i < utf8Bytes.length; i++) {
-      out[i] = utf8Bytes[i] ^ keyBytes[i % keyBytes.length] ^ ((i * 31) & 0xff);
+    const utf8Bytes = sharedEncoder.encode(rawJson);
+    const keyLen = CIPHER_KEY_BYTES.length;
+    const len = utf8Bytes.length;
+    const out = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      out[i] = utf8Bytes[i] ^ CIPHER_KEY_BYTES[i % keyLen] ^ ((i * 31) & 0xff);
     }
-    let binary = '';
-    for (let i = 0; i < out.length; i++) {
-      binary += String.fromCharCode(out[i]);
+    const chunks: string[] = [];
+    for (let i = 0; i < len; i += CHUNK_SIZE) {
+      const sub = out.subarray(i, Math.min(i + CHUNK_SIZE, len));
+      chunks.push(String.fromCharCode.apply(null, sub as unknown as number[]));
     }
-    return ENC_PREFIX + btoa(binary);
+    return ENC_PREFIX + btoa(chunks.join(''));
   } catch {
     return rawJson;
   }
@@ -33,27 +40,47 @@ function decodePayload(stored: string): string {
   try {
     const b64 = stored.slice(ENC_PREFIX.length);
     const binary = atob(b64);
-    const keyBytes = new TextEncoder().encode(CIPHER_KEY);
-    const out = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      out[i] = binary.charCodeAt(i) ^ keyBytes[i % keyBytes.length] ^ ((i * 31) & 0xff);
+    const keyLen = CIPHER_KEY_BYTES.length;
+    const len = binary.length;
+    const out = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      out[i] = binary.charCodeAt(i) ^ CIPHER_KEY_BYTES[i % keyLen] ^ ((i * 31) & 0xff);
     }
-    return new TextDecoder().decode(out);
+    return sharedDecoder.decode(out);
   } catch {
     return stored;
   }
 }
 
 // ============================================================================
-// IndexedDB High-Capacity Offline Persistence Engine + In-Memory Fast Cache
-// Protects multi-year workout logs & base64 body photos from 5MB localStorage limits
+// IndexedDB Primary Offline Persistence Engine + Automatic localStorage Migration
+// Eliminates the 5MB mobile localStorage ceiling for multi-year workout histories
 // ============================================================================
 const IDB_NAME = 'meutreino_pro_idb';
-const IDB_VERSION = 1;
+const IDB_VERSION = 2;
 const IDB_STORE = 'kv_vault';
+const IDB_MIGRATION_FLAG = 'meutreino_idb_migrated_v2';
+
+// Heavy keys that grow indefinitely over months/years of workouts
+const HEAVY_KEY_SUFFIXES = [
+  '_sessions',
+  '_history_logs',
+  '_routines',
+  '_measurements',
+  '_current_logs',
+  '_workout',
+];
+
+function isHeavyStorageKey(key: string): boolean {
+  return HEAVY_KEY_SUFFIXES.some((suffix) => key.endsWith(suffix));
+}
 
 const memoryCache = new Map<string, unknown>();
+const pendingDiskWrites = new Map<string, unknown>();
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let idbPromise: Promise<IDBDatabase | null> | null = null;
+let idbReady = false;
+let idbKeysCount = 0;
 
 function openVaultDB(): Promise<IDBDatabase | null> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
@@ -69,7 +96,10 @@ function openVaultDB(): Promise<IDBDatabase | null> {
             db.createObjectStore(IDB_STORE);
           }
         };
-        req.onsuccess = () => resolve(req.result);
+        req.onsuccess = () => {
+          idbReady = true;
+          resolve(req.result);
+        };
         req.onerror = () => resolve(null);
       } catch {
         resolve(null);
@@ -101,52 +131,179 @@ async function idbRemove(key: string): Promise<void> {
   }
 }
 
-// Hydrate memoryCache and localStorage from IndexedDB on startup
-if (typeof window !== 'undefined') {
-  openVaultDB().then((db) => {
-    if (!db) return;
-    try {
-      const tx = db.transaction(IDB_STORE, 'readonly');
-      const store = tx.objectStore(IDB_STORE);
-      const getAllKeysReq = store.getAllKeys();
-      getAllKeysReq.onsuccess = () => {
-        const keys = getAllKeysReq.result || [];
-        keys.forEach((k) => {
-          const keyStr = String(k);
-          const getReq = store.get(k);
-          getReq.onsuccess = () => {
-            const rawVal = getReq.result;
-            if (typeof rawVal === 'string') {
-              try {
-                const decoded = rawVal.startsWith(ENC_PREFIX) ? decodePayload(rawVal) : rawVal;
-                const parsed = JSON.parse(decoded);
-                if (!memoryCache.has(keyStr)) {
-                  memoryCache.set(keyStr, parsed);
-                }
-                if (!localStorage.getItem(keyStr)) {
-                  try {
-                    localStorage.setItem(keyStr, rawVal);
-                  } catch {
-                    // Quota full in localStorage; memoryCache + IndexedDB hold the data safely
-                  }
-                }
-              } catch {
-                // Ignore malformed legacy entry
-              }
-            }
-          };
-        });
-      };
-    } catch {
-      // Ignore hydration errors
+/**
+ * When localStorage reaches its ~5MB mobile quota, evicts heavy keys from localStorage
+ * (since they are safely persisted in IndexedDB + memoryCache) to make room for lightweight flags.
+ */
+function freeLocalStorageQuotaForKey(targetKey: string, encodedPayload: string): void {
+  try {
+    const keysToEvict: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k !== targetKey && isHeavyStorageKey(k)) {
+        keysToEvict.push(k);
+      }
     }
-  });
+    for (const heavyKey of keysToEvict) {
+      const existingRaw = localStorage.getItem(heavyKey);
+      if (existingRaw) {
+        idbSet(heavyKey, existingRaw).catch(() => {});
+        localStorage.removeItem(heavyKey);
+      }
+    }
+    if (!isHeavyStorageKey(targetKey)) {
+      localStorage.setItem(targetKey, encodedPayload);
+    }
+  } catch {
+    // IndexedDB + memoryCache hold all data safely even if localStorage is 100% full
+  }
+}
+
+function flushPendingWrites(): void {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  if (pendingDiskWrites.size === 0) return;
+
+  const entries = Array.from(pendingDiskWrites.entries());
+  pendingDiskWrites.clear();
+
+  for (const [key, value] of entries) {
+    try {
+      const json = JSON.stringify(value);
+      const encoded = encodePayload(json);
+      // Primary persistence in IndexedDB (unbounded capacity)
+      idbSet(key, encoded).catch(() => {});
+      try {
+        localStorage.setItem(key, encoded);
+      } catch {
+        // QuotaExceededError: migrate heavy keys out of localStorage into IndexedDB
+        freeLocalStorageQuotaForKey(key, encoded);
+      }
+    } catch (e) {
+      console.warn(`Failed to save storage key "${key}":`, e);
+    }
+  }
 }
 
 /**
- * Safe storage wrapper with automatic payload encryption/obfuscation,
- * synchronous in-memory cache, localStorage persistence, and IndexedDB mirroring
- * to guarantee zero data loss even beyond the 5MB localStorage limit.
+ * Migrates all existing localStorage keys into IndexedDB on first run
+ * and hydrates memoryCache from IndexedDB on startup.
+ */
+async function migrateAndHydrateIndexedDB(): Promise<void> {
+  const db = await openVaultDB();
+  if (!db) return;
+
+  try {
+    // 1. Migrate any existing localStorage keys into IndexedDB if not migrated yet
+    const alreadyMigrated = localStorage.getItem(IDB_MIGRATION_FLAG);
+    if (!alreadyMigrated) {
+      const txWrite = db.transaction(IDB_STORE, 'readwrite');
+      const storeWrite = txWrite.objectStore(IDB_STORE);
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || k === IDB_MIGRATION_FLAG) continue;
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const encoded = raw.startsWith(ENC_PREFIX) ? raw : encodePayload(raw);
+          storeWrite.put(encoded, k);
+        }
+      }
+      try {
+        localStorage.setItem(IDB_MIGRATION_FLAG, new Date().toISOString());
+      } catch {
+        // Ignore if quota full
+      }
+    }
+
+    // 2. Hydrate memoryCache from IndexedDB (ensuring records larger than localStorage are loaded)
+    const txRead = db.transaction(IDB_STORE, 'readonly');
+    const storeRead = txRead.objectStore(IDB_STORE);
+    const getAllKeysReq = storeRead.getAllKeys();
+
+    getAllKeysReq.onsuccess = () => {
+      const keys = getAllKeysReq.result || [];
+      idbKeysCount = keys.length;
+      let hydratedNewData = false;
+      let pendingCount = keys.length;
+
+      if (pendingCount === 0) return;
+
+      keys.forEach((k) => {
+        const keyStr = String(k);
+        const getReq = storeRead.get(k);
+        getReq.onsuccess = () => {
+          const rawVal = getReq.result;
+          if (typeof rawVal === 'string') {
+            try {
+              const decoded = rawVal.startsWith(ENC_PREFIX) ? decodePayload(rawVal) : rawVal;
+              const parsed = JSON.parse(decoded);
+              if (!memoryCache.has(keyStr)) {
+                memoryCache.set(keyStr, parsed);
+                hydratedNewData = true;
+              } else if (isHeavyStorageKey(keyStr)) {
+                // If IndexedDB has a fuller array/object than what was in localStorage, prefer IndexedDB
+                const currentMem = memoryCache.get(keyStr);
+                if (Array.isArray(parsed) && Array.isArray(currentMem) && parsed.length > currentMem.length) {
+                  memoryCache.set(keyStr, parsed);
+                  hydratedNewData = true;
+                } else if (
+                  parsed &&
+                  typeof parsed === 'object' &&
+                  !Array.isArray(parsed) &&
+                  currentMem &&
+                  typeof currentMem === 'object' &&
+                  Object.keys(parsed).length > Object.keys(currentMem as object).length
+                ) {
+                  memoryCache.set(keyStr, parsed);
+                  hydratedNewData = true;
+                }
+              }
+            } catch {
+              // Ignore malformed legacy entry
+            }
+          }
+          pendingCount--;
+          if (pendingCount <= 0 && hydratedNewData && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('meutreino:idb-hydrated'));
+          }
+        };
+        getReq.onerror = () => {
+          pendingCount--;
+        };
+      });
+    };
+  } catch {
+    // Ignore hydration errors
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      flushPendingWrites();
+    }
+  });
+  window.addEventListener('beforeunload', flushPendingWrites);
+  migrateAndHydrateIndexedDB().catch(() => {});
+}
+
+export function getIndexedDBStatus(): {
+  isReady: boolean;
+  cachedKeysCount: number;
+  idbKeysCount: number;
+} {
+  return {
+    isReady: idbReady,
+    cachedKeysCount: memoryCache.size,
+    idbKeysCount: Math.max(idbKeysCount, memoryCache.size),
+  };
+}
+
+/**
+ * Safe storage wrapper backed by IndexedDB + synchronous in-memory cache
+ * with automatic payload encryption and QuotaExceededError protection.
  */
 export const safeStorage = {
   get<T>(key: string, defaultValue: T): T {
@@ -178,23 +335,25 @@ export const safeStorage = {
   },
 
   set<T>(key: string, value: T): void {
-    memoryCache.set(key, value);
-    try {
-      const json = JSON.stringify(value);
-      const encoded = encodePayload(json);
-      idbSet(key, encoded).catch(() => {});
+    let clonedValue = value;
+    if (value !== null && typeof value === 'object') {
       try {
-        localStorage.setItem(key, encoded);
+        clonedValue = typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value));
       } catch {
-        // If localStorage hits the 5MB quota (e.g. base64 body photos), IndexedDB + memoryCache preserve all data seamlessly
+        clonedValue = value;
       }
-    } catch (e) {
-      console.warn(`Failed to save storage key "${key}":`, e);
+    }
+    memoryCache.set(key, clonedValue);
+    pendingDiskWrites.set(key, clonedValue);
+
+    if (!flushTimer) {
+      flushTimer = setTimeout(flushPendingWrites, 80);
     }
   },
 
   remove(key: string): void {
     memoryCache.delete(key);
+    pendingDiskWrites.delete(key);
     idbRemove(key).catch(() => {});
     try {
       localStorage.removeItem(key);
@@ -278,4 +437,3 @@ export function estimateNextSetWeight(
   const nextWeight = oneRm / (1 + effectiveTargetReps / 30);
   return Math.round(nextWeight * 2) / 2;
 }
-

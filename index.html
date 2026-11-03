@@ -3,47 +3,61 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    
-    <!-- Configurações de PWA e Cor do Tema para Android -->
-    <meta name="theme-color" content="#090d16" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="MeuTreino Pro" />
-    
-    <!-- Link para o Manifesto do PWA (Essencial para o Android habilitar a instalação) -->
-    <link rel="manifest" href="/manifest.json" />
-
     <title>MeuTreino Pro</title>
     <meta name="description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
-    
-    <!-- Open Graph / Twitter -->
+    <meta name="theme-color" id="meta-theme-color" content="#0d1424" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MeuTreino" />
+    <meta name="application-name" content="MeuTreino Pro" />
+    <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/pwa-512x512.png" />
     <meta property="og:title" content="MeuTreino Pro" />
     <meta property="og:description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-
-    <!-- Script de Tema (Dark / Light) -->
     <script>
       (function() {
+        // Captura o evento beforeinstallprompt imediatamente antes mesmo do React montar (crucial no Android Chrome)
+        window.__deferredPWAInstallPrompt = null;
+        window.addEventListener('beforeinstallprompt', function(e) {
+          e.preventDefault();
+          window.__deferredPWAInstallPrompt = e;
+          window.dispatchEvent(new CustomEvent('meutreino:pwa-prompt-ready'));
+        });
+
         try {
           var saved = localStorage.getItem('meutreino_theme');
           var mode = localStorage.getItem('meutreino_theme_mode');
+          var accent = localStorage.getItem('meutreino_accent_color') || 'emerald';
           var systemPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
           var theme = 'dark';
           if (mode === 'system' || (!saved && !mode)) {
             theme = systemPrefersLight ? 'light' : 'dark';
-          } else if (saved === 'light' || saved === 'dark') {
+          } else if (saved === 'light' || saved === 'dark' || saved === 'oled') {
             theme = saved;
           } else {
             theme = systemPrefersLight ? 'light' : 'dark';
           }
           document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.setAttribute('data-accent', accent);
           if (theme === 'light') {
             document.documentElement.classList.remove('dark');
             document.documentElement.classList.add('theme-light');
           } else {
             document.documentElement.classList.remove('theme-light');
             document.documentElement.classList.add('dark');
+          }
+          var metaTheme = document.getElementById('meta-theme-color');
+          if (metaTheme) {
+            metaTheme.setAttribute(
+              'content',
+              theme === 'light' ? '#f8fafc' : theme === 'oled' ? '#000000' : '#0d1424'
+            );
           }
         } catch (e) {}
       })();

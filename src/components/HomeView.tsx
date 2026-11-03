@@ -33,14 +33,21 @@ import {
   MuscleGroup 
 } from '../types/workout';
 import { VolumeDashboard } from './VolumeDashboard';
-import { HomeAnalyticsDashboard } from './HomeAnalyticsDashboard';
-import { WeeklyVolumeOverloadChart } from './WeeklyVolumeOverloadChart';
 import { TopLoadProgressComponent } from './TopLoadProgressComponent';
-import { MuscleSymmetryRadar } from './MuscleSymmetryRadar';
 import { DailyNutritionTrackerWidget } from './DailyNutritionTrackerWidget';
 import { MuscleRecoveryHeatmap } from './MuscleRecoveryHeatmap';
 import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { useI18n } from '../utils/i18n';
+
+const HomeAnalyticsDashboard = React.lazy(() =>
+  import('./HomeAnalyticsDashboard').then((m) => ({ default: m.HomeAnalyticsDashboard }))
+);
+const WeeklyVolumeOverloadChart = React.lazy(() =>
+  import('./WeeklyVolumeOverloadChart').then((m) => ({ default: m.WeeklyVolumeOverloadChart }))
+);
+const MuscleSymmetryRadar = React.lazy(() =>
+  import('./MuscleSymmetryRadar').then((m) => ({ default: m.MuscleSymmetryRadar }))
+);
 import { 
   getWeeklyMicrocycleStatus, 
   requestNotificationPermission, 
@@ -102,6 +109,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [showReminderSettings, setShowReminderSettings] = useState(false);
   const [testNotifSuccess, setTestNotifSuccess] = useState(false);
   const [newTimeInput, setNewTimeInput] = useState('07:00');
+  const [showAllSessions, setShowAllSessions] = useState(false);
 
   const [reminderConfig, setReminderConfig] = useState<DailyReminderConfig>(() => {
     return user
@@ -184,7 +192,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       setReminderConfig(nextConfig);
       saveReminderConfig(user.id, nextConfig);
       sendAppNotification(
-        'MeuTreino Pro ⚡ • Push Local Ativo',
+        'MeuTreino Pro ⚡ • Lembretes Ativos',
         `Lembretes agendados para: ${times.join(', ')} nos dias selecionados!`
       );
       setNotifStatus('success');
@@ -268,8 +276,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
     const msg =
       reminderConfig.customMessage && reminderConfig.customMessage.trim().length > 0
         ? reminderConfig.customMessage.trim()
-        : `Hora do treino! Seus horários definidos (${configuredTimes.join(', ')}) estão ativos via Push Local 💪`;
-    const sent = sendAppNotification('MeuTreino Pro ⚡ • Push de Teste', msg);
+        : `Hora do treino! Seus horários definidos (${configuredTimes.join(', ')}) estão ativos 💪`;
+    const sent = sendAppNotification('MeuTreino Pro ⚡ • Aviso de Teste', msg);
     if (sent) {
       setTestNotifSuccess(true);
       setTimeout(() => setTestNotifSuccess(false), 3000);
@@ -486,7 +494,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <TrendingUp className="w-5 h-5" />
               </div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 font-mono">
-                Recharts
+                Gráficos
               </span>
             </div>
             <strong className="text-xs sm:text-sm font-black text-white block">
@@ -554,20 +562,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       ? 'bg-amber-400 text-slate-950 font-black shadow-md'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
                   }`}
-                  title={reminderConfig.enabled ? 'Desativar notificações Push locais' : 'Ativar notificações Push locais'}
+                  title={reminderConfig.enabled ? 'Desativar lembretes de treino' : 'Ativar lembretes de treino'}
                 >
-                  {reminderConfig.enabled ? 'Push Ativo' : 'Ativar Push'}
+                  {reminderConfig.enabled ? 'Ativo' : 'Ativar'}
                 </button>
               </div>
             </div>
 
             <strong className="text-xs sm:text-sm font-black text-white block">
-              Notificações Locais via Push
+              Lembretes de Treino
             </strong>
             <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
               {reminderConfig.enabled && nextReminderInfo
                 ? `Próximo lembrete: ${nextReminderInfo.dayLabel} às ${nextReminderInfo.nextTime} (${nextReminderInfo.countdownText}).`
-                : 'Agende um ou mais horários para receber alertas via Notification API.'}
+                : 'Escolha seus horários preferidos para receber avisos nos dias de treino.'}
             </p>
           </div>
 
@@ -586,14 +594,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
             )}
             {permStatus === 'granted' && reminderConfig.enabled && (
               <span className="text-[10px] text-emerald-400 font-medium flex items-center gap-0.5">
-                <Check className="w-3 h-3" /> Push Conectado
+                <Check className="w-3 h-3" /> Avisos Ativos
               </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Painel Expansível de Configuração dos Horários de Push Local */}
+      {/* Painel Expansível de Configuração dos Horários de Lembrete */}
       {showReminderSettings && (
         <div className="bg-[#0b1220] border border-amber-500/30 rounded-3xl p-4 sm:p-5 shadow-2xl animate-fadeIn space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-2">
@@ -601,11 +609,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <Bell className="w-4 h-4 text-amber-400" />
               <div>
                 <h3 className="text-xs sm:text-sm font-bold text-white">
-                  Central de Notificações Locais via Push (Web Notification API & Service Worker)
+                  Agenda de Lembretes de Treino
                 </h3>
                 {nextReminderInfo && (
                   <span className="text-[11px] font-mono text-emerald-400 block">
-                    ⏱️ Próximo disparo: {nextReminderInfo.dayLabel} às {nextReminderInfo.nextTime} ({nextReminderInfo.countdownText})
+                    ⏱️ Próximo aviso: {nextReminderInfo.dayLabel} às {nextReminderInfo.nextTime} ({nextReminderInfo.countdownText})
                   </span>
                 )}
               </div>
@@ -734,7 +742,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div>
                 <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5 mb-1.5">
                   <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Mensagem Personalizada do Push (Opcional):</span>
+                  <span>Mensagem Personalizada do Lembrete (Opcional):</span>
                 </label>
                 <input
                   type="text"
@@ -747,13 +755,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
           </div>
 
-          {/* Testar Notificação Push & Status */}
           <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-slate-400">
               {permStatus === 'granted' ? (
                 <span className="text-emerald-400 font-bold flex items-center gap-1.5">
                   <Check className="w-3.5 h-3.5" />
-                  API de Notification autorizada! Disparo local via Service Worker Push ativo.
+                  Alertas autorizados! Você receberá lembretes nos horários programados.
                 </span>
               ) : permStatus === 'denied' ? (
                 <span className="text-rose-400 font-semibold">
@@ -761,7 +768,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </span>
               ) : (
                 <span className="text-slate-400">
-                  Permissão da API Notification será solicitada ao ativar ou testar.
+                  A permissão para enviar lembretes será solicitada ao ativar ou testar.
                 </span>
               )}
             </div>
@@ -773,13 +780,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
               >
                 <Bell className="w-3.5 h-3.5 text-amber-400" />
-                <span>Disparar Push de Teste Agora</span>
+                <span>Testar Alerta Agora</span>
               </button>
 
               {testNotifSuccess && (
                 <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 animate-fadeIn">
                   <Check className="w-3.5 h-3.5" />
-                  Push Enviado!
+                  Enviado!
                 </span>
               )}
             </div>
@@ -834,17 +841,33 @@ export const HomeView: React.FC<HomeViewProps> = ({
         onGoToWorkout={onGoToWorkout}
       />
 
-      {/* 📊 VISUALIZAÇÃO DE DADOS RECHARTS: VOLUME TOTAL SEMANAL (KG) & SOBRECARGA PROGRESSIVA */}
-      <WeeklyVolumeOverloadChart
-        sessions={sessions}
-        onGoToWorkout={onGoToWorkout}
-      />
+      {/* 📊 VISUALIZAÇÃO DE DADOS RECHARTS: VOLUME TOTAL SEMANAL (KG) & SOBRECARGA PROGRESSIVA (Lazy Loaded) */}
+      <React.Suspense
+        fallback={
+          <div className="h-48 rounded-3xl bg-[#0f172a]/60 border border-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-500">
+            Carregando gráfico de sobrecarga semanal...
+          </div>
+        }
+      >
+        <WeeklyVolumeOverloadChart
+          sessions={sessions}
+          onGoToWorkout={onGoToWorkout}
+        />
+      </React.Suspense>
 
-      {/* ⚖️ RADAR DE SIMETRIA & PROPORÇÃO AGONISTA/ANTAGONISTA (RECHARTS RADARCHART) */}
-      <MuscleSymmetryRadar
-        sessions={sessions}
-        completedSetsByMuscle={completedSetsByMuscle}
-      />
+      {/* ⚖️ RADAR DE SIMETRIA & PROPORÇÃO AGONISTA/ANTAGONISTA (RECHARTS RADARCHART - Lazy Loaded) */}
+      <React.Suspense
+        fallback={
+          <div className="h-56 rounded-3xl bg-[#0f172a]/60 border border-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-500">
+            Carregando radar de simetria muscular...
+          </div>
+        }
+      >
+        <MuscleSymmetryRadar
+          sessions={sessions}
+          completedSetsByMuscle={completedSetsByMuscle}
+        />
+      </React.Suspense>
 
       {/* 📅 CALENDÁRIO DE CONSISTÊNCIA & STREAK (Últimos 35 dias) */}
       <ConsistencyCalendar
@@ -908,12 +931,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       )}
 
-      {/* 📈 DASHBOARD DE ANALYTICS (Curvas de 1RM, Carga e Volume Mensal Recharts) */}
-      <HomeAnalyticsDashboard
-        sessions={sessions}
-        onGoToWorkout={onGoToWorkout}
-        onOpenAnalyticsModal={onOpenAnalytics}
-      />
+      {/* 📈 DASHBOARD DE ANALYTICS (Curvas de 1RM, Carga e Volume Mensal Recharts - Lazy Loaded) */}
+      <React.Suspense
+        fallback={
+          <div className="h-64 rounded-3xl bg-[#0f172a]/60 border border-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-500">
+            Carregando painel analítico de 1RM...
+          </div>
+        }
+      >
+        <HomeAnalyticsDashboard
+          sessions={sessions}
+          onGoToWorkout={onGoToWorkout}
+          onOpenAnalyticsModal={onOpenAnalytics}
+        />
+      </React.Suspense>
 
       {/* 🧬 MAPA DE RECUPERAÇÃO MUSCULAR */}
       <MuscleRecoveryHeatmap sessions={sessions} />
@@ -976,7 +1007,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         ) : (
           <div className="space-y-4">
-            {sessions.map((sess) => {
+            {(showAllSessions ? sessions : sessions.slice(0, 8)).map((sess) => {
               // Calculate top set for this session
               let sessionMax = 0;
               let topExerciseName = '';
@@ -1096,6 +1127,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </div>
               );
             })}
+
+            {sessions.length > 8 && (
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowAllSessions((prev) => !prev)}
+                  className="px-5 py-2.5 rounded-2xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer active:scale-95"
+                >
+                  {showAllSessions
+                    ? 'Recolher Lista de Treinos'
+                    : `Ver Todos os ${sessions.length} Treinos Concluídos`}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

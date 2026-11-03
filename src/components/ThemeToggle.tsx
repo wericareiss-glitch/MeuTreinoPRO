@@ -69,27 +69,27 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-sm sm:text-base font-black text-white">
                   {isOled
-                    ? 'Modo Dark OLED Absoluto (#000000)'
+                    ? 'Modo Escuro Intenso (Economia de Bateria)'
                     : isDark
-                    ? 'Modo Escuro Ativo (Dark)'
-                    : 'Modo Claro Ativo (Light)'}
+                    ? 'Modo Escuro Ativo'
+                    : 'Modo Claro Ativo'}
                 </h3>
                 {isAutoDetectDisabled ? (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                     <Lock className="w-3 h-3" />
-                    <span>Modo Forçado (Auto-Detecção Desativada)</span>
+                    <span>Tema Fixado</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-400 border border-sky-500/30">
                     <Monitor className="w-3 h-3" />
-                    <span>Automático (Sistema)</span>
+                    <span>Automático</span>
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                 {isAutoDetectDisabled
-                  ? `Preferência fixa salva no navegador (localStorage: "${theme}"). A detecção automática do sistema operacional está desativada.`
-                  : 'Sincronizado com o sistema operacional. Clique no botão ao lado para forçar Dark, OLED ou Light e desativar a detecção automática.'}
+                  ? 'Sua preferência de cor está fixa e salva neste aparelho.'
+                  : 'Segue automaticamente o tema do seu celular ou computador. Clique ao lado para fixar sua cor preferida.'}
               </p>
             </div>
           </div>
@@ -104,17 +104,17 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
                   ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-500/20'
                   : 'bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-sky-500/20'
               }`}
-              title="Alternar tema e forçar modo de visualização no localStorage"
+              title="Alternar entre modo escuro e modo claro"
             >
               {isDark ? (
                 <>
                   <Sun className="w-4 h-4 stroke-[2.5]" />
-                  <span>Alternar para Modo Claro (Light)</span>
+                  <span>Mudar para Modo Claro</span>
                 </>
               ) : (
                 <>
                   <Moon className="w-4 h-4 stroke-[2.5]" />
-                  <span>Alternar para Modo Escuro (Dark)</span>
+                  <span>Mudar para Modo Escuro</span>
                 </>
               )}
             </button>
@@ -138,13 +138,13 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
                 <Moon className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <span className="text-xs font-black block text-white truncate">Modo Escuro (Dark)</span>
+                <span className="text-xs font-black block text-white truncate">Modo Escuro</span>
                 <span className="text-[10px] text-slate-400 block truncate">Alto contraste clássico</span>
               </div>
             </div>
             {!isSystem && theme === 'dark' && (
               <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-500 text-slate-950 shrink-0">
-                FIXADO
+                ATIVO
               </span>
             )}
           </button>
@@ -164,13 +164,13 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
                 <Sparkles className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <span className="text-xs font-black block text-white truncate">Dark OLED Absoluto</span>
-                <span className="text-[10px] text-slate-400 block truncate">Preto #000000 • Poupa bateria</span>
+                <span className="text-xs font-black block text-white truncate">Escuro Intenso</span>
+                <span className="text-[10px] text-slate-400 block truncate">Preto profundo • Poupa bateria</span>
               </div>
             </div>
             {!isSystem && theme === 'oled' && (
               <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 shrink-0">
-                OLED
+                ATIVO
               </span>
             )}
           </button>
@@ -253,11 +253,11 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
           {justSaved ? (
             <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>Preferência visual salva no localStorage!</span>
+              <span>Preferência de tema salva com sucesso!</span>
             </div>
           ) : (
             <span className="text-[11px] text-slate-400">
-              Status atual: <strong className="text-white">{isAutoDetectDisabled ? `Forçado (${theme.toUpperCase()})` : 'Automático pelo sistema'}</strong> · Paleta: <strong className="text-white uppercase">{accentColor}</strong>
+              Modo atual: <strong className="text-white">{isAutoDetectDisabled ? (isOled ? 'Escuro Intenso' : isDark ? 'Escuro' : 'Claro') : 'Automático pelo aparelho'}</strong>
             </span>
           )}
 

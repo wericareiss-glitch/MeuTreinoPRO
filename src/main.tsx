@@ -4,15 +4,25 @@ import App from './App.tsx';
 import { I18nProvider } from './utils/i18n.tsx';
 import './index.css';
 
-// Registra Service Worker para suporte PWA offline nativo com caminho seguro compatível com sub-rotas
+// Registra Service Worker (/sw.js) com escopo raiz para suporte PWA offline nativo e instalação WebAPK no Android
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    const swUrl = `${import.meta.env.BASE_URL}sw.js`;
-    navigator.serviceWorker.register(swUrl).then((registration) => {
-      console.log('ServiceWorker registrado com sucesso:', registration.scope);
-    }).catch(() => {
-      // Ignora falhas silenciosamente em ambiente de preview ou restrição de CORS
-    });
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .then((registration) => {
+        registration.addEventListener('updatefound', () => {
+          const installingWorker = registration.installing;
+          if (!installingWorker) return;
+          installingWorker.addEventListener('statechange', () => {
+            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              installingWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+      })
+      .catch(() => {
+        // Ignora falhas silenciosamente em ambiente de preview restrito
+      });
   });
 }
 

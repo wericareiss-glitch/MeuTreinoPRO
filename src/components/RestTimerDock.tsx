@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Play, 
   Pause, 
@@ -16,7 +16,8 @@ import {
   Bell, 
   Clock, 
   Minimize2, 
-  Maximize2 
+  Maximize2,
+  Smartphone
 } from 'lucide-react';
 import { soundManager } from '../utils/audio';
 import { wakeLockManager } from '../utils/wakeLock';
@@ -27,6 +28,7 @@ interface RestTimerDockProps {
   triggerKey: number; // Incrementing counter to reset & restart timer
   isMuted: boolean;
   onToggleMute: () => void;
+  activeExerciseName?: string;
 }
 
 export const RestTimerDock: React.FC<RestTimerDockProps> = ({
@@ -34,6 +36,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
   triggerKey,
   isMuted,
   onToggleMute,
+  activeExerciseName,
 }) => {
   const [timeLeft, setTimeLeft] = useState(initialSeconds);
   const [totalTime, setTotalTime] = useState(initialSeconds);
@@ -81,7 +84,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
     }
   }, [isRunning]);
 
-  const triggerCompletionAlert = () => {
+  const triggerCompletionAlert = useCallback(() => {
     if (hasFinishedAlertedRef.current) return;
     hasFinishedAlertedRef.current = true;
     soundManager.playTimerFinish();
@@ -89,10 +92,53 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
 
     sendAppNotification(
       'Descanso finalizado! Hora da próxima série 🔥',
-      'Seu tempo de recuperação terminou. Volte para a próxima série com foco máximo!',
+      activeExerciseName
+        ? `Recuperação concluída para ${activeExerciseName}. Volte com foco máximo!`
+        : 'Seu tempo de recuperação terminou. Volte para a próxima série com foco máximo!',
       'rest-timer-alert'
     );
-  };
+  }, [activeExerciseName]);
+
+  const handleAdjust = useCallback((delta: number) => {
+    setTimeLeft((prev) => {
+      const next = Math.max(5, prev + delta);
+      setTotalTime((curr) => Math.max(curr, next));
+      if (endTimeRef.current) {
+        endTimeRef.current = Date.now() + next * 1000;
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleRunning = useCallback(() => {
+    setIsRunning((prevRunning) => {
+      if (prevRunning) {
+        endTimeRef.current = null;
+        return false;
+      } else {
+        setTimeLeft((currLeft) => {
+          const base = currLeft > 0 ? currLeft : totalTime;
+          endTimeRef.current = Date.now() + base * 1000;
+          return base;
+        });
+        return true;
+      }
+    });
+  }, [totalTime]);
+
+  const handleStopAndClose = useCallback(() => {
+    setIsRunning(false);
+    endTimeRef.current = null;
+    setHasStartedEver(false);
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.playbackState = 'none';
+        navigator.mediaSession.metadata = null;
+      } catch {
+        // Ignore mediaSession cleanup errors
+      }
+    }
+  }, []);
 
   // Sync remaining time whenever the app wakes up (screen unlocked, tab visible, window focused)
   useEffect(() => {
@@ -117,7 +163,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
       window.removeEventListener('focus', syncTime);
       window.removeEventListener('pageshow', syncTime);
     };
-  }, [isRunning]);
+  }, [isRunning, triggerCompletionAlert]);
 
   // Timer countdown loop based on wall-clock time
   useEffect(() => {
@@ -147,26 +193,107 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
     }, 250);
 
     return () => clearInterval(interval);
-  }, [isRunning, timeLeft]);
-
-  if (!hasStartedEver && !isRunning) return null;
+  }, [isRunning, timeLeft, triggerCompletionAlert]);
 
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-  const progressPercent = totalTime > 0 ? ((totalTime - timeLeft) / totalTime) * 100 : 0;
+  // ============================================================================
+  // MediaSession API: Controles na Tela de Bloqueio (Android / iOS) & Smartwatches
+  // Exibe o tempo restante e permite -15s, +15s, Pausar/Retomar e Pular Descanso
+  // ============================================================================
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') {
+      return;
+    }
+    if (!hasStartedEver && !isRunning) {
+      try {
+        navigator.mediaSession.playbackState = 'none';
+      } catch {}
+      return;
+    }
 
-  const handleAdjust = (delta: number) => {
-    setTimeLeft((prev) => {
-      const next = Math.max(5, prev + delta);
-      setTotalTime((curr) => Math.max(curr, next));
-      if (endTimeRef.current) {
-        endTimeRef.current = Date.now() + next * 1000;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: `⏱️ Descanso: ${formattedTime}`,
+        artist: activeExerciseName ? `Exercício: ${activeExerciseName}` : 'MeuTreino Pro • Recuperação',
+        album: 'Toque em ⏮ -15s  |  ⏭ +15s',
+        artwork: [
+          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+        ],
+      });
+
+      navigator.mediaSession.playbackState = isRunning ? 'playing' : 'paused';
+
+      if ('setPositionState' in navigator.mediaSession && totalTime > 0) {
+        const elapsed = Math.min(totalTime, Math.max(0, totalTime - timeLeft));
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(1, totalTime),
+          playbackRate: 1,
+          position: elapsed,
+        });
       }
-      return next;
+    } catch {
+      // Safe fallback if browser restricts MediaSession metadata updates
+    }
+  }, [hasStartedEver, isRunning, formattedTime, activeExerciseName, totalTime, timeLeft]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) {
+      return;
+    }
+    if (!hasStartedEver && !isRunning) return;
+
+    const safeSetHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        // Action not supported on this platform
+      }
+    };
+
+    safeSetHandler('play', () => {
+      if (!isRunning) handleToggleRunning();
     });
-  };
+    safeSetHandler('pause', () => {
+      if (isRunning) handleToggleRunning();
+    });
+    safeSetHandler('previoustrack', () => {
+      handleAdjust(-15);
+      soundManager.vibrate(20);
+    });
+    safeSetHandler('seekbackward', () => {
+      handleAdjust(-15);
+      soundManager.vibrate(20);
+    });
+    safeSetHandler('nexttrack', () => {
+      handleAdjust(15);
+      soundManager.vibrate(20);
+    });
+    safeSetHandler('seekforward', () => {
+      handleAdjust(15);
+      soundManager.vibrate(20);
+    });
+    safeSetHandler('stop', () => {
+      handleStopAndClose();
+    });
+
+    return () => {
+      safeSetHandler('play', null);
+      safeSetHandler('pause', null);
+      safeSetHandler('previoustrack', null);
+      safeSetHandler('seekbackward', null);
+      safeSetHandler('nexttrack', null);
+      safeSetHandler('seekforward', null);
+      safeSetHandler('stop', null);
+    };
+  }, [hasStartedEver, isRunning, handleToggleRunning, handleAdjust, handleStopAndClose]);
+
+  if (!hasStartedEver && !isRunning) return null;
+
+  const progressPercent = totalTime > 0 ? ((totalTime - timeLeft) / totalTime) * 100 : 0;
 
   const handlePreset = (secs: number) => {
     setTotalTime(secs);
@@ -181,15 +308,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
     setTimeLeft(totalTime);
   };
 
-  const handleToggleRunning = () => {
-    if (isRunning) {
-      setIsRunning(false);
-      endTimeRef.current = null;
-    } else {
-      endTimeRef.current = Date.now() + (timeLeft > 0 ? timeLeft : totalTime) * 1000;
-      setIsRunning(true);
-    }
-  };
+  const isMediaSessionSupported = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
 
   // 1. MODO ULTRA-COMPACTO (Mini Pill / Pip Flutuante)
   if (isPip) {
@@ -223,10 +342,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
 
           <button
             type="button"
-            onClick={() => {
-              setIsRunning(false);
-              setHasStartedEver(false);
-            }}
+            onClick={handleStopAndClose}
             className="p-1.5 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
             title="Fechar descanso"
           >
@@ -279,7 +395,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
               type="button"
               onClick={() => handleAdjust(-15)}
               className="min-h-[36px] px-2.5 py-1 bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-mono text-xs font-bold rounded-xl border border-slate-700 transition-colors active:scale-95 cursor-pointer"
-              title="Menos 15s"
+              title="Menos 15s (também disponível na tela de bloqueio ⏮)"
             >
               -15s
             </button>
@@ -287,7 +403,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
               type="button"
               onClick={() => handleAdjust(30)}
               className="min-h-[36px] px-2.5 py-1 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 font-mono text-xs font-bold rounded-xl border border-sky-500/30 transition-colors active:scale-95 cursor-pointer"
-              title="Mais 30s"
+              title="Mais 30s (também disponível na tela de bloqueio ⏭)"
             >
               +30s
             </button>
@@ -331,10 +447,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
             {/* Fechar Timer */}
             <button
               type="button"
-              onClick={() => {
-                setIsRunning(false);
-                setHasStartedEver(false);
-              }}
+              onClick={handleStopAndClose}
               className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/30 flex items-center justify-center transition-colors cursor-pointer"
               title="Fechar descanso"
             >
@@ -343,7 +456,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
           </div>
         </div>
 
-        {/* Linha Expandida: Presets e Configurações Secundárias */}
+        {/* Linha Expandida: Presets, MediaSession Lockscreen Info e Configurações Secundárias */}
         {isExpanded && (
           <div className="mt-2.5 pt-2 border-t border-slate-800/80 space-y-2 animate-fadeIn">
             {/* Presets de Tempo */}
@@ -366,6 +479,16 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
                 ))}
               </div>
             </div>
+
+            {isMediaSessionSupported && (
+              <div className="px-2.5 py-1.5 rounded-xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-between gap-2 text-[10px] text-sky-300">
+                <div className="flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span className="font-bold">Controles na Tela de Bloqueio & Smartwatch Ativos</span>
+                </div>
+                <span className="font-mono text-[9px] text-slate-400">⏮ -15s · ⏯ · ⏭ +15s</span>
+              </div>
+            )}
 
             {/* Ações Secundárias (Reset, Mute, Notificações) */}
             <div className="flex items-center justify-between pt-1 border-t border-slate-800/60 text-xs">

@@ -167,6 +167,8 @@ export interface GeneratedWorkoutRoutine {
   estimatedMinutes: number;
   isCustom?: boolean;
   periodizationStrategy?: PeriodizationStrategy;
+  version?: number;
+  createdAt?: string;
 }
 
 export interface RpeScaleOption {

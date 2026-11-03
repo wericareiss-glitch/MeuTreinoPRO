@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Smartphone, X, Check, Share2 } from 'lucide-react';
+import { Download, Smartphone, X, Check, Share2, ExternalLink } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
 interface PWAInstallButtonProps {
@@ -11,7 +11,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   className = '', 
   variant = 'compact' 
 }) => {
-  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
+  const { isInstallable, isInstalled, isIOS, isAndroid, isInIframe, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   const [showBrowserGuide, setShowBrowserGuide] = useState(false);
   const [installSuccess, setInstallSuccess] = useState(false);
@@ -27,8 +27,10 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       if (ok) {
         setInstallSuccess(true);
         setTimeout(() => setInstallSuccess(false), 3000);
+        return;
       }
-    } else if (isIOS) {
+    }
+    if (isIOS) {
       setShowIOSGuide(true);
     } else {
       setShowBrowserGuide(true);
@@ -75,7 +77,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               <button
                 type="button"
                 onClick={() => setShowIOSGuide(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -96,7 +98,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                   2
                 </span>
                 <p>
-                  Role a lista e selecione <strong className="text-white">"Adicionar à Tela de Início"</strong>.
+                  Role a lista e selecione <strong className="text-white">&ldquo;Adicionar à Tela de Início&rdquo;</strong>.
                 </p>
               </div>
 
@@ -105,7 +107,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                   3
                 </span>
                 <p>
-                  Toque em <strong className="text-white">"Adicionar"</strong> no canto superior direito para fixar o ícone oficial!
+                  Toque em <strong className="text-white">&ldquo;Adicionar&rdquo;</strong> no canto superior direito para fixar o ícone oficial!
                 </p>
               </div>
             </div>
@@ -121,35 +123,62 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         </div>
       )}
 
-      {/* Browser / Desktop Guided Installation Modal */}
+      {/* Android / Browser / Desktop Guided Installation Modal */}
       {showBrowserGuide && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-[#0f172a] border border-slate-700 rounded-3xl w-full max-w-sm p-5 shadow-2xl relative">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
               <div className="flex items-center gap-2 text-white font-bold text-sm">
                 <Smartphone className="w-4 h-4 text-emerald-400" />
-                <span>Instalar Aplicativo</span>
+                <span>{isAndroid ? 'Instalar no Android' : 'Instalar Aplicativo'}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setShowBrowserGuide(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
-              <p>
-                Para ter a melhor experiência com tela cheia e acesso offline direto da sua tela inicial ou desktop:
-              </p>
-              <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-800 space-y-2">
-                <p>
-                  • <strong className="text-white">No Google Chrome / Edge:</strong> clique no ícone de instalação <Download className="w-3.5 h-3.5 inline text-emerald-400 mx-1" /> no final da barra de endereços ou no menu de 3 pontinhos &gt; <strong className="text-white">"Instalar MeuTreino Pro"</strong>.
-                </p>
-                <p>
-                  • <strong className="text-white">No celular Android:</strong> toque no menu ⋮ do Chrome &gt; <strong className="text-white">"Adicionar à tela inicial"</strong> ou <strong className="text-white">"Instalar app"</strong>.
-                </p>
+              {isInIframe && (
+                <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-200 space-y-2">
+                  <p className="font-semibold">
+                    💡 Dica importante para Android:
+                  </p>
+                  <p className="text-[11px] text-amber-100/90">
+                    O navegador bloqueia a instalação direta dentro de janelas de pré-visualização. Abra o link direto no Chrome do celular para instalar com 1 toque:
+                  </p>
+                  <a
+                    href={typeof window !== 'undefined' ? window.location.href : '/'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2 px-3 rounded-xl font-black text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center gap-1.5 shadow-md transition-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Abrir em Nova Guia para Instalar</span>
+                  </a>
+                </div>
+              )}
+
+              <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-800 space-y-2.5">
+                <div className="flex items-start gap-2">
+                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 font-black flex items-center justify-center text-[10px] shrink-0 mt-0.5">
+                    1
+                  </span>
+                  <p>
+                    <strong className="text-white">No Chrome Android:</strong> toque no menu <strong className="text-emerald-400">⋮</strong> (canto superior direito) e selecione <strong className="text-white">&ldquo;Instalar aplicativo&rdquo;</strong> ou <strong className="text-white">&ldquo;Adicionar à tela inicial&rdquo;</strong>.
+                  </p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 font-black flex items-center justify-center text-[10px] shrink-0 mt-0.5">
+                    2
+                  </span>
+                  <p>
+                    <strong className="text-white">No Computador (Chrome / Edge):</strong> clique no ícone de instalação <Download className="w-3.5 h-3.5 inline text-emerald-400 mx-0.5" /> na barra de endereço.
+                  </p>
+                </div>
               </div>
             </div>
 

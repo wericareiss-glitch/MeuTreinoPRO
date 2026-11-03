@@ -24,19 +24,18 @@ import {
   Dumbbell,
   Minus,
   MoreVertical,
-  Disc,
   HelpCircle,
-  BookOpen,
   Sparkles,
   Copy,
   Trophy,
   Calculator,
   Link2,
   Unlink,
-  Video,
   ChevronDown,
   ChevronUp,
-  GripVertical
+  GripVertical,
+  Mic,
+  MicOff
 } from 'lucide-react';
 import { WorkoutItem, WorkoutLogs, WorkoutSessionSummary, SET_INTENSITY_TYPES, SetIntensityType } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
@@ -45,8 +44,8 @@ import { authStorage } from '../utils/auth';
 import { getOptimalProgressionSuggestion } from '../utils/progressiveOverload';
 import { soundManager } from '../utils/audio';
 import { getExerciseHistoricalPR, checkSetPR } from '../utils/prEngine';
-import { ExerciseExecutionDemo } from './ExerciseExecutionDemo';
 import { SmartTermTooltip } from './SmartTermTooltip';
+import { isWebSpeechSupported, createSpeechRecognizer } from '../utils/voiceInput';
 
 interface ExerciseCardProps {
   item: WorkoutItem;
@@ -62,7 +61,6 @@ interface ExerciseCardProps {
   onRemoveSet: (index: number) => void;
   onUpdateRest?: (index: number, newRest: number) => void;
   onOpenAnalytics?: (exerciseName: string) => void;
-  onOpenPlateCalc?: (weight?: number) => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onMoveUp?: (index: number) => void;
@@ -81,6 +79,83 @@ interface ExerciseCardProps {
   onDropCard?: (index: number, e: React.DragEvent<HTMLDivElement>) => void;
   onDragEndCard?: () => void;
   onPointerDownDragHandle?: (index: number, e: React.PointerEvent<HTMLButtonElement>) => void;
+  forceCollapsed?: boolean;
+  landscapeSetLayout?: 'grid' | 'inline';
+}
+
+export function areExerciseLogsEqualForCard(
+  exerciseId: string,
+  setsCount: number,
+  prevLogs: WorkoutLogs,
+  nextLogs: WorkoutLogs
+): boolean {
+  if (prevLogs === nextLogs) return true;
+  const maxSets = Math.max(setsCount, 10);
+  for (let s = 1; s <= maxSets; s++) {
+    const key = `${exerciseId}_${s}`;
+    const a = prevLogs[key];
+    const b = nextLogs[key];
+    if (a === b) continue;
+    if (!a || !b) return false;
+    if (
+      a.weight !== b.weight ||
+      a.reps !== b.reps ||
+      a.rpe !== b.rpe ||
+      a.rir !== b.rir ||
+      a.done !== b.done ||
+      a.setType !== b.setType
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function areExerciseCardPropsEqual(
+  prev: ExerciseCardProps,
+  next: ExerciseCardProps
+): boolean {
+  if (
+    prev.index !== next.index ||
+    prev.canMoveUp !== next.canMoveUp ||
+    prev.canMoveDown !== next.canMoveDown ||
+    prev.targetMuscleRir !== next.targetMuscleRir ||
+    prev.isBisetWithNext !== next.isBisetWithNext ||
+    prev.isSecondInBiset !== next.isSecondInBiset ||
+    prev.nextExerciseName !== next.nextExerciseName ||
+    prev.prevExerciseName !== next.prevExerciseName ||
+    prev.isDragging !== next.isDragging ||
+    prev.isDropTarget !== next.isDropTarget ||
+    prev.forceCollapsed !== next.forceCollapsed ||
+    prev.landscapeSetLayout !== next.landscapeSetLayout ||
+    prev.sessions !== next.sessions
+  ) {
+    return false;
+  }
+
+  if (prev.item !== next.item) {
+    if (
+      prev.item.id !== next.item.id ||
+      prev.item.sets !== next.item.sets ||
+      prev.item.reps !== next.item.reps ||
+      prev.item.rest !== next.item.rest ||
+      prev.item.muscleKey !== next.item.muscleKey ||
+      prev.item.exercise.id !== next.item.exercise.id ||
+      prev.item.exercise.name !== next.item.exercise.name
+    ) {
+      return false;
+    }
+  }
+
+  const exId = next.item.exercise.id;
+  if (!areExerciseLogsEqualForCard(exId, next.item.sets, prev.logs, next.logs)) {
+    return false;
+  }
+  if (!areExerciseLogsEqualForCard(exId, next.item.sets, prev.history, next.history)) {
+    return false;
+  }
+
+  return true;
 }
 
 // RPE de 6 a 10 com cálculo automático de RIR (RIR = 10 - RPE)
@@ -106,7 +181,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   onRemoveSet,
   onUpdateRest,
   onOpenAnalytics,
-  onOpenPlateCalc,
   canMoveUp = false,
   canMoveDown = false,
   onMoveUp,
@@ -125,14 +199,34 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   onDropCard,
   onDragEndCard,
   onPointerDownDragHandle,
+  forceCollapsed,
+  landscapeSetLayout = 'grid',
 }) => {
   const [expandedSets, setExpandedSets] = useState<Record<string, boolean>>({});
-  const [isCardCollapsed, setIsCardCollapsed] = useState(false);
+  const [isCardCollapsed, setIsCardCollapsed] = useState<boolean>(() => Boolean(forceCollapsed));
+
+  useEffect(() => {
+    if (forceCollapsed !== undefined) {
+      setIsCardCollapsed(forceCollapsed);
+    }
+  }, [forceCollapsed]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [show1RMCalculator, setShow1RMCalculator] = useState(false);
   const [formula1RM, setFormula1RM] = useState<'epley' | 'brzycki'>('epley');
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Estado para Preenchimento por Voz (Web Speech API)
+  const [listeningLogKey, setListeningLogKey] = useState<string | null>(null);
+  const [voiceTranscript, setVoiceTranscript] = useState<string>('');
+  const [voiceFeedback, setVoiceFeedback] = useState<{ text: string; isError?: boolean } | null>(null);
+  const recognizerRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      recognizerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -147,24 +241,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showMenu]);
-
-  // Estado da Dica de Execução (Popover biomecânico)
-  const [showExecutionTip, setShowExecutionTip] = useState(false);
-  const executionTipRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (executionTipRef.current && !executionTipRef.current.contains(e.target as Node)) {
-        setShowExecutionTip(false);
-      }
-    };
-    if (showExecutionTip) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showExecutionTip]);
 
   const ex = item.exercise;
   const muscleName = MUSCLE_NAMES[item.muscleKey] || item.muscleKey;
@@ -267,16 +343,17 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
 
   const handleUpdateSetType = (logKey: string, newType: SetIntensityType) => {
     onUpdateLog(logKey, 'setType', newType);
-    persistLogsToStorageDirectly(logKey, { setType: newType });
     if (newType === 'F') {
       handleUpdateRpe(logKey, 10);
     } else if (newType === 'W') {
       handleUpdateRpe(logKey, 6);
+    } else {
+      persistLogsToStorageDirectly(logKey, { setType: newType });
     }
     soundManager.vibrate(20);
   };
 
-  // Digitação de peso / reps com persistência instantânea e feedback visual
+  // Digitação de peso / reps com persistência debounced e atualização imediata de estado
   const handleInputChange = (logKey: string, field: 'weight' | 'reps', value: string) => {
     setLocalLogs((prev) => ({
       ...prev,
@@ -286,9 +363,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
       },
     }));
 
-    // Atualiza estado pai e storage imediatamente para evitar perda de dados ao concluir sessão rapidamente
+    // Atualiza estado pai (que já persiste em safeStorage via useEffect)
     onUpdateLog(logKey, field, value);
-    persistLogsToStorageDirectly(logKey, { [field]: value });
     setAutoSaveStatus('saving');
 
     if (debounceTimerRef.current) {
@@ -296,6 +372,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
     }
 
     debounceTimerRef.current = setTimeout(() => {
+      persistLogsToStorageDirectly(logKey, { [field]: value });
       setAutoSaveStatus('saved');
       setTimeout(() => {
         setAutoSaveStatus((curr) => (curr === 'saved' ? 'idle' : curr));
@@ -303,8 +380,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
     }, 300);
   };
 
-  // Analisador Inteligente de Sobrecarga Progressiva
-  const progression = getOptimalProgressionSuggestion(ex, item.reps, history, logs, sessions);
+  // Analisador Inteligente de Sobrecarga Progressiva (Memoizado para evitar recálculo a cada renderização local)
+  const progression = useMemo(
+    () => getOptimalProgressionSuggestion(ex, item.reps, history, logs, sessions),
+    [ex, item.reps, history, logs, sessions]
+  );
 
   // Busca a última sessão que continha este exercício para histórico de 6RM
   const prevSessionExercise = useMemo(() => {
@@ -496,12 +576,12 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
       },
     }));
 
+    // onUpdateLog('rpe') sincroniza automaticamente o RIR correspondente no estado global
     onUpdateLog(logKey, 'rpe', rpeStr);
-    onUpdateLog(logKey, 'rir', derivedRir);
     persistLogsToStorageDirectly(logKey, { rpe: rpeStr, rir: derivedRir });
 
     // Se RPE for 9 ou 10 (RIR 1 ou 0) e Smart Rest estiver ligado, adiciona +30s de descanso
-    if (isSmartRestEnabled && (clampedRpe >= 9)) {
+    if (isSmartRestEnabled && clampedRpe >= 9) {
       if (!autoRestAppliedSetsRef.current.has(logKey)) {
         autoRestAppliedSetsRef.current.add(logKey);
         if (onUpdateRest) {
@@ -537,6 +617,107 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
       if (!logs[k]?.done) {
         handleInputChange(k, 'weight', weightVal.toString());
       }
+    }
+  };
+
+  // Comando de Preenchimento por Voz (Web Speech API)
+  const handleToggleVoiceInput = (explicitLogKey?: string) => {
+    if (!isWebSpeechSupported()) {
+      setVoiceFeedback({
+        text: 'Seu navegador não suporta ditado por voz.',
+        isError: true,
+      });
+      setTimeout(() => setVoiceFeedback(null), 3500);
+      return;
+    }
+
+    // Se já estiver ouvindo, encerra a gravação atual
+    if (listeningLogKey) {
+      recognizerRef.current?.stop();
+      setListeningLogKey(null);
+      return;
+    }
+
+    // Determina a primeira série ainda não concluída se não foi passada explicitamente
+    let targetKey = explicitLogKey;
+    if (!targetKey) {
+      for (let s = 1; s <= item.sets; s++) {
+        const k = `${ex.id}_${s}`;
+        if (!logs[k]?.done) {
+          targetKey = k;
+          break;
+        }
+      }
+      if (!targetKey) {
+        targetKey = `${ex.id}_1`;
+      }
+    }
+
+    const targetSetNum = parseInt(targetKey.split('_').pop() || '1', 10);
+    setIsCardCollapsed(false);
+    setVoiceTranscript('');
+    setVoiceFeedback(null);
+    setListeningLogKey(targetKey);
+    soundManager.vibrate(25);
+
+    const recognizer = createSpeechRecognizer({
+      onInterimResult: (transcript) => {
+        setVoiceTranscript(transcript);
+      },
+      onFinalResult: (parsed) => {
+        const appliedParts: string[] = [];
+        if (parsed.weight) {
+          handleInputChange(targetKey!, 'weight', parsed.weight);
+          appliedParts.push(`${parsed.weight}kg`);
+        }
+        if (parsed.reps) {
+          handleInputChange(targetKey!, 'reps', parsed.reps);
+          appliedParts.push(`${parsed.reps} reps`);
+        }
+        if (parsed.rpe) {
+          handleUpdateRpe(targetKey!, parsed.rpe);
+          appliedParts.push(`RPE ${parsed.rpe}`);
+        }
+        if (parsed.completeSet && (parsed.weight || localLogs[targetKey!]?.weight || logs[targetKey!]?.weight)) {
+          if (!logs[targetKey!]?.done) {
+            onToggleSet(targetKey!, isBisetWithNext ? 0 : item.rest);
+            appliedParts.push('Concluída ✓');
+          }
+        }
+
+        if (appliedParts.length > 0) {
+          soundManager.vibrate([30, 40, 60]);
+          setVoiceFeedback({
+            text: `🎙️ Série #${targetSetNum}: ${appliedParts.join(' · ')}`,
+            isError: false,
+          });
+        } else {
+          setVoiceFeedback({
+            text: `Não entendi números em "${parsed.rawTranscript}". Diga ex: "80 quilos 10 repetições RPE 8"`,
+            isError: true,
+          });
+        }
+        setTimeout(() => setVoiceFeedback(null), 4000);
+      },
+      onError: (msg) => {
+        setVoiceFeedback({ text: msg, isError: true });
+        setListeningLogKey(null);
+        setTimeout(() => setVoiceFeedback(null), 4000);
+      },
+      onEnd: () => {
+        setListeningLogKey(null);
+      },
+    });
+
+    if (recognizer) {
+      recognizerRef.current = recognizer;
+      try {
+        recognizer.start();
+      } catch {
+        setListeningLogKey(null);
+      }
+    } else {
+      setListeningLogKey(null);
     }
   };
 
@@ -712,21 +893,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                 </SmartTermTooltip>
               </div>
             )}
-
-            {/* Botão Demo 5s & Dica de Execução */}
-            <button
-              type="button"
-              onClick={() => setShowExecutionTip((prev) => !prev)}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold border transition-all cursor-pointer shrink-0 active:scale-95 ${
-                showExecutionTip
-                  ? 'bg-sky-500 text-slate-950 border-sky-400 font-black shadow-sm'
-                  : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border-sky-500/30'
-              }`}
-              title="Ver animação biomecânica 5s e dicas de execução do movimento"
-            >
-              <Video className="w-3 h-3 text-sky-400" />
-              <span>Demo 5s & Execução</span>
-            </button>
           </div>
 
           {/* Menu de 3 Pontos para Ações do Exercício */}
@@ -744,18 +910,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             {/* Dropdown Menu de 3 Pontos */}
             {showMenu && (
               <div className="absolute right-0 top-9 w-56 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-1.5 z-40 animate-fadeIn space-y-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMenu(false);
-                    setShowExecutionTip(true);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-sky-300 hover:bg-sky-950/40 transition-colors text-left cursor-pointer"
-                >
-                  <Video className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>Demo 5s & Dica de Execução</span>
-                </button>
-
                 <button
                   type="button"
                   onClick={() => {
@@ -782,20 +936,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                     <span className="block text-[10px] text-slate-400">Trocar por substituto direto</span>
                   </div>
                 </button>
-
-                {onOpenPlateCalc && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMenu(false);
-                      onOpenPlateCalc(parseFloat(firstSetWeight) || 0);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-teal-300 hover:bg-teal-950/40 transition-colors text-left cursor-pointer"
-                  >
-                    <Disc className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                    <span>Calculadora de Anilhas</span>
-                  </button>
-                )}
 
                 <button
                   type="button"
@@ -926,10 +1066,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                   : 'bg-slate-800 text-slate-400 border-slate-700'
               }`}
-              title="Smart Rest: adiciona +30s de descanso quando atingir RPE 9 ou 10"
+              title="Descanso Automático: adiciona +30s de descanso quando a série exigir esforço máximo (RPE 9 ou 10)"
             >
               <Zap className={`w-3 h-3 ${isSmartRestEnabled ? 'fill-emerald-400 text-emerald-400' : 'text-slate-500'}`} />
-              <span>Smart Rest {isSmartRestEnabled ? 'ON' : 'OFF'}</span>
+              <span>Descanso Auto {isSmartRestEnabled ? 'Ativo' : 'Inativo'}</span>
             </button>
 
             {/* Botão Calculadora Preditiva 1RM + Meta do Próximo Mês */}
@@ -963,6 +1103,21 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             >
               <Flame className="w-3 h-3 text-orange-400" />
               <span>Aquecer</span>
+            </button>
+
+            {/* Botão de Preenchimento por Voz (Web Speech API) */}
+            <button
+              type="button"
+              onClick={() => handleToggleVoiceInput()}
+              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 active:scale-95 ${
+                listeningLogKey
+                  ? 'bg-rose-500 text-white border-rose-400 font-black animate-pulse shadow-md shadow-rose-500/30'
+                  : 'bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 border-teal-500/30'
+              }`}
+              title="Ditar carga, repetições e RPE por voz (ex: '80 quilos 10 repetições RPE 8')"
+            >
+              {listeningLogKey ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3 text-teal-400" />}
+              <span>{listeningLogKey ? 'Ouvindo...' : 'Ditar Série'}</span>
             </button>
 
             {/* Botão de Agrupar Bi-set / Super-série com o próximo exercício */}
@@ -1005,6 +1160,43 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             )}
           </div>
         </div>
+
+        {/* Banner de Feedback / Escuta Ativa do Preenchimento por Voz (Web Speech API) */}
+        {(listeningLogKey || voiceFeedback) && (
+          <div
+            className={`px-3 py-2 rounded-xl border text-xs flex items-center justify-between gap-2 animate-fadeIn ${
+              listeningLogKey
+                ? 'bg-rose-950/50 border-rose-500/50 text-rose-200'
+                : voiceFeedback?.isError
+                ? 'bg-amber-950/50 border-amber-500/40 text-amber-200'
+                : 'bg-emerald-950/50 border-emerald-500/40 text-emerald-200'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {listeningLogKey ? (
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0" />
+              ) : (
+                <Mic className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              )}
+              <span className="font-semibold truncate">
+                {listeningLogKey
+                  ? voiceTranscript
+                    ? `Ouvindo: "${voiceTranscript}"...`
+                    : '🎙️ Fale agora: ex. "80 quilos, 10 repetições, RPE 8"'
+                  : voiceFeedback?.text}
+              </span>
+            </div>
+            {listeningLogKey && (
+              <button
+                type="button"
+                onClick={() => handleToggleVoiceInput()}
+                className="px-2 py-0.5 rounded-lg bg-rose-500 text-white font-bold text-[10px] shrink-0 cursor-pointer"
+              >
+                Parar
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Painel Expansível: Calculadora Preditiva de 1RM (Epley & Brzycki) + Meta do Próximo Mês */}
         {show1RMCalculator && (
@@ -1215,89 +1407,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
         )}
       </div>
 
-      {/* Popover Biomecânico de Dica de Execução + Demo Animada 5s */}
-      {showExecutionTip && (
-        <div
-          ref={executionTipRef}
-          className="m-3 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-[#0c1424] via-[#090f1d] to-[#060a14] border border-sky-500/40 shadow-2xl animate-fadeIn space-y-3 relative"
-        >
-          <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-sky-500/15 text-sky-400 border border-sky-500/25">
-                <BookOpen className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs sm:text-sm font-black text-white">{ex.name}</h4>
-                <span className="text-[10px] text-sky-300 font-mono">Animação Biomecânica 5s & Guia de Execução</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowExecutionTip(false)}
-              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-              title="Fechar"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Componente de Vídeo Curto (GIF 5s) / Animação Cinemática estilo Lottie */}
-          <ExerciseExecutionDemo exercise={ex} />
-
-          {/* Badges de Anatomia, Estabilidade e Perfil */}
-          <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
-            <span className="px-2 py-0.5 rounded-md bg-slate-800/90 text-slate-200 border border-slate-700 font-semibold">
-              🎯 {ex.target}
-            </span>
-            {ex.stability && (
-              <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 font-semibold">
-                Estabilidade: {ex.stability}
-              </span>
-            )}
-            {ex.profile && (
-              <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/25 font-semibold">
-                Perfil: {ex.profile}
-              </span>
-            )}
-          </div>
-
-          {/* Biomecânica do Movimento */}
-          {ex.bio && (
-            <div className="bg-[#070c18] rounded-xl p-2.5 border border-slate-800/90 text-xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
-                🔬 Biomecânica & Curva de Tensão:
-              </span>
-              <p className="text-slate-300 leading-relaxed text-[11px] sm:text-xs">
-                {ex.bio}
-              </p>
-            </div>
-          )}
-
-          {/* Dica de Ouro de Execução (Cue Prática) */}
-          {ex.cue && (
-            <div className="bg-emerald-950/20 rounded-xl p-2.5 border border-emerald-500/30 text-xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1 mb-0.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Dica de Ouro para Execução Correta:</span>
-              </span>
-              <p className="text-emerald-200/95 font-medium leading-relaxed text-[11px] sm:text-xs">
-                "{ex.cue}"
-              </p>
-            </div>
-          )}
-
-          <div className="pt-1 flex items-center justify-end">
-            <button
-              type="button"
-              onClick={() => setShowExecutionTip(false)}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-sky-500 hover:bg-sky-400 text-slate-950 transition-colors cursor-pointer"
-            >
-              Entendido
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* 2. Lista de Séries (Ocultável quando o card está recolhido no mobile) */}
       {isCardCollapsed ? (
         <div className="px-3.5 py-2.5 bg-slate-950/50 flex items-center justify-between gap-2 text-xs">
@@ -1317,9 +1426,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
         </div>
       ) : (
       <>
-      <div className="p-3 sm:p-4 space-y-3">
+      <div className="p-2.5 sm:p-4 landscape:p-3 space-y-2.5 sm:space-y-3">
         {/* Barra Superior da Seção de Séries: Recorde (PR) Histórico & Replicação Rápida */}
-        <div className="flex items-center justify-between gap-2 px-1 text-xs flex-wrap pb-1 border-b border-slate-800/60">
+        <div className="flex items-center justify-between gap-2 px-1 text-xs flex-wrap pb-1.5 border-b border-slate-800/60">
           <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
             <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             {historicalPR.maxWeight > 0 ? (
@@ -1352,6 +1461,14 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           )}
         </div>
 
+        {/* Grade Responsiva de Cards de Série (1 col em retrato, 2 cols em landscape smartphone/tablet, 3 cols em tablets largos) */}
+        <div
+          className={
+            item.sets > 1 && landscapeSetLayout === 'grid'
+              ? 'grid grid-cols-1 landscape:grid-cols-2 xl:landscape:grid-cols-3 gap-2.5 sm:gap-3 items-stretch'
+              : 'grid grid-cols-1 gap-2.5 sm:gap-3'
+          }
+        >
         {Array.from({ length: item.sets }).map((_, sIdx) => {
           const setNum = sIdx + 1;
           const logKey = `${ex.id}_${setNum}`;
@@ -1522,93 +1639,95 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             return (
               <div
                 key={logKey}
-                className="bg-slate-950/90 border border-emerald-500/40 rounded-xl p-3 transition-all hover:border-emerald-500/60 shadow-sm space-y-2"
+                className="bg-slate-950/90 border border-emerald-500/40 rounded-xl p-2.5 sm:p-3 transition-all hover:border-emerald-500/60 shadow-sm flex flex-col justify-between gap-2 h-full"
               >
-                {/* Badge de PR batido nesta série */}
-                {prResult && (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-300 font-extrabold text-[11px] animate-pulse">
-                    <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
-                    <span>
-                      🔥 NOVO RECORDE PESSOAL (PR)!{' '}
-                      {prResult.isWeightPR
-                        ? `+${prResult.diffWeight}kg na carga máxima!`
-                        : `+${prResult.diff1RM}kg no 1RM estimado!`}
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div className="w-7 h-7 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-sm shadow-emerald-500/20">
-                      ✓
+                <div className="space-y-2">
+                  {/* Badge de PR batido nesta série */}
+                  {prResult && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-300 font-extrabold text-[11px] animate-pulse">
+                      <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                      <span>
+                        🔥 NOVO RECORDE PESSOAL (PR)!{' '}
+                        {prResult.isWeightPR
+                          ? `+${prResult.diffWeight}kg na carga máxima!`
+                          : `+${prResult.diff1RM}kg no 1RM estimado!`}
+                      </span>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                        <span className="font-mono font-bold text-white text-xs sm:text-sm">Série #{setNum}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border ${setTypeMeta.badgeClass}`}>
-                          {setTypeMeta.label}
-                        </span>
-                        <span className="font-mono font-extrabold text-emerald-400 text-sm sm:text-base">{currWeightVal || '0'} kg</span>
-                        <span className="font-mono text-slate-300 text-xs sm:text-sm">× {currRepsVal || '0'} reps</span>
-                        <span className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-amber-400/15 border border-amber-400/30 text-amber-300 font-mono">
-                          @RPE {currentRpeNum} (RIR {currentRirNum})
-                        </span>
+                  )}
+
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-sm shadow-emerald-500/20">
+                        ✓
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400 flex-wrap">
-                        {est1RM && <span>1RM ~{est1RM}kg</span>}
-                        {est6RM && <span>· 6RM ~{est6RM}kg</span>}
-                        {nextSetSuggestedWeight && sIdx < item.sets - 1 && (
-                          <span className="text-emerald-400 font-medium">
-                            · Próx. série estimada: ~{nextSetSuggestedWeight}kg
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono font-bold text-white text-xs sm:text-sm">Série #{setNum}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border ${setTypeMeta.badgeClass}`}>
+                            {setTypeMeta.label}
                           </span>
-                        )}
+                          <span className="font-mono font-extrabold text-emerald-400 text-sm sm:text-base">{currWeightVal || '0'} kg</span>
+                          <span className="font-mono text-slate-300 text-xs sm:text-sm">× {currRepsVal || '0'} reps</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-400/15 border border-amber-400/30 text-amber-300 font-mono">
+                            @RPE {currentRpeNum} (RIR {currentRirNum})
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400 flex-wrap">
+                          {est1RM && <span>1RM ~{est1RM}kg</span>}
+                          {est6RM && <span>· 6RM ~{est6RM}kg</span>}
+                          {nextSetSuggestedWeight && sIdx < item.sets - 1 && (
+                            <span className="text-emerald-400 font-medium">
+                              · Próx.: ~{nextSetSuggestedWeight}kg
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Ações da Série Concluída */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedSets((prev) => ({ ...prev, [logKey]: true }))}
-                      className="h-8 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Editar peso, repetições ou RPE"
-                    >
-                      <Pencil className="w-3 h-3 text-sky-400" />
-                      <span>Editar</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onToggleSet(logKey, isBisetWithNext ? 0 : item.rest)}
-                      className="h-8 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-300 text-xs font-semibold transition-colors cursor-pointer"
-                      title="Desmarcar conclusão"
-                    >
-                      Refazer
-                    </button>
+                    {/* Ações da Série Concluída */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSets((prev) => ({ ...prev, [logKey]: true }))}
+                        className="h-7 sm:h-8 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Editar peso, repetições ou RPE"
+                      >
+                        <Pencil className="w-3 h-3 text-sky-400" />
+                        <span>Editar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onToggleSet(logKey, isBisetWithNext ? 0 : item.rest)}
+                        className="h-7 sm:h-8 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-emerald-300 text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer"
+                        title="Desmarcar conclusão"
+                      >
+                        Refazer
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 {/* Seletor RPE 6 a 10 com botões + e - */}
-                <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-semibold text-slate-400">Esforço (RPE):</span>
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400">Esforço:</span>
                     <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded-lg p-0.5">
                       <button
                         type="button"
                         onClick={() => handleUpdateRpe(logKey, currentRpeNum - 1)}
                         disabled={currentRpeNum <= 6}
-                        className="w-7 h-7 rounded flex items-center justify-center text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        className="w-6 h-6 sm:w-7 sm:h-7 rounded flex items-center justify-center text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
-                      <span className="px-2 font-mono font-bold text-xs text-white">
+                      <span className="px-1.5 font-mono font-bold text-xs text-white">
                         RPE {currentRpeNum}
                       </span>
                       <button
                         type="button"
                         onClick={() => handleUpdateRpe(logKey, currentRpeNum + 1)}
                         disabled={currentRpeNum >= 10}
-                        className="w-7 h-7 rounded flex items-center justify-center text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                        className="w-6 h-6 sm:w-7 sm:h-7 rounded flex items-center justify-center text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -1634,8 +1753,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                           <Sparkles className="w-3 h-3 text-sky-400 shrink-0" />
                           <span>
                             {currentRirNum === smartRirSuggestion.predictedRir
-                              ? `Smart RIR Calibrado (${smartRirSuggestion.predictedRir})`
-                              : `Sugestão Smart RIR: ${smartRirSuggestion.predictedRir} (@RPE ${smartRirSuggestion.predictedRpe})`}
+                              ? `Smart RIR (${smartRirSuggestion.predictedRir})`
+                              : `Smart RIR: ${smartRirSuggestion.predictedRir} (@${smartRirSuggestion.predictedRpe})`}
                           </span>
                         </button>
 
@@ -1658,8 +1777,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                       </div>
                     )}
 
-                    <span className="text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                      RIR {currentRirNum} ({currentRirNum === 0 ? 'falha total' : `${currentRirNum} reps na reserva`})
+                    <span className="text-[10px] sm:text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      RIR {currentRirNum} ({currentRirNum === 0 ? 'falha' : `${currentRirNum} res.`})
                     </span>
                   </div>
                 </div>
@@ -1667,410 +1786,435 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             );
           }
 
-          // B) SÉRIE PENDENTE / EXPANDIDA
+          // B) SÉRIE PENDENTE / EXPANDIDA (Otimizada para Retrato e Paisagem em Smartphones/Tablets)
           return (
             <div
               key={logKey}
-              className={`rounded-xl p-3 border transition-all ${
+              className={`rounded-xl p-2.5 sm:p-3 landscape:p-2.5 border transition-all flex flex-col justify-between h-full ${
                 setLog.done
                   ? 'bg-slate-950/90 border-emerald-500/40'
                   : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
               }`}
             >
-              {/* Seletor de Técnica Avançada de Intensidade (W, T, F, D, RP) */}
-              <div className="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-800/70 flex-wrap">
-                <div className="flex items-center gap-1 flex-wrap">
-                  <SmartTermTooltip
-                    term="SET_TYPES"
-                    align="left"
-                    className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1"
-                  >
-                    <span>Tipo de Série:</span>
-                  </SmartTermTooltip>
-                  {SET_INTENSITY_TYPES.map((opt) => {
-                    const isActive = currentSetType === opt.code;
-                    return (
-                      <button
-                        key={opt.code}
-                        type="button"
-                        onClick={() => handleUpdateSetType(logKey, opt.code)}
-                        title={`${opt.label}: ${opt.description}`}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-black border transition-all cursor-pointer ${
-                          isActive
-                            ? `${opt.badgeClass} ring-1 ring-current scale-105`
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {opt.code === 'T' ? 'T · Trabalho' : opt.code === 'W' ? 'W · Aquec.' : opt.code === 'F' ? 'F · Falha' : opt.code === 'D' ? 'D · Drop-set' : 'RP · Myo/Rest-Pause'}
-                      </button>
-                    );
-                  })}
+              <div>
+                {/* Cabeçalho do Card de Série: Identificador da Série + Seletor de Técnica (W, T, F, D, RP) */}
+                <div className="flex items-center justify-between gap-1.5 mb-2 pb-1.5 border-b border-slate-800/70 flex-wrap">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-700/90 font-mono font-black text-[11px] text-sky-400 shrink-0">
+                      Série #{setNum}
+                    </span>
+
+                    <SmartTermTooltip
+                      term="SET_TYPES"
+                      align="left"
+                      className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hidden sm:inline landscape:hidden lg:landscape:inline ml-0.5"
+                    >
+                      <span>Tipo:</span>
+                    </SmartTermTooltip>
+
+                    {SET_INTENSITY_TYPES.map((opt) => {
+                      const isActive = currentSetType === opt.code;
+                      return (
+                        <button
+                          key={opt.code}
+                          type="button"
+                          onClick={() => handleUpdateSetType(logKey, opt.code)}
+                          title={`${opt.label}: ${opt.description}`}
+                          className={`px-1.5 py-0.5 rounded-md text-[10px] font-black border transition-all cursor-pointer ${
+                            isActive
+                              ? `${opt.badgeClass} ring-1 ring-current scale-105`
+                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {opt.code === 'T'
+                            ? 'T · Trab.'
+                            : opt.code === 'W'
+                            ? 'W · Aquec.'
+                            : opt.code === 'F'
+                            ? 'F · Falha'
+                            : opt.code === 'D'
+                            ? 'D · Drop'
+                            : 'RP · Pause'}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Dica rápida da técnica selecionada */}
+                  {currentSetType === 'D' && (
+                    <span className="text-[10px] text-purple-300 font-semibold">
+                      💡 Drop-set: -20 a 30% sem descanso
+                    </span>
+                  )}
+                  {currentSetType === 'RP' && (
+                    <span className="text-[10px] text-amber-300 font-semibold">
+                      💡 Rest-Pause: 15s pausa + 3-5 reps
+                    </span>
+                  )}
                 </div>
 
-                {/* Dica rápida da técnica selecionada */}
-                {currentSetType === 'D' && (
-                  <span className="text-[10px] text-purple-300 font-semibold">
-                    💡 Drop-set: reduza 20-30% da carga imediatamente sem descanso
-                  </span>
-                )}
-                {currentSetType === 'RP' && (
-                  <span className="text-[10px] text-amber-300 font-semibold">
-                    💡 Rest-Pause / Myo-Reps: respire 15s após a falha e faça +3 a 5 reps
-                  </span>
-                )}
-              </div>
+                {/* Linha Principal de Entrada (Responsiva p/ Grade Paisagem 2-3 Colunas ou Faixa Horizontal) */}
+                {(() => {
+                  // Calcula valores de fallback inteligentes caso o usuário toque em +/- ou Concluir com o campo vazio
+                  const prevSessionSet = sIdx > 0 ? (localLogs[`${ex.id}_${setNum - 1}`] || logs[`${ex.id}_${setNum - 1}`]) : null;
+                  const smartFallbackWeight =
+                    (prevSessionSet?.weight && parseFloat(prevSessionSet.weight) > 0 ? prevSessionSet.weight : '') ||
+                    (prevSetRecord?.weight && parseFloat(prevSetRecord.weight) > 0 ? prevSetRecord.weight : '') ||
+                    (setAutoProgression?.suggestedKg ? setAutoProgression.suggestedKg.toString() : '') ||
+                    (historical6RMSuggestion?.rawWeight ? historical6RMSuggestion.rawWeight.toString() : '');
 
-              {/* Linha Principal de Entrada (Otimizada para Uso com 1 Mão no Mobile) */}
-              {(() => {
-                // Calcula valores de fallback inteligentes caso o usuário toque em +/- ou Concluir com o campo vazio
-                const prevSessionSet = sIdx > 0 ? (localLogs[`${ex.id}_${setNum - 1}`] || logs[`${ex.id}_${setNum - 1}`]) : null;
-                const smartFallbackWeight =
-                  (prevSessionSet?.weight && parseFloat(prevSessionSet.weight) > 0 ? prevSessionSet.weight : '') ||
-                  (prevSetRecord?.weight && parseFloat(prevSetRecord.weight) > 0 ? prevSetRecord.weight : '') ||
-                  (setAutoProgression?.suggestedKg ? setAutoProgression.suggestedKg.toString() : '') ||
-                  (historical6RMSuggestion?.rawWeight ? historical6RMSuggestion.rawWeight.toString() : '');
+                  const smartFallbackReps =
+                    (prevSessionSet?.reps && parseInt(prevSessionSet.reps, 10) > 0 ? prevSessionSet.reps : '') ||
+                    (prevSetRecord?.reps && parseInt(prevSetRecord.reps, 10) > 0 ? prevSetRecord.reps : '') ||
+                    targetMaxReps.toString();
 
-                const smartFallbackReps =
-                  (prevSessionSet?.reps && parseInt(prevSessionSet.reps, 10) > 0 ? prevSessionSet.reps : '') ||
-                  (prevSetRecord?.reps && parseInt(prevSetRecord.reps, 10) > 0 ? prevSetRecord.reps : '') ||
-                  targetMaxReps.toString();
+                  const adjustWeightByStep = (delta: number) => {
+                    const baseW = parseFloat(currWeightVal) || parseFloat(smartFallbackWeight) || 20;
+                    const nextW = Math.max(0, Math.round((baseW + delta) * 10) / 10);
+                    handleInputChange(logKey, 'weight', nextW.toString());
+                    soundManager.vibrate(15);
+                  };
 
-                const adjustWeightByStep = (delta: number) => {
-                  const baseW = parseFloat(currWeightVal) || parseFloat(smartFallbackWeight) || 20;
-                  const nextW = Math.max(0, Math.round((baseW + delta) * 10) / 10);
-                  handleInputChange(logKey, 'weight', nextW.toString());
-                  soundManager.vibrate(15);
-                };
+                  const adjustRepsByStep = (delta: number) => {
+                    const baseR = parseInt(currRepsVal, 10) || parseInt(smartFallbackReps, 10) || targetMaxReps;
+                    const nextR = Math.max(1, baseR + delta);
+                    handleInputChange(logKey, 'reps', nextR.toString());
+                    soundManager.vibrate(15);
+                  };
 
-                const adjustRepsByStep = (delta: number) => {
-                  const baseR = parseInt(currRepsVal, 10) || parseInt(smartFallbackReps, 10) || targetMaxReps;
-                  const nextR = Math.max(1, baseR + delta);
-                  handleInputChange(logKey, 'reps', nextR.toString());
-                  soundManager.vibrate(15);
-                };
+                  const isSingleWideSetRow = item.sets === 1 || landscapeSetLayout === 'inline';
 
-                return (
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
-                    <div className="grid grid-cols-2 sm:flex items-center gap-2 sm:gap-2.5 flex-1">
-                      {/* Input Carga (kg) com Steppers Rápidos -2.5 / +2.5 para 1 Mão */}
-                      <div className="col-span-1 sm:w-48 bg-slate-900 border border-slate-700/80 rounded-xl p-1.5 flex items-center justify-between focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500">
-                        <button
-                          type="button"
-                          onClick={() => adjustWeightByStep(-2.5)}
-                          className="w-8 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
-                          title="Diminuir 2.5 kg"
-                          aria-label="Diminuir peso em 2.5 kg"
-                        >
-                          -
-                        </button>
+                  return (
+                    <div
+                      className={
+                        isSingleWideSetRow
+                          ? 'flex flex-col sm:flex-row landscape:flex-row items-stretch sm:items-center landscape:items-center justify-between gap-2 sm:gap-2.5'
+                          : 'flex flex-col sm:portrait:flex-row 2xl:landscape:flex-row items-stretch sm:portrait:items-center 2xl:landscape:items-center justify-between gap-2'
+                      }
+                    >
+                      <div className="grid grid-cols-2 gap-2 flex-1 min-w-0">
+                        {/* Input Carga (kg) com Steppers Rápidos -2.5 / +2.5 */}
+                        <div className="col-span-1 min-w-0 bg-slate-900 border border-slate-700/80 rounded-xl p-1.5 flex items-center justify-between focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500">
+                          <button
+                            type="button"
+                            onClick={() => adjustWeightByStep(-2.5)}
+                            className="w-8 h-9 landscape:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+                            title="Diminuir 2.5 kg"
+                            aria-label="Diminuir peso em 2.5 kg"
+                          >
+                            -
+                          </button>
 
-                        <div className="flex-1 min-w-0 px-1 text-center">
-                          <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 leading-none mb-0.5">
-                            Série #{setNum} · Carga (kg)
-                          </span>
-                          <div className="flex items-center justify-center gap-0.5">
+                          <div className="flex-1 min-w-0 px-1 text-center">
+                            <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 leading-none mb-0.5 truncate">
+                              Carga (kg)
+                            </span>
+                            <div className="flex items-center justify-center gap-0.5">
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                step="0.5"
+                                placeholder={smartFallbackWeight || '0'}
+                                value={currWeightVal}
+                                onFocus={(e) => e.currentTarget.select()}
+                                onChange={(e) => handleInputChange(logKey, 'weight', e.target.value)}
+                                className="w-full bg-transparent font-mono font-black text-white text-center text-base focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => adjustWeightByStep(2.5)}
+                            className="w-8 h-9 landscape:h-8 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 active:bg-sky-500/40 text-sky-300 border border-sky-500/30 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+                            title="Aumentar 2.5 kg"
+                            aria-label="Aumentar peso em 2.5 kg"
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        {/* Input Repetições (reps) com Steppers Rápidos -1 / +1 */}
+                        <div className="col-span-1 min-w-0 bg-slate-900 border border-slate-700/80 rounded-xl p-1.5 flex items-center justify-between focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500">
+                          <button
+                            type="button"
+                            onClick={() => adjustRepsByStep(-1)}
+                            className="w-8 h-9 landscape:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+                            title="Menos 1 repetição"
+                            aria-label="Diminuir 1 repetição"
+                          >
+                            -
+                          </button>
+
+                          <div className="flex-1 min-w-0 px-1 text-center">
+                            <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 leading-none mb-0.5 truncate">
+                              Meta: {item.reps} reps
+                            </span>
                             <input
                               type="number"
-                              inputMode="decimal"
-                              step="0.5"
-                              placeholder={smartFallbackWeight || '0'}
-                              value={currWeightVal}
+                              inputMode="numeric"
+                              placeholder={smartFallbackReps || '10'}
+                              value={currRepsVal}
                               onFocus={(e) => e.currentTarget.select()}
-                              onChange={(e) => handleInputChange(logKey, 'weight', e.target.value)}
+                              onChange={(e) => handleInputChange(logKey, 'reps', e.target.value)}
                               className="w-full bg-transparent font-mono font-black text-white text-center text-base focus:outline-none"
                             />
-                            {onOpenPlateCalc && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  onOpenPlateCalc(
-                                    parseFloat(currWeightVal) ||
-                                      parseFloat(smartFallbackWeight) ||
-                                      0
-                                  )
-                                }
-                                className="text-[10px] font-bold text-sky-400 hover:text-sky-300 font-mono px-1 py-0.5 rounded hover:bg-sky-500/20 transition-colors cursor-pointer shrink-0"
-                                title="Calcular anilhas para esta carga"
-                              >
-                                ⟳
-                              </button>
-                            )}
                           </div>
-                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() => adjustWeightByStep(2.5)}
-                          className="w-8 h-9 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 active:bg-sky-500/40 text-sky-300 border border-sky-500/30 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
-                          title="Aumentar 2.5 kg"
-                          aria-label="Aumentar peso em 2.5 kg"
-                        >
-                          +
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => adjustRepsByStep(1)}
+                            className="w-8 h-9 landscape:h-8 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 active:bg-emerald-500/40 text-emerald-300 border border-emerald-500/30 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
+                            title="Mais 1 repetição"
+                            aria-label="Aumentar 1 repetição"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Input Repetições (reps) com Steppers Rápidos -1 / +1 para 1 Mão */}
-                      <div className="col-span-1 sm:w-44 bg-slate-900 border border-slate-700/80 rounded-xl p-1.5 flex items-center justify-between focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500">
+                      {/* Botão de Ditado por Voz na Série + Botão de Conclusão */}
+                      <div className="flex items-center gap-1.5 sm:gap-2">
                         <button
                           type="button"
-                          onClick={() => adjustRepsByStep(-1)}
-                          className="w-8 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
-                          title="Menos 1 repetição"
-                          aria-label="Diminuir 1 repetição"
+                          onClick={() => handleToggleVoiceInput(logKey)}
+                          className={`min-h-[44px] landscape:min-h-[40px] w-11 landscape:w-10 rounded-xl flex items-center justify-center border transition-all cursor-pointer shrink-0 active:scale-95 ${
+                            listeningLogKey === logKey
+                              ? 'bg-rose-500 text-white border-rose-400 animate-pulse shadow-lg shadow-rose-500/30'
+                              : 'bg-slate-900 hover:bg-slate-800 text-teal-400 border-slate-700/80 hover:border-teal-500/40'
+                          }`}
+                          title={`Ditar Série #${setNum} por voz (ex: "80 quilos 10 repetições RPE 8")`}
+                          aria-label={`Ditar Série ${setNum} por voz`}
                         >
-                          -
+                          {listeningLogKey === logKey ? (
+                            <MicOff className="w-4 h-4" />
+                          ) : (
+                            <Mic className="w-4 h-4" />
+                          )}
                         </button>
-
-                        <div className="flex-1 min-w-0 px-1 text-center">
-                          <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400 leading-none mb-0.5">
-                            Meta: {item.reps} reps
-                          </span>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            placeholder={smartFallbackReps || '10'}
-                            value={currRepsVal}
-                            onFocus={(e) => e.currentTarget.select()}
-                            onChange={(e) => handleInputChange(logKey, 'reps', e.target.value)}
-                            className="w-full bg-transparent font-mono font-black text-white text-center text-base focus:outline-none"
-                          />
-                        </div>
 
                         <button
                           type="button"
-                          onClick={() => adjustRepsByStep(1)}
-                          className="w-8 h-9 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 active:bg-emerald-500/40 text-emerald-300 border border-emerald-500/30 font-mono font-black text-sm flex items-center justify-center shrink-0 cursor-pointer active:scale-95"
-                          title="Mais 1 repetição"
-                          aria-label="Aumentar 1 repetição"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
+                          onClick={() => {
+                            if (debounceTimerRef.current) {
+                              clearTimeout(debounceTimerRef.current);
+                              debounceTimerRef.current = null;
+                            }
+                            const finalWeight =
+                              currWeightVal && parseFloat(currWeightVal) > 0
+                                ? currWeightVal
+                                : smartFallbackWeight || currWeightVal;
+                            const finalReps =
+                              currRepsVal && parseInt(currRepsVal, 10) > 0
+                                ? currRepsVal
+                                : smartFallbackReps || currRepsVal;
 
-                    {/* Botão de Conclusão (Touch Target >= 46px + Auto-Preenchimento Inteligente se vazio) */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (debounceTimerRef.current) {
-                            clearTimeout(debounceTimerRef.current);
-                            debounceTimerRef.current = null;
-                          }
-                          const finalWeight =
-                            currWeightVal && parseFloat(currWeightVal) > 0
-                              ? currWeightVal
-                              : smartFallbackWeight || currWeightVal;
-                          const finalReps =
-                            currRepsVal && parseInt(currRepsVal, 10) > 0
-                              ? currRepsVal
-                              : smartFallbackReps || currRepsVal;
+                            if (finalWeight !== currWeightVal) {
+                              setLocalLogs((prev) => ({
+                                ...prev,
+                                [logKey]: {
+                                  ...(prev[logKey] || { weight: '', reps: '', rpe: '6', rir: '4' }),
+                                  weight: finalWeight,
+                                },
+                              }));
+                            }
+                            if (finalReps !== currRepsVal) {
+                              setLocalLogs((prev) => ({
+                                ...prev,
+                                [logKey]: {
+                                  ...(prev[logKey] || { weight: '', reps: '', rpe: '6', rir: '4' }),
+                                  reps: finalReps,
+                                },
+                              }));
+                            }
 
-                          if (finalWeight !== currWeightVal) {
-                            setLocalLogs((prev) => ({
-                              ...prev,
-                              [logKey]: {
-                                ...(prev[logKey] || { weight: '', reps: '', rpe: '6', rir: '4' }),
-                                weight: finalWeight,
-                              },
-                            }));
-                          }
-                          if (finalReps !== currRepsVal) {
-                            setLocalLogs((prev) => ({
-                              ...prev,
-                              [logKey]: {
-                                ...(prev[logKey] || { weight: '', reps: '', rpe: '6', rir: '4' }),
-                                reps: finalReps,
-                              },
-                            }));
-                          }
+                            onUpdateLog(logKey, 'weight', finalWeight);
+                            onUpdateLog(logKey, 'reps', finalReps);
+                            onUpdateLog(logKey, 'rpe', currentRpeNum.toString());
+                            onUpdateLog(logKey, 'rir', currentRirNum.toString());
+                            onUpdateLog(logKey, 'setType', currentSetType);
+                            persistLogsToStorageDirectly(logKey, {
+                              weight: finalWeight,
+                              reps: finalReps,
+                              rpe: currentRpeNum.toString(),
+                              rir: currentRirNum.toString(),
+                              setType: currentSetType,
+                              done: !setLog.done,
+                            });
 
-                          onUpdateLog(logKey, 'weight', finalWeight);
-                          onUpdateLog(logKey, 'reps', finalReps);
-                          onUpdateLog(logKey, 'rpe', currentRpeNum.toString());
-                          onUpdateLog(logKey, 'rir', currentRirNum.toString());
-                          onUpdateLog(logKey, 'setType', currentSetType);
-                          persistLogsToStorageDirectly(logKey, {
-                            weight: finalWeight,
-                            reps: finalReps,
-                            rpe: currentRpeNum.toString(),
-                            rir: currentRirNum.toString(),
-                            setType: currentSetType,
-                            done: !setLog.done,
-                          });
-
-                          if (isSmartRestEnabled && currentRpeNum >= 9) {
-                            if (!autoRestAppliedSetsRef.current.has(logKey)) {
-                              autoRestAppliedSetsRef.current.add(logKey);
-                              if (onUpdateRest) {
-                                onUpdateRest(index, item.rest + 30);
+                            if (isSmartRestEnabled && currentRpeNum >= 9) {
+                              if (!autoRestAppliedSetsRef.current.has(logKey)) {
+                                autoRestAppliedSetsRef.current.add(logKey);
+                                if (onUpdateRest) {
+                                  onUpdateRest(index, item.rest + 30);
+                                }
                               }
                             }
-                          }
 
-                          // Comemoração especial se for Novo Recorde Pessoal (PR)
-                          const checkFinalPR = checkSetPR(
-                            ex.name,
-                            parseFloat(finalWeight) || 0,
-                            parseInt(finalReps, 10) || 0,
-                            historicalPR
-                          );
-                          if (prResult || checkFinalPR) {
-                            soundManager.playPRCelebration();
-                          } else {
-                            soundManager.vibrateSetComplete();
-                          }
+                            // Comemoração especial se for Novo Recorde Pessoal (PR)
+                            const checkFinalPR = checkSetPR(
+                              ex.name,
+                              parseFloat(finalWeight) || 0,
+                              parseInt(finalReps, 10) || 0,
+                              historicalPR
+                            );
+                            if (prResult || checkFinalPR) {
+                              soundManager.playPRCelebration();
+                            } else {
+                              soundManager.vibrateSetComplete();
+                            }
 
-                          onToggleSet(logKey, isBisetWithNext ? 0 : item.rest);
-                          setExpandedSets((prev) => ({ ...prev, [logKey]: false }));
-                        }}
-                        className={`flex-1 sm:flex-initial min-h-[46px] px-5 rounded-xl flex items-center justify-center font-bold text-sm tracking-wide transition-all cursor-pointer gap-2 touch-manipulation shadow-md ${
-                          setLog.done
-                            ? 'bg-emerald-500 text-slate-950 font-black'
-                            : isBisetWithNext
-                            ? 'bg-purple-600 hover:bg-purple-500 text-white active:scale-95'
-                            : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
-                        }`}
-                      >
-                        <Check className="w-4 h-4 stroke-[3] shrink-0" />
-                        <span>
-                          {isBisetWithNext
-                            ? 'Concluir (Ir p/ 2º Ex. Bi-set)'
-                            : !currWeightVal && smartFallbackWeight
-                            ? `Concluir Série (${smartFallbackWeight}kg × ${currRepsVal || smartFallbackReps})`
-                            : 'Concluir Série'}
-                        </span>
-                      </button>
+                            onToggleSet(logKey, isBisetWithNext ? 0 : item.rest);
+                            setExpandedSets((prev) => ({ ...prev, [logKey]: false }));
+                          }}
+                          className={`flex-1 min-h-[44px] landscape:min-h-[40px] px-3.5 sm:px-4 rounded-xl flex items-center justify-center font-bold text-xs sm:text-sm tracking-wide transition-all cursor-pointer gap-1.5 touch-manipulation shadow-md ${
+                            setLog.done
+                              ? 'bg-emerald-500 text-slate-950 font-black'
+                              : isBisetWithNext
+                              ? 'bg-purple-600 hover:bg-purple-500 text-white active:scale-95'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
+                          }`}
+                        >
+                          <Check className="w-4 h-4 stroke-[3] shrink-0" />
+                          <span className="truncate">
+                            {isBisetWithNext
+                              ? 'Concluir (Ir p/ 2º Ex.)'
+                              : !currWeightVal && smartFallbackWeight
+                              ? `Concluir (${smartFallbackWeight}kg × ${currRepsVal || smartFallbackReps})`
+                              : 'Concluir Série'}
+                          </span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                );
-              })()}
-
-              {/* Badge Piscante de Auto-Progressão Inteligente na Série (1-Toque) */}
-              {setAutoProgression && parseFloat(currWeightVal || '0') !== setAutoProgression.suggestedKg && (
-                <div className="mt-2.5 flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 animate-pulse">
-                  <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-emerald-300">
-                    <Zap className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
-                    <span>
-                      Sugestão Hoje: <strong className="font-mono text-white">{setAutoProgression.suggestedKg} kg</strong> (+{setAutoProgression.incrementKg} kg)
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleInputChange(logKey, 'weight', setAutoProgression.suggestedKg.toString());
-                      if (!currRepsVal) {
-                        handleInputChange(logKey, 'reps', targetMaxReps.toString());
-                      }
-                      soundManager.vibrate(20);
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[10px] uppercase tracking-wider shrink-0 cursor-pointer transition-all active:scale-95"
-                  >
-                    Aplicar 1-Toque
-                  </button>
-                </div>
-              )}
-
-              {/* Badge de Novo Recorde Pessoal em Tempo Real */}
-              {prResult && (
-                <div className="mt-2.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-300 font-extrabold text-[11px] flex items-center justify-between gap-2 animate-pulse shadow-sm">
-                  <div className="flex items-center gap-1.5">
-                    <Flame className="w-4 h-4 text-amber-400 fill-amber-400 shrink-0" />
-                    <span>
-                      🔥 NOVO RECORDE PESSOAL (PR)!{' '}
-                      {prResult.isWeightPR
-                        ? `+${prResult.diffWeight}kg na carga máxima!`
-                        : `+${prResult.diff1RM}kg no 1RM estimado!`}
-                    </span>
-                  </div>
-                  <span className="text-[10px] bg-amber-500/30 text-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">
-                    Histórico Superado
-                  </span>
-                </div>
-              )}
-
-              {/* Botões Rápidos de 1-Toque: Copiar Série Anterior da Sessão ou Repetir do Treino Anterior */}
-              <div className="flex items-center gap-1.5 mt-2 px-1 text-[11px] text-slate-400 flex-wrap">
-                {/* 1-Tap: Replicar Série Anterior desta mesma sessão */}
-                {sIdx > 0 && (() => {
-                  const prevSetInSession = localLogs[`${ex.id}_${setNum - 1}`] || logs[`${ex.id}_${setNum - 1}`];
-                  const hasPrevWeight = prevSetInSession && (parseFloat(prevSetInSession.weight) || 0) > 0;
-                  if (!hasPrevWeight) return null;
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => handleReplicateSet(setNum, setNum - 1)}
-                      className="inline-flex items-center gap-1.5 font-bold text-emerald-300 hover:text-emerald-200 bg-emerald-500/15 hover:bg-emerald-500/25 px-2 py-1 rounded-lg border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shadow-sm"
-                      title="Copiar carga e repetições da série imediatamente anterior"
-                    >
-                      <Copy className="w-3 h-3 text-emerald-400" />
-                      <span>Copiar Série #{setNum - 1} ({prevSetInSession.weight}kg × {prevSetInSession.reps || '0'})</span>
-                    </button>
                   );
                 })()}
 
-                {/* Marca d'água comparativa da série no treino anterior (1-toque para repetir) */}
-                {prevSetRecord && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-slate-500 font-medium">Anterior:</span>
+                {/* Badge Piscante de Auto-Progressão Inteligente na Série (1-Toque) */}
+                {setAutoProgression && parseFloat(currWeightVal || '0') !== setAutoProgression.suggestedKg && (
+                  <div className="mt-2 flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 animate-pulse">
+                    <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-emerald-300 min-w-0">
+                      <Zap className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
+                      <span className="truncate">
+                        Sugestão: <strong className="font-mono text-white">{setAutoProgression.suggestedKg} kg</strong> (+{setAutoProgression.incrementKg} kg)
+                      </span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
-                        handleInputChange(logKey, 'weight', prevSetRecord.weight);
-                        handleInputChange(logKey, 'reps', prevSetRecord.reps);
-                        if (prevSetRecord.rpe) {
-                          handleUpdateRpe(logKey, parseInt(prevSetRecord.rpe, 10) || 6);
+                        handleInputChange(logKey, 'weight', setAutoProgression.suggestedKg.toString());
+                        if (!currRepsVal) {
+                          handleInputChange(logKey, 'reps', targetMaxReps.toString());
                         }
+                        soundManager.vibrate(20);
                       }}
-                      className="inline-flex items-center gap-1 font-mono font-semibold text-sky-300 hover:text-sky-200 bg-sky-500/10 hover:bg-sky-500/20 px-2 py-0.5 rounded border border-sky-500/20 transition-colors cursor-pointer"
-                      title="Toque para preencher com a carga e repetições do treino anterior"
+                      className="px-2 py-0.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[10px] uppercase tracking-wider shrink-0 cursor-pointer transition-all active:scale-95"
                     >
-                      <span>{prevSetRecord.weight}kg × {prevSetRecord.reps} reps</span>
-                      {prevSetRecord.rpe && <span className="text-amber-400 font-bold">@{prevSetRecord.rpe}</span>}
-                      <span className="text-[10px] text-sky-400 font-sans ml-0.5 font-bold">(repetir)</span>
+                      Aplicar
                     </button>
                   </div>
                 )}
-              </div>
 
-              {/* Informações de 1RM e Carga Sugerida com Smart Tooltips */}
-              <div className="flex items-center justify-between gap-2 mt-2 px-1 text-xs text-slate-400 flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {est1RM && (
-                    <SmartTermTooltip term="1RM" align="left" className="text-sky-400 font-mono font-medium">
+                {/* Badge de Novo Recorde Pessoal em Tempo Real */}
+                {prResult && (
+                  <div className="mt-2 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 text-amber-300 font-extrabold text-[11px] flex items-center justify-between gap-2 animate-pulse shadow-sm">
+                    <div className="flex items-center gap-1.5">
+                      <Flame className="w-4 h-4 text-amber-400 fill-amber-400 shrink-0" />
                       <span>
-                        1RM est.: <strong>~{est1RM}kg</strong>
+                        🔥 NOVO PR!{' '}
+                        {prResult.isWeightPR
+                          ? `+${prResult.diffWeight}kg carga máx.!`
+                          : `+${prResult.diff1RM}kg 1RM!`}
                       </span>
-                    </SmartTermTooltip>
-                  )}
-                  {est6RM && (
-                    <SmartTermTooltip term="6RM" align="left" className="text-amber-400 font-mono font-medium">
-                      <span>
-                        · 6RM: <strong>~{est6RM}kg</strong>
-                      </span>
-                    </SmartTermTooltip>
-                  )}
-                  {nextSetSuggestedWeight && sIdx < item.sets - 1 && (
-                    <span className="text-emerald-400 font-medium">
-                      · Sugerido próx. série: <strong>~{nextSetSuggestedWeight}kg</strong>
+                    </div>
+                    <span className="text-[10px] bg-amber-500/30 text-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider font-mono shrink-0">
+                      Recorde
                     </span>
-                  )}
+                  </div>
+                )}
+
+                {/* Botões Rápidos de 1-Toque: Copiar Série Anterior + Histórico + 1RM */}
+                <div className="flex items-center justify-between gap-1.5 mt-2 px-0.5 text-[11px] text-slate-400 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* 1-Tap: Replicar Série Anterior desta mesma sessão */}
+                    {sIdx > 0 && (() => {
+                      const prevSetInSession = localLogs[`${ex.id}_${setNum - 1}`] || logs[`${ex.id}_${setNum - 1}`];
+                      const hasPrevWeight = prevSetInSession && (parseFloat(prevSetInSession.weight) || 0) > 0;
+                      if (!hasPrevWeight) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => handleReplicateSet(setNum, setNum - 1)}
+                          className="inline-flex items-center gap-1 font-bold text-emerald-300 hover:text-emerald-200 bg-emerald-500/15 hover:bg-emerald-500/25 px-2 py-0.5 rounded-lg border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shadow-sm"
+                          title="Copiar carga e repetições da série imediatamente anterior"
+                        >
+                          <Copy className="w-3 h-3 text-emerald-400" />
+                          <span>Copiar #{setNum - 1} ({prevSetInSession.weight}kg×{prevSetInSession.reps || '0'})</span>
+                        </button>
+                      );
+                    })()}
+
+                    {/* Marca d'água comparativa da série no treino anterior (1-toque para repetir) */}
+                    {prevSetRecord && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-500 font-medium">Ant.:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleInputChange(logKey, 'weight', prevSetRecord.weight);
+                            handleInputChange(logKey, 'reps', prevSetRecord.reps);
+                            if (prevSetRecord.rpe) {
+                              handleUpdateRpe(logKey, parseInt(prevSetRecord.rpe, 10) || 6);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 font-mono font-semibold text-sky-300 hover:text-sky-200 bg-sky-500/10 hover:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/20 transition-colors cursor-pointer"
+                          title="Toque para preencher com a carga e repetições do treino anterior"
+                        >
+                          <span>{prevSetRecord.weight}kg×{prevSetRecord.reps}</span>
+                          {prevSetRecord.rpe && <span className="text-amber-400 font-bold">@{prevSetRecord.rpe}</span>}
+                          <span className="text-[10px] text-sky-400 font-sans font-bold">(usar)</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Informações de 1RM e Carga Sugerida com Smart Tooltips */}
+                  <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                    {est1RM && (
+                      <SmartTermTooltip term="1RM" align="left" className="text-sky-400 font-mono font-medium">
+                        <span>
+                          1RM: <strong>~{est1RM}kg</strong>
+                        </span>
+                      </SmartTermTooltip>
+                    )}
+                    {est6RM && (
+                      <SmartTermTooltip term="6RM" align="left" className="text-amber-400 font-mono font-medium">
+                        <span>
+                          · 6RM: <strong>~{est6RM}kg</strong>
+                        </span>
+                      </SmartTermTooltip>
+                    )}
+                    {nextSetSuggestedWeight && sIdx < item.sets - 1 && (
+                      <span className="text-emerald-400 font-medium">
+                        · Próx.: <strong>~{nextSetSuggestedWeight}kg</strong>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Controle de RPE de 6 a 10 com + e - e cálculo automático de RIR */}
-              <div className="mt-3 pt-2.5 border-t border-slate-800">
-                <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <SmartTermTooltip term="RPE" align="left" className="text-xs font-semibold text-slate-300">
-                      <span>Intensidade (RPE de 6 a 10):</span>
+              {/* Controle de RPE de 6 a 10 com + e - e cálculo automático de RIR (Horizontalmente Compacto em Paisagem) */}
+              <div className="mt-2.5 landscape:mt-2 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between gap-1.5 mb-1.5 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <SmartTermTooltip term="RPE" align="left" className="text-[11px] font-semibold text-slate-300">
+                      <span>RPE (6–10):</span>
                     </SmartTermTooltip>
 
                     {/* Smart RIR Suggestion Badge with Subtle Interactive Tooltip */}
                     {smartRirSuggestion && (
                       <div className="relative group/smartrir inline-flex items-center">
                         <div
-                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all ${
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] font-bold border transition-all ${
                             currentRirNum === smartRirSuggestion.predictedRir
                               ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
                               : 'bg-sky-500/15 text-sky-300 border-sky-500/40 shadow-sm'
@@ -2078,12 +2222,12 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                         >
                           <Sparkles className="w-3 h-3 text-sky-400 shrink-0" />
                           <span>
-                            Smart RIR:{' '}
+                            Sugerido:{' '}
                             <strong className="font-mono text-white">
-                              RIR {smartRirSuggestion.predictedRir}
+                              {smartRirSuggestion.predictedRir}
                             </strong>{' '}
-                            <span className="text-[10px] opacity-85 font-mono">
-                              (RPE {smartRirSuggestion.predictedRpe})
+                            <span className="text-[9px] opacity-85 font-mono">
+                              (@{smartRirSuggestion.predictedRpe})
                             </span>
                           </span>
 
@@ -2101,7 +2245,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                             </button>
                           ) : (
                             <span className="text-[9px] font-mono uppercase tracking-wider text-emerald-400 font-black">
-                              ✓ Calibrado
+                              ✓
                             </span>
                           )}
 
@@ -2120,7 +2264,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
 
                         {/* Subtle Tooltip (Hover on Desktop or Tap on Mobile) */}
                         <div
-                          className={` left-0 bottom-full mb-2 w-72 sm:w-80 p-3 rounded-xl bg-[#070c18] border border-sky-500/40 shadow-2xl text-[11px] text-slate-200 z-30 leading-relaxed transition-all duration-200 ${
+                          className={`left-0 bottom-full mb-2 w-72 sm:w-80 p-3 rounded-xl bg-[#070c18] border border-sky-500/40 shadow-2xl text-[11px] text-slate-200 z-30 leading-relaxed transition-all duration-200 ${
                             activeRirTooltipKey === logKey
                               ? 'block absolute animate-fadeIn'
                               : 'hidden group-hover/smartrir:block absolute pointer-events-none'
@@ -2129,7 +2273,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                           <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5 mb-1.5">
                             <span className="font-black text-sky-300 flex items-center gap-1">
                               <Target className="w-3.5 h-3.5 text-sky-400" />
-                              <span>Calibração de Intensidade (Smart RIR)</span>
+                              <span>Calibração de Esforço Sugerida</span>
                             </span>
                             <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                               {smartRirSuggestion.isExactWeight ? 'Carga Idêntica' : 'Carga Alinhada'}
@@ -2160,85 +2304,86 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                     )}
                   </div>
 
-                  <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  <span className="text-[11px] font-mono font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                     <SmartTermTooltip term="RIR" align="right">
                       <span>
-                        RPE {currentRpeNum} ➔ RIR {currentRirNum} {currentRirNum === 0 ? '(falha)' : `(${currentRirNum} sobram)`}
+                        RPE {currentRpeNum} ➔ RIR {currentRirNum} {currentRirNum === 0 ? '(falha)' : `(${currentRirNum} res.)`}
                       </span>
                     </SmartTermTooltip>
                   </span>
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  {/* Botões - e + para ajuste do RPE com botões maiores e acessíveis */}
-                  <div className="flex items-center justify-between sm:justify-start gap-2 bg-slate-900 border border-slate-700/80 rounded-xl p-1">
+                <div className="flex items-center justify-between gap-2">
+                  {/* Botões - e + para ajuste do RPE */}
+                  <div className="flex items-center gap-1 bg-slate-900 border border-slate-700/80 rounded-xl p-1 shrink-0">
                     <button
                       type="button"
                       onClick={() => handleUpdateRpe(logKey, currentRpeNum - 1)}
                       disabled={currentRpeNum <= 6}
-                      className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all active:scale-95"
+                      className="w-8 h-8 sm:w-9 sm:h-9 landscape:w-8 landscape:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all active:scale-95"
                       title="Diminuir RPE"
                     >
-                      <Minus className="w-4 h-4" />
+                      <Minus className="w-3.5 h-3.5" />
                     </button>
-                    <span className="font-mono font-extrabold text-sm text-white px-3 min-w-[70px] text-center">
+                    <span className="font-mono font-extrabold text-xs text-white px-1.5 min-w-[54px] text-center">
                       RPE {currentRpeNum}
                     </span>
                     <button
                       type="button"
                       onClick={() => handleUpdateRpe(logKey, currentRpeNum + 1)}
                       disabled={currentRpeNum >= 10}
-                      className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all active:scale-95"
+                      className="w-8 h-8 sm:w-9 sm:h-9 landscape:w-8 landscape:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all active:scale-95"
                       title="Aumentar RPE"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
-                    {/* Seletor direto RPE 6 a 10 */}
-                    <div className="flex items-center gap-1.5 flex-1 max-w-xs justify-end">
-                      {RPE_PRESETS.map((p) => {
-                        const isSelected = currentRpeNum === p.rpe;
-                        const isTarget = targetMuscleRir !== undefined && p.rir === targetMuscleRir;
-                        const isSmartPredicted =
-                          smartRirSuggestion !== undefined &&
-                          smartRirSuggestion !== null &&
-                          smartRirSuggestion.predictedRpe === p.rpe;
-                        return (
-                          <button
-                            key={p.rpe}
-                            type="button"
-                            onClick={() => handleUpdateRpe(logKey, p.rpe)}
-                            className={`flex-1 py-2 px-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer relative ${
-                              isSelected
-                                ? 'bg-amber-400 text-slate-950 font-black shadow-md ring-2 ring-amber-300 scale-105'
-                                : isSmartPredicted
-                                ? 'bg-sky-500/20 border-2 border-sky-400/70 text-sky-200 hover:bg-sky-500/30'
-                                : isTarget
-                                ? 'bg-amber-500/15 border-2 border-amber-500/60 text-amber-300 hover:bg-amber-500/25'
-                                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
-                            }`}
-                            title={`RPE ${p.rpe} = RIR ${p.rir}${isSmartPredicted ? ` (Sugestão Smart RIR: RIR ${p.rir})` : ''}${isTarget ? ' (Meta configurada para este músculo)' : ''}`}
-                          >
-                            <span>{p.rpe}</span>
-                            {isSmartPredicted && !isSelected && (
-                              <span
-                                className="absolute -top-1 -left-1 w-2 h-2 rounded-full bg-sky-400 animate-ping"
-                                title="RIR previsto pelo histórico"
-                              />
-                            )}
-                            {isTarget && !isSelected && (
-                              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  {/* Seletor direto RPE 6 a 10 sempre na mesma linha horizontal */}
+                  <div className="flex items-center gap-1 flex-1 max-w-xs justify-end">
+                    {RPE_PRESETS.map((p) => {
+                      const isSelected = currentRpeNum === p.rpe;
+                      const isTarget = targetMuscleRir !== undefined && p.rir === targetMuscleRir;
+                      const isSmartPredicted =
+                        smartRirSuggestion !== undefined &&
+                        smartRirSuggestion !== null &&
+                        smartRirSuggestion.predictedRpe === p.rpe;
+                      return (
+                        <button
+                          key={p.rpe}
+                          type="button"
+                          onClick={() => handleUpdateRpe(logKey, p.rpe)}
+                          className={`flex-1 py-1.5 sm:py-2 landscape:py-1.5 px-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer relative ${
+                            isSelected
+                              ? 'bg-amber-400 text-slate-950 font-black shadow-md ring-2 ring-amber-300 scale-105'
+                              : isSmartPredicted
+                              ? 'bg-sky-500/20 border-2 border-sky-400/70 text-sky-200 hover:bg-sky-500/30'
+                              : isTarget
+                              ? 'bg-amber-500/15 border-2 border-amber-500/60 text-amber-300 hover:bg-amber-500/25'
+                              : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
+                          }`}
+                          title={`RPE ${p.rpe} = RIR ${p.rir}${isSmartPredicted ? ` (Sugestão: RIR ${p.rir})` : ''}${isTarget ? ' (Meta configurada para este músculo)' : ''}`}
+                        >
+                          <span>{p.rpe}</span>
+                          {isSmartPredicted && !isSelected && (
+                            <span
+                              className="absolute -top-1 -left-1 w-2 h-2 rounded-full bg-sky-400 animate-ping"
+                              title="RIR previsto pelo histórico"
+                            />
+                          )}
+                          {isTarget && !isSelected && (
+                            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
           );
         })}
+        </div>
       </div>
 
       {/* 3. Rodapé do Card — Controles de Série e Descanso */}
@@ -2312,5 +2457,5 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
       )}
     </div>
   );
-});
+}, areExerciseCardPropsEqual);
 

@@ -386,3 +386,112 @@ export function getWeeklyMicrocycleStatus(
     statusMessage,
   };
 }
+
+export interface HabitAnalysisResult {
+  hasEnoughData: boolean;
+  habitualTimes: string[];
+  habitualDays: number[];
+  primaryTime: string;
+  sampleSize: number;
+  confidencePercentage: number;
+  summaryText: string;
+  recommendedReminderConfig: DailyReminderConfig;
+}
+
+/**
+ * Analisa o histórico de sessões para detectar os horários e dias habituais de treino
+ */
+export function analyzeWorkoutHabits(sessions: WorkoutSessionSummary[]): HabitAnalysisResult {
+  if (!sessions || sessions.length < 2) {
+    return {
+      hasEnoughData: false,
+      habitualTimes: ['18:00'],
+      habitualDays: [1, 3, 5],
+      primaryTime: '18:00',
+      sampleSize: sessions?.length || 0,
+      confidencePercentage: 0,
+      summaryText: 'Dados insuficientes. Conclua pelo menos 2 treinos para detecção automática dos seus horários habituais.',
+      recommendedReminderConfig: {
+        ...DEFAULT_REMINDER_CONFIG,
+        time: '18:00',
+        times: ['18:00'],
+        days: [1, 3, 5],
+      },
+    };
+  }
+
+  // Agrupa treinos por horário arredondado para intervalos de 30 min (ex: 18:30)
+  const hourBuckets: Record<string, number> = {};
+  const dayCounts: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+
+  sessions.forEach((s) => {
+    const d = new Date(s.date);
+    if (isNaN(d.getTime())) return;
+
+    const day = d.getDay();
+    dayCounts[day] = (dayCounts[day] || 0) + 1;
+
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const roundedM = m >= 45 ? 0 : m >= 15 ? 30 : 0;
+    const resolvedH = m >= 45 ? (h + 1) % 24 : h;
+    const timeKey = `${String(resolvedH).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`;
+    hourBuckets[timeKey] = (hourBuckets[timeKey] || 0) + 1;
+  });
+
+  const sortedTimes = Object.entries(hourBuckets).sort((a, b) => b[1] - a[1]);
+  const primaryTime = sortedTimes.length > 0 ? sortedTimes[0][0] : '18:00';
+  const topTimes = sortedTimes.slice(0, 2).map((entry) => entry[0]);
+
+  const activeDays = Object.entries(dayCounts)
+    .filter(([_, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([day]) => parseInt(day, 10));
+
+  const habitualDays = activeDays.length > 0 ? activeDays.slice(0, 5).sort() : [1, 3, 5];
+  const primaryCount = sortedTimes.length > 0 ? sortedTimes[0][1] : 0;
+  const confidencePercentage = Math.min(98, Math.round((primaryCount / sessions.length) * 100) + 20);
+
+  const dayLabels = habitualDays.map((d) => DAY_NAMES_SHORT[d]).join(', ');
+  const summaryText = `Com base em ${sessions.length} treinos analisados, você costuma treinar às ${primaryTime} (${dayLabels}).`;
+
+  return {
+    hasEnoughData: true,
+    habitualTimes: topTimes,
+    habitualDays,
+    primaryTime,
+    sampleSize: sessions.length,
+    confidencePercentage,
+    summaryText,
+    recommendedReminderConfig: {
+      enabled: true,
+      time: primaryTime,
+      times: topTimes,
+      days: habitualDays,
+      customTitle: 'Hora do treino habitual ⚡',
+      customMessage: `Detectamos seu horário habitual de treino (${primaryTime})! Vamos buscar a sobrecarga progressiva hoje 💪`,
+      notifiedSlots: [],
+    },
+  };
+}
+
+/**
+ * Envia configuração de lembretes habituais diretamente para o Service Worker nativo
+ */
+export function syncHabitsToServiceWorker(config: DailyReminderConfig): void {
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.ready
+      .then((reg) => {
+        if (reg.active) {
+          reg.active.postMessage({
+            type: 'SYNC_HABIT_SCHEDULE',
+            payload: config,
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('[SW] Erro ao sincronizar horários habituais com Service Worker:', err);
+      });
+  }
+}
+

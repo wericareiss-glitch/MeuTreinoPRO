@@ -28,11 +28,16 @@ import {
   sendAppNotification,
   normalizeReminderTimes,
   getNextScheduledReminderInfo,
+  analyzeWorkoutHabits,
+  syncHabitsToServiceWorker,
 } from '../utils/notifications';
+import { WorkoutSessionSummary } from '../types/workout';
+import { Brain, Zap } from 'lucide-react';
 
 interface ProfilePushNotificationManagerProps {
   userId: string;
   userName: string;
+  sessions?: WorkoutSessionSummary[];
 }
 
 const PRESET_MESSAGES = [
@@ -56,6 +61,7 @@ const PRESET_MESSAGES = [
 export const ProfilePushNotificationManager: React.FC<ProfilePushNotificationManagerProps> = ({
   userId,
   userName,
+  sessions,
 }) => {
   const [config, setConfig] = useState<DailyReminderConfig>(() => getReminderConfig(userId));
   const [permStatus, setPermStatus] = useState<NotificationPermission>(() =>
@@ -132,15 +138,39 @@ export const ProfilePushNotificationManager: React.FC<ProfilePushNotificationMan
 
   const configuredTimes = useMemo(() => normalizeReminderTimes(config), [config]);
   const nextReminderInfo = useMemo(() => getNextScheduledReminderInfo(config), [config]);
+  const habitAnalysis = useMemo(() => analyzeWorkoutHabits(sessions || []), [sessions]);
 
   const updateAndSave = (next: DailyReminderConfig) => {
     setConfig(next);
     saveReminderConfig(userId, next);
+    syncHabitsToServiceWorker(next);
+  };
+
+  const handleApplyHabitualSchedule = async () => {
+    if (permStatus !== 'granted') {
+      const granted = await requestNotificationPermission();
+      setPermStatus(getNotificationPermissionStatus());
+      if (!granted) {
+        showFeedback('error', 'Autorize as notificações para ativar o agendamento baseado nos seus hábitos.');
+        return;
+      }
+    }
+
+    const nextConfig = {
+      ...config,
+      ...habitAnalysis.recommendedReminderConfig,
+      enabled: true,
+    };
+    updateAndSave(nextConfig);
+    showFeedback(
+      'success',
+      `Lembretes sincronizados com seus horários habituais (${habitAnalysis.primaryTime})!`
+    );
   };
 
   const handleRequestPermission = async () => {
     if (!supported) {
-      showFeedback('error', 'Este navegador não suporta a Web Notification API.');
+      showFeedback('error', 'Este navegador não suporta envio de lembretes.');
       return;
     }
     const granted = await requestNotificationPermission();
@@ -150,11 +180,11 @@ export const ProfilePushNotificationManager: React.FC<ProfilePushNotificationMan
     if (granted) {
       showFeedback(
         'success',
-        'Permissão de Notificações Push concedida com sucesso! Você já pode agendar e testar alertas.'
+        'Lembretes ativados com sucesso! Você já pode agendar seus alertas de treino.'
       );
       sendAppNotification(
-        'Permissão Push Ativada ⚡',
-        `Perfeito, ${userName}! As notificações locais do MeuTreino Pro estão autorizadas.`
+        'Lembretes Ativados ⚡',
+        `Perfeito, ${userName}! Os avisos de treino do MeuTreino Pro estão prontos.`
       );
     } else if (updatedPerm === 'denied') {
       showFeedback(
@@ -265,13 +295,13 @@ export const ProfilePushNotificationManager: React.FC<ProfilePushNotificationMan
     const body =
       config.customMessage && config.customMessage.trim()
         ? config.customMessage.trim()
-        : `Hora do treino, ${userName}! Teste da API Notifications funcionando perfeitamente 💪`;
+        : `Hora do treino, ${userName}! Seus lembretes estão funcionando perfeitamente 💪`;
 
     const ok = sendAppNotification(title, body, 'meutreino-profile-test');
     if (ok) {
-      showFeedback('success', `Push de teste "${title}" enviado ao navegador!`);
+      showFeedback('success', `Alerta de teste "${title}" enviado para o seu aparelho!`);
     } else {
-      showFeedback('error', 'Não foi possível disparar a notificação. Verifique as permissões.');
+      showFeedback('error', 'Não foi possível enviar o alerta. Verifique se as notificações estão permitidas.');
     }
   };
 
@@ -305,14 +335,14 @@ export const ProfilePushNotificationManager: React.FC<ProfilePushNotificationMan
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base sm:text-lg font-extrabold text-white">
-                Notificações Push & Lembretes de Treino
+                Lembretes & Alertas de Treino
               </h2>
-              <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Web Notifications API
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Avisos no Aparelho
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Gerencie permissões do navegador, teste o envio de alertas Push e agende lembretes personalizados (ex: &ldquo;Hora do treino&rdquo;).
+              Escolha os dias e horários para receber lembretes personalizados no seu celular ou computador (ex: &ldquo;Hora do treino&rdquo;).
             </p>
           </div>
         </div>
@@ -327,17 +357,17 @@ export const ProfilePushNotificationManager: React.FC<ProfilePushNotificationMan
           }`}
         >
           <Bell className="w-4 h-4" />
-          <span>{config.enabled ? 'Lembretes Ativos' : 'Ativar Agenda Push'}</span>
+          <span>{config.enabled ? 'Lembretes Ativos' : 'Ativar Lembretes'}</span>
         </button>
       </div>
 
-      {/* Diagnóstico de Permissões & Status Técnico da API Notifications */}
+      {/* Status de Permissão e Próximo Lembrete */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* Card 1: Status da Permissão do Navegador */}
+        {/* Card 1: Status da Permissão */}
         <div className="bg-[#0a101d] p-4 rounded-2xl border border-slate-800 flex flex-col justify-between gap-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Permissão do Navegador
+              Status dos Alertas
             </span>
             <ShieldCheck
               className={`w-4 h-4 ${
@@ -361,17 +391,17 @@ export const ProfilePushNotificationManager: React.FC<ProfilePushNotificationMan
               }`}
             >
               {permStatus === 'granted'
-                ? '✓ Autorizado (Granted)'
+                ? '✓ Autorizado'
                 : permStatus === 'denied'
-                ? '✕ Bloqueado (Denied)'
-                : '• Pendente (Solicitar)'}
+                ? '✕ Bloqueado'
+                : '• Aguardando Permissão'}
             </span>
             <span className="text-[11px] text-slate-400 block mt-0.5">
               {permStatus === 'granted'
-                ? 'Pronto para disparar notificações locais.'
+                ? 'Pronto para enviar lembretes no aparelho.'
                 : permStatus === 'denied'
-                ? 'Desbloqueie nas configurações do site no navegador.'
-                : 'Clique abaixo para conceder permissão.'}
+                ? 'Libere as notificações nas configurações do navegador.'
+                : 'Toque abaixo para permitir os lembretes.'}
             </span>
           </div>
 
@@ -381,31 +411,31 @@ export const ProfilePushNotificationManager: React.FC<ProfilePushNotificationMan
               onClick={handleRequestPermission}
               className="mt-1 w-full py-1.5 px-3 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all cursor-pointer"
             >
-              Solicitar Permissão Push
+              Permitir Lembretes
             </button>
           )}
         </div>
 
-        {/* Card 2: Motor Service Worker & API */}
+        {/* Card 2: Tipo de Alerta */}
         <div className="bg-[#0a101d] p-4 rounded-2xl border border-slate-800 flex flex-col justify-between gap-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Motor Push Local
+              Modo de Aviso
             </span>
             <Sparkles className="w-4 h-4 text-sky-400" />
           </div>
           <div>
             <span className="text-sm font-black text-white block">
-              { !supported
-                ? 'API Indisponível'
+              {!supported
+                ? 'Indisponível neste aparelho'
                 : swReady
-                ? 'Service Worker + Notification API'
-                : 'Notification API Nativa'}
+                ? 'Alertas Inteligentes Ativos'
+                : 'Alertas Padrão do Aparelho'}
             </span>
             <span className="text-[11px] text-slate-400 block mt-0.5">
               {swReady
-                ? 'Suporte a vibração, ícone PWA e foco no treino ao clicar.'
-                : 'Notificações diretas na área de trabalho / celular.'}
+                ? 'Com vibração e atalho rápido para abrir seu treino ao tocar.'
+                : 'Avisos diretos na tela do seu celular ou computador.'}
             </span>
           </div>
         </div>
@@ -440,6 +470,59 @@ export const ProfilePushNotificationManager: React.FC<ProfilePushNotificationMan
             )}
           </div>
         </div>
+      </div>
+
+      {/* 🧠 Card de Detecção Inteligente de Hábitos de Treino (Push Nativo via Service Worker) */}
+      <div className="bg-gradient-to-r from-[#0d1627] via-[#0f1d33] to-[#0d1627] p-4 sm:p-5 rounded-2xl border border-sky-500/30 space-y-3 relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30">
+              <Brain className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs sm:text-sm font-extrabold text-white">
+                  Detecção de Horários Habituais (Baseada no Histórico)
+                </span>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                  {habitAnalysis.hasEnoughData
+                    ? `${habitAnalysis.confidencePercentage}% Confiança`
+                    : 'Aguardando Mais Treinos'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 mt-0.5">
+                {habitAnalysis.summaryText}
+              </p>
+            </div>
+          </div>
+
+          {habitAnalysis.hasEnoughData && (
+            <button
+              type="button"
+              onClick={handleApplyHabitualSchedule}
+              className="px-4 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-sky-500 to-emerald-500 hover:from-sky-400 hover:to-emerald-400 text-slate-950 flex items-center justify-center gap-1.5 shadow-md shadow-sky-500/20 cursor-pointer active:scale-95 transition-all shrink-0"
+            >
+              <Zap className="w-3.5 h-3.5 fill-slate-950" />
+              <span>Sincronizar com Meus Hábitos Reais</span>
+            </button>
+          )}
+        </div>
+
+        {habitAnalysis.hasEnoughData && (
+          <div className="flex items-center gap-3 flex-wrap pt-2 border-t border-sky-500/20 text-xs">
+            <span className="text-slate-400">
+              Horário Habitual Detectado: <strong className="text-amber-300 font-mono">{habitAnalysis.primaryTime}</strong>
+            </span>
+            <span className="text-slate-600">•</span>
+            <span className="text-slate-400">
+              Dias Preferidos: <strong className="text-emerald-300">{habitAnalysis.habitualDays.map(d => ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][d]).join(', ')}</strong>
+            </span>
+            <span className="text-slate-600">•</span>
+            <span className="text-slate-400">
+              Amostra: <strong className="text-white">{habitAnalysis.sampleSize} treinos</strong>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Personalização do Lembrete (Título & Mensagem - ex: "Hora do treino") */}

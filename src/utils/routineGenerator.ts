@@ -373,7 +373,7 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
     const estimatedMinutes = Math.round((totalSets * (45 + restSeconds)) / 60);
 
     return {
-      id: `routine_${plan.letter.toLowerCase()}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `routine_${plan.letter.toLowerCase()}_${Date.now()}_${planIdx}_${Math.random().toString(36).slice(2, 7)}`,
       letter: plan.letter,
       name: plan.name,
       subtitle: plan.subtitle,
@@ -382,6 +382,7 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       items: sortedItems,
       totalSets,
       estimatedMinutes: Math.max(20, estimatedMinutes),
+      createdAt: new Date(Date.now() + planIdx).toISOString(),
     };
   });
 
@@ -560,8 +561,11 @@ export function generateQuickWorkoutRoutine(
 
   const totalSets = items.reduce((acc, curr) => acc + curr.sets, 0);
 
+  const nowTs = Date.now();
+  const randSuffix = Math.random().toString(36).slice(2, 7);
+
   return {
-    id: `quick_routine_${Date.now()}`,
+    id: `quick_routine_${nowTs}_${randSuffix}`,
     letter: '⚡',
     name: 'Treino Rápido Full Body',
     subtitle: 'Padrão Dobradiça, Joelho, Empurrar & Puxar (Alta Eficiência)',
@@ -571,5 +575,6 @@ export function generateQuickWorkoutRoutine(
     totalSets,
     estimatedMinutes: 35,
     isCustom: true,
+    createdAt: new Date(nowTs).toISOString(),
   };
 }

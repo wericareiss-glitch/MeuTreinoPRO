@@ -246,7 +246,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
               </button>
               <label className="w-full py-3 px-3 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer text-center">
                 <Upload className="w-4 h-4 text-sky-400" />
-                <span>Importar Perfil (.json)</span>
+                <span>Restaurar Cópia Salva</span>
                 <input
                   type="file"
                   accept=".json"
