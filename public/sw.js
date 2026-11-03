@@ -11,6 +11,17 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// OBRIGATÓRIO PARA O ANDROID: O Service Worker precisa interceptar fetch 
+// para que o navegador reconheça o app como um PWA instalável válido.
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    fetch(event.request).catch(() => {
+      // Fallback básico caso esteja offline
+      return caches.match(event.request);
+    })
+  );
+});
+
 // Escuta eventos Push nativos caso acionados
 self.addEventListener('push', (event) => {
   let payload = {

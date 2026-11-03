@@ -3,12 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    
+    <!-- Configurações de PWA e Cor do Tema para Android -->
+    <meta name="theme-color" content="#090d16" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MeuTreino Pro" />
+    
+    <!-- Link para o Manifesto do PWA (Essencial para o Android habilitar a instalação) -->
+    <link rel="manifest" href="/manifest.json" />
+
     <title>MeuTreino Pro</title>
     <meta name="description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
+    
+    <!-- Open Graph / Twitter -->
     <meta property="og:title" content="MeuTreino Pro" />
     <meta property="og:description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Script de Tema (Dark / Light) -->
     <script>
       (function() {
         try {
@@ -40,4 +54,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
