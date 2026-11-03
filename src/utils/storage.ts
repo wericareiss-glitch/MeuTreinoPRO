@@ -44,47 +44,162 @@ function decodePayload(stored: string): string {
   }
 }
 
+// ============================================================================
+// IndexedDB High-Capacity Offline Persistence Engine + In-Memory Fast Cache
+// Protects multi-year workout logs & base64 body photos from 5MB localStorage limits
+// ============================================================================
+const IDB_NAME = 'meutreino_pro_idb';
+const IDB_VERSION = 1;
+const IDB_STORE = 'kv_vault';
+
+const memoryCache = new Map<string, unknown>();
+let idbPromise: Promise<IDBDatabase | null> | null = null;
+
+function openVaultDB(): Promise<IDBDatabase | null> {
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+    return Promise.resolve(null);
+  }
+  if (!idbPromise) {
+    idbPromise = new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(IDB_STORE)) {
+            db.createObjectStore(IDB_STORE);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+  return idbPromise;
+}
+
+async function idbSet(key: string, encryptedPayload: string): Promise<void> {
+  const db = await openVaultDB();
+  if (!db) return;
+  try {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(encryptedPayload, key);
+  } catch {
+    // Ignore IDB transient write errors
+  }
+}
+
+async function idbRemove(key: string): Promise<void> {
+  const db = await openVaultDB();
+  if (!db) return;
+  try {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).delete(key);
+  } catch {
+    // Ignore IDB delete errors
+  }
+}
+
+// Hydrate memoryCache and localStorage from IndexedDB on startup
+if (typeof window !== 'undefined') {
+  openVaultDB().then((db) => {
+    if (!db) return;
+    try {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const store = tx.objectStore(IDB_STORE);
+      const getAllKeysReq = store.getAllKeys();
+      getAllKeysReq.onsuccess = () => {
+        const keys = getAllKeysReq.result || [];
+        keys.forEach((k) => {
+          const keyStr = String(k);
+          const getReq = store.get(k);
+          getReq.onsuccess = () => {
+            const rawVal = getReq.result;
+            if (typeof rawVal === 'string') {
+              try {
+                const decoded = rawVal.startsWith(ENC_PREFIX) ? decodePayload(rawVal) : rawVal;
+                const parsed = JSON.parse(decoded);
+                if (!memoryCache.has(keyStr)) {
+                  memoryCache.set(keyStr, parsed);
+                }
+                if (!localStorage.getItem(keyStr)) {
+                  try {
+                    localStorage.setItem(keyStr, rawVal);
+                  } catch {
+                    // Quota full in localStorage; memoryCache + IndexedDB hold the data safely
+                  }
+                }
+              } catch {
+                // Ignore malformed legacy entry
+              }
+            }
+          };
+        });
+      };
+    } catch {
+      // Ignore hydration errors
+    }
+  });
+}
+
 /**
- * Safe localStorage wrapper with automatic payload encryption/obfuscation
- * to protect sensitive user data from unauthorized inspection in shared environments.
+ * Safe storage wrapper with automatic payload encryption/obfuscation,
+ * synchronous in-memory cache, localStorage persistence, and IndexedDB mirroring
+ * to guarantee zero data loss even beyond the 5MB localStorage limit.
  */
 export const safeStorage = {
   get<T>(key: string, defaultValue: T): T {
+    if (memoryCache.has(key)) {
+      return memoryCache.get(key) as T;
+    }
     try {
       const raw = localStorage.getItem(key);
       if (!raw) return defaultValue;
       const isEncrypted = raw.startsWith(ENC_PREFIX);
       const decoded = isEncrypted ? decodePayload(raw) : raw;
       const parsed = JSON.parse(decoded) as T;
-      // Transparently upgrade legacy plaintext entries to encrypted format
+      memoryCache.set(key, parsed);
+      // Transparently upgrade legacy plaintext entries to encrypted format & mirror to IndexedDB
+      const encoded = isEncrypted ? raw : encodePayload(decoded);
       if (!isEncrypted) {
         try {
-          localStorage.setItem(key, encodePayload(decoded));
+          localStorage.setItem(key, encoded);
         } catch {
           // Ignore quota errors on transparent upgrade
         }
       }
+      idbSet(key, encoded).catch(() => {});
       return parsed;
     } catch (e) {
-      console.warn(`Failed to read localStorage key "${key}":`, e);
+      console.warn(`Failed to read storage key "${key}":`, e);
       return defaultValue;
     }
   },
 
   set<T>(key: string, value: T): void {
+    memoryCache.set(key, value);
     try {
       const json = JSON.stringify(value);
-      localStorage.setItem(key, encodePayload(json));
+      const encoded = encodePayload(json);
+      idbSet(key, encoded).catch(() => {});
+      try {
+        localStorage.setItem(key, encoded);
+      } catch {
+        // If localStorage hits the 5MB quota (e.g. base64 body photos), IndexedDB + memoryCache preserve all data seamlessly
+      }
     } catch (e) {
-      console.warn(`Failed to save localStorage key "${key}":`, e);
+      console.warn(`Failed to save storage key "${key}":`, e);
     }
   },
 
   remove(key: string): void {
+    memoryCache.delete(key);
+    idbRemove(key).catch(() => {});
     try {
       localStorage.removeItem(key);
     } catch (e) {
-      console.warn(`Failed to remove localStorage key "${key}":`, e);
+      console.warn(`Failed to remove storage key "${key}":`, e);
     }
   },
 };

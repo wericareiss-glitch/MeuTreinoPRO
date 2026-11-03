@@ -687,7 +687,14 @@ export default function App() {
     });
   }, []);
 
-  // Exercise reordering (Master Controls)
+  // Exercise reordering (Master Controls + Drag & Drop)
+  const syncActiveRoutineItems = useCallback((updatedItems: WorkoutItem[]) => {
+    if (!activeRoutineId) return;
+    setRoutines((prev) =>
+      prev.map((r) => (r.id === activeRoutineId ? { ...r, items: updatedItems } : r))
+    );
+  }, [activeRoutineId]);
+
   const handleMoveUp = useCallback((index: number) => {
     if (index <= 0) return;
     setWorkoutItems((prev) => {
@@ -695,9 +702,10 @@ export default function App() {
       const temp = copy[index];
       copy[index] = copy[index - 1];
       copy[index - 1] = temp;
+      syncActiveRoutineItems(copy);
       return copy;
     });
-  }, []);
+  }, [syncActiveRoutineItems]);
 
   const handleMoveDown = useCallback((index: number) => {
     setWorkoutItems((prev) => {
@@ -706,28 +714,63 @@ export default function App() {
       const temp = copy[index];
       copy[index] = copy[index + 1];
       copy[index + 1] = temp;
+      syncActiveRoutineItems(copy);
       return copy;
     });
-  }, []);
+  }, [syncActiveRoutineItems]);
+
+  const handleReorderExercises = useCallback((fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setWorkoutItems((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const [moved] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, moved);
+      syncActiveRoutineItems(copy);
+      return copy;
+    });
+    showToast('Ordem dos exercícios atualizada!');
+  }, [syncActiveRoutineItems, showToast]);
+
+  const handleReorderRoutines = useCallback((fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setRoutines((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const [moved] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, moved);
+      return copy;
+    });
+    showToast('Ordem dos treinos atualizada!');
+  }, [showToast]);
 
   const handleDeleteExercise = useCallback((index: number) => {
-    setWorkoutItems((prev) => prev.filter((_, i) => i !== index));
+    setWorkoutItems((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      syncActiveRoutineItems(next);
+      return next;
+    });
     showToast('Exercício removido do treino.');
-  }, [showToast]);
+  }, [syncActiveRoutineItems, showToast]);
 
   const handleSelectSwapExercise = useCallback((index: number, newExercise: Exercise) => {
     setWorkoutItems((prev) => {
       const copy = [...prev];
       copy[index] = { ...copy[index], exercise: newExercise };
+      syncActiveRoutineItems(copy);
       return copy;
     });
     showToast(`Substituído para ${newExercise.name}`);
-  }, [showToast]);
+  }, [syncActiveRoutineItems, showToast]);
 
   const handleAddCustomExercise = useCallback((newItem: WorkoutItem) => {
-    setWorkoutItems((prev) => [...prev, newItem]);
+    setWorkoutItems((prev) => {
+      const next = [...prev, newItem];
+      syncActiveRoutineItems(next);
+      return next;
+    });
     showToast(`Exercício "${newItem.exercise.name}" adicionado ao treino!`);
-  }, [showToast]);
+  }, [syncActiveRoutineItems, showToast]);
 
   // Volume Dashboard Calculations
   const activeWorkoutMuscles = useMemo(() => {
@@ -1202,6 +1245,7 @@ export default function App() {
             onEditRoutine={handleEditRoutine}
             onDeleteRoutine={handleDeleteRoutine}
             onShareRoutine={handleShareRoutine}
+            onReorderRoutines={handleReorderRoutines}
           />
         )}
 
@@ -1220,6 +1264,7 @@ export default function App() {
             onOpenAddExercise={() => setIsAddExerciseOpen(true)}
             onMoveUp={handleMoveUp}
             onMoveDown={handleMoveDown}
+            onReorderExercises={handleReorderExercises}
             onDeleteExercise={handleDeleteExercise}
             onUpdateLog={handleUpdateLog}
             onToggleSet={handleToggleSet}

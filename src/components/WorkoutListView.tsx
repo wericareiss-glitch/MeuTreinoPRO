@@ -18,11 +18,13 @@ import {
   MoreVertical, 
   Share2, 
   Zap,
-  FileDown
+  FileDown,
+  GripVertical
 } from 'lucide-react';
 import { GeneratedWorkoutRoutine, UserProfile } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { WorkoutPdfExportModal } from './WorkoutPdfExportModal';
+import { soundManager } from '../utils/audio';
 
 interface WorkoutListViewProps {
   user: UserProfile;
@@ -35,6 +37,7 @@ interface WorkoutListViewProps {
   onEditRoutine?: (routine: GeneratedWorkoutRoutine) => void;
   onDeleteRoutine?: (routineId: string) => void;
   onShareRoutine?: (routine: GeneratedWorkoutRoutine) => void;
+  onReorderRoutines?: (fromIndex: number, toIndex: number) => void;
 }
 
 export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
@@ -48,11 +51,14 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   onEditRoutine,
   onDeleteRoutine,
   onShareRoutine,
+  onReorderRoutines,
 }) => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [copiedToast, setCopiedToast] = useState(false);
   const [pdfModalRoutine, setPdfModalRoutine] = useState<GeneratedWorkoutRoutine | null>(null);
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
 
   const handleShareClick = (routine: GeneratedWorkoutRoutine) => {
     if (onShareRoutine) {
@@ -78,10 +84,70 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     }
   };
 
-  // Treinos ordenados do mais recente para o mais antigo
+  // Treinos ordenados do mais recente para o mais antigo (índice visual mapeia para routines.length - 1 - visualIdx)
   const sortedRoutines = React.useMemo(() => {
     return [...routines].reverse();
   }, [routines]);
+
+  const handleReorderVisualCards = React.useCallback(
+    (fromVisualIdx: number, toVisualIdx: number) => {
+      if (fromVisualIdx === toVisualIdx || !onReorderRoutines) return;
+      const total = routines.length;
+      const fromOriginalIdx = total - 1 - fromVisualIdx;
+      const toOriginalIdx = total - 1 - toVisualIdx;
+      if (fromOriginalIdx >= 0 && toOriginalIdx >= 0 && fromOriginalIdx < total && toOriginalIdx < total) {
+        onReorderRoutines(fromOriginalIdx, toOriginalIdx);
+        soundManager.vibrate(25);
+      }
+    },
+    [routines.length, onReorderRoutines]
+  );
+
+  // Pointer Hold-and-Drag on Routine Card Grip Handle (Mobile Touch + Desktop Mouse)
+  const handlePointerDownRoutineHandle = (startVisualIdx: number, e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingIdx(startVisualIdx);
+    setDropTargetIdx(startVisualIdx);
+    soundManager.vibrate(15);
+
+    let latestTarget = startVisualIdx;
+
+    const handlePointerMove = (moveEvt: PointerEvent) => {
+      const viewportH = window.innerHeight;
+      if (moveEvt.clientY < 90) {
+        window.scrollBy({ top: -14, behavior: 'auto' });
+      } else if (moveEvt.clientY > viewportH - 90) {
+        window.scrollBy({ top: 14, behavior: 'auto' });
+      }
+
+      const elUnder = document.elementFromPoint(moveEvt.clientX, moveEvt.clientY);
+      const cardEl = elUnder?.closest('[data-routine-card-index]') as HTMLElement | null;
+      if (cardEl) {
+        const overIdx = parseInt(cardEl.getAttribute('data-routine-card-index') || '', 10);
+        if (!isNaN(overIdx) && overIdx !== latestTarget) {
+          latestTarget = overIdx;
+          setDropTargetIdx(overIdx);
+          soundManager.vibrate(10);
+        }
+      }
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      if (latestTarget !== startVisualIdx) {
+        handleReorderVisualCards(startVisualIdx, latestTarget);
+      }
+      setDraggingIdx(null);
+      setDropTargetIdx(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+  };
 
   return (
     <div className="space-y-5 animate-fadeIn pb-24 max-w-4xl mx-auto relative">
@@ -116,7 +182,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
               Seus Treinos & Rotinas
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              Escolha uma rotina para treinar ou crie um treino rápido instantâneo.
+              Escolha uma rotina para treinar, segure e arraste para reordenar ou toque em &ldquo;Alterar&rdquo; para editar exercícios.
             </p>
           </div>
 
@@ -199,25 +265,67 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
           </div>
         </div>
       ) : (
-        /* Lista de Treinos Acumulados (Do mais recente para o mais antigo) */
+        /* Lista de Treinos Acumulados (Com Segurar e Arrastar nos Cards) */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {sortedRoutines.map((routine) => {
+          {sortedRoutines.map((routine, visualIdx) => {
             const isActive = activeRoutineId === routine.id;
             const isMenuOpen = openMenuId === routine.id;
+            const isDraggingThis = draggingIdx === visualIdx;
+            const isDropTargetThis = dropTargetIdx === visualIdx && draggingIdx !== visualIdx;
 
             return (
               <div
                 key={routine.id}
+                data-routine-card-index={visualIdx}
+                draggable={Boolean(onReorderRoutines)}
+                onDragStart={(e) => {
+                  setDraggingIdx(visualIdx);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', String(visualIdx));
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDropTargetIdx(visualIdx);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const fromIdx =
+                    draggingIdx !== null ? draggingIdx : parseInt(e.dataTransfer.getData('text/plain'), 10);
+                  if (!isNaN(fromIdx) && fromIdx !== visualIdx) {
+                    handleReorderVisualCards(fromIdx, visualIdx);
+                  }
+                  setDraggingIdx(null);
+                  setDropTargetIdx(null);
+                }}
+                onDragEnd={() => {
+                  setDraggingIdx(null);
+                  setDropTargetIdx(null);
+                }}
                 className={`p-4 sm:p-5 rounded-3xl border transition-all relative flex flex-col justify-between ${
+                  isDraggingThis ? 'card-dragging' : ''
+                } ${isDropTargetThis ? 'card-drop-target' : ''} ${
                   isActive
                     ? 'bg-gradient-to-br from-emerald-950/40 via-[#0d1627] to-slate-900 border-emerald-500/60 shadow-xl shadow-emerald-500/10 ring-1 ring-emerald-400/30'
                     : 'bg-[#101828] border-[#1e2c45] hover:border-slate-700 shadow-lg'
                 }`}
               >
                 <div>
-                  {/* Header do Card com Menu de 3 Pontos */}
+                  {/* Header do Card com Alça de Segurar e Arrastar + Menu de 3 Pontos */}
                   <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {onReorderRoutines && sortedRoutines.length > 1 && (
+                        <button
+                          type="button"
+                          onPointerDown={(e) => handlePointerDownRoutineHandle(visualIdx, e)}
+                          className="drag-handle-touch p-1.5 -ml-1 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-emerald-400 border border-slate-800 cursor-grab active:cursor-grabbing shrink-0 transition-colors"
+                          title="Segurar e arrastar para mover este card de treino"
+                          aria-label={`Segurar e arrastar ${routine.name}`}
+                        >
+                          <GripVertical className="w-4 h-4" />
+                        </button>
+                      )}
+
                       <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-lg shrink-0 ${
                         isActive
                           ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30'
@@ -290,7 +398,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                                 className="w-full px-3 py-2 text-left text-xs font-medium text-slate-200 hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
                               >
                                 <Pencil className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Editar Exercícios</span>
+                                <span>Editar / Alterar Exercícios</span>
                               </button>
                             )}
 
@@ -394,9 +502,21 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
 
                   {/* Preview dos Exercícios */}
                   <div className="space-y-1 mb-4">
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 block mb-1">
-                      Exercícios programados (1 por grupo):
-                    </span>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500">
+                        Exercícios programados:
+                      </span>
+                      {onEditRoutine && (
+                        <button
+                          type="button"
+                          onClick={() => onEditRoutine(routine)}
+                          className="text-[10px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Pencil className="w-2.5 h-2.5" />
+                          <span>Alterar exercícios</span>
+                        </button>
+                      )}
+                    </div>
                     {routine.items.slice(0, 5).map((it, idx) => (
                       <div key={idx} className="text-xs text-slate-300 truncate flex items-center justify-between gap-1.5 py-0.5">
                         <div className="flex items-center gap-1.5 truncate">
@@ -416,7 +536,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                   </div>
                 </div>
 
-                {/* Ações: Iniciar Treino + Ficha PDF */}
+                {/* Ações: Iniciar Treino + Editar/Alterar + Ficha PDF */}
                 <div className="pt-2 border-t border-slate-800/60 flex items-center gap-2">
                   <button
                     type="button"
@@ -431,14 +551,26 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                     <span>{isActive ? 'Continuar Treino' : 'Iniciar Este Treino'}</span>
                   </button>
 
+                  {onEditRoutine && (
+                    <button
+                      type="button"
+                      onClick={() => onEditRoutine(routine)}
+                      className="py-3.5 px-3 rounded-xl font-bold text-xs bg-slate-800/90 hover:bg-slate-700 text-amber-300 border border-amber-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-95"
+                      title="Editar treino, reordenar ou alterar exercícios"
+                    >
+                      <Pencil className="w-4 h-4 text-amber-400" />
+                      <span className="hidden xs:inline">Editar</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setPdfModalRoutine(routine)}
-                    className="py-3.5 px-3.5 rounded-xl font-bold text-xs bg-slate-800/90 hover:bg-slate-700 text-sky-300 border border-sky-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-95"
+                    className="py-3.5 px-3 rounded-xl font-bold text-xs bg-slate-800/90 hover:bg-slate-700 text-sky-300 border border-sky-500/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-95"
                     title="Exportar ficha de treino em PDF A4 ou imprimir"
                   >
                     <FileDown className="w-4 h-4 text-sky-400" />
-                    <span className="hidden xs:inline">PDF</span>
+                    <span className="hidden sm:inline">PDF</span>
                   </button>
                 </div>
               </div>

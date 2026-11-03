@@ -473,3 +473,94 @@ input[type="number"] {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
+/* ==========================================================================
+   13. DARK OLED ABSOLUTO (#000000) & CUSTOM ACCENT PALETTES
+   ========================================================================== */
+[data-theme="oled"],
+.theme-oled {
+  --color-scheme: dark;
+  --bg-app: #000000;
+  --bg-surface: #030305;
+  --bg-surface-secondary: #07070b;
+  --bg-card: #020204;
+  --bg-card-subtle: #08080e;
+  --bg-input: #000000;
+  --border-subtle: #18181b;
+  --border-strong: #27272a;
+}
+
+[data-theme="oled"] [class*="bg-[#07"],
+[data-theme="oled"] [class*="bg-[#08"],
+[data-theme="oled"] [class*="bg-[#09"],
+[data-theme="oled"] [class*="bg-[#0a"],
+[data-theme="oled"] [class*="bg-[#0b"],
+[data-theme="oled"] .bg-slate-950,
+[data-theme="oled"] [class*="bg-slate-950/"] {
+  background-color: #000000 !important;
+}
+
+[data-theme="oled"] [class*="bg-[#0c"],
+[data-theme="oled"] [class*="bg-[#0d"],
+[data-theme="oled"] [class*="bg-[#0f"],
+[data-theme="oled"] [class*="bg-[#10"]:not([class*="bg-[#10b981]"]),
+[data-theme="oled"] .bg-slate-900,
+[data-theme="oled"] [class*="bg-slate-900/"] {
+  background-color: #050508 !important;
+}
+
+/* Accent Palette: Gold & Black */
+[data-accent="gold"] .bg-emerald-500 { background-color: #f59e0b !important; }
+[data-accent="gold"] .hover\:bg-emerald-400:hover { background-color: #fbbf24 !important; }
+[data-accent="gold"] .text-emerald-400 { color: #fbbf24 !important; }
+[data-accent="gold"] .text-emerald-300 { color: #fde68a !important; }
+[data-accent="gold"] .border-emerald-500\/30,
+[data-accent="gold"] .border-emerald-500\/35,
+[data-accent="gold"] .border-emerald-500\/40,
+[data-accent="gold"] .border-emerald-500\/50 { border-color: rgba(245, 158, 11, 0.45) !important; }
+[data-accent="gold"] .bg-emerald-500\/15,
+[data-accent="gold"] .bg-emerald-500\/10 { background-color: rgba(245, 158, 11, 0.15) !important; }
+
+/* Accent Palette: Neon Cyan */
+[data-accent="cyan"] .bg-emerald-500 { background-color: #06b6d4 !important; }
+[data-accent="cyan"] .hover\:bg-emerald-400:hover { background-color: #22d3ee !important; }
+[data-accent="cyan"] .text-emerald-400 { color: #22d3ee !important; }
+[data-accent="cyan"] .text-emerald-300 { color: #67e8f9 !important; }
+[data-accent="cyan"] .border-emerald-500\/30,
+[data-accent="cyan"] .border-emerald-500\/35,
+[data-accent="cyan"] .border-emerald-500\/40,
+[data-accent="cyan"] .border-emerald-500\/50 { border-color: rgba(6, 182, 212, 0.45) !important; }
+[data-accent="cyan"] .bg-emerald-500\/15,
+[data-accent="cyan"] .bg-emerald-500\/10 { background-color: rgba(6, 182, 212, 0.15) !important; }
+
+/* Accent Palette: Crimson Red */
+[data-accent="crimson"] .bg-emerald-500 { background-color: #f43f5e !important; color: #ffffff !important; }
+[data-accent="crimson"] .hover\:bg-emerald-400:hover { background-color: #fb7185 !important; }
+[data-accent="crimson"] .text-emerald-400 { color: #fb7185 !important; }
+[data-accent="crimson"] .text-emerald-300 { color: #fda4af !important; }
+[data-accent="crimson"] .border-emerald-500\/30,
+[data-accent="crimson"] .border-emerald-500\/35,
+[data-accent="crimson"] .border-emerald-500\/40,
+[data-accent="crimson"] .border-emerald-500\/50 { border-color: rgba(244, 63, 94, 0.45) !important; }
+[data-accent="crimson"] .bg-emerald-500\/15,
+[data-accent="crimson"] .bg-emerald-500\/10 { background-color: rgba(244, 63, 94, 0.15) !important; }
+
+/* Drag & Drop Card Manipulation Ergonomics */
+.drag-handle-touch {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.card-dragging {
+  opacity: 0.72;
+  transform: scale(0.99);
+  box-shadow: 0 20px 35px -10px rgba(16, 185, 129, 0.35) !important;
+  z-index: 30;
+}
+
+.card-drop-target {
+  outline: 2px dashed #10b981 !important;
+  outline-offset: 3px;
+}
+
+

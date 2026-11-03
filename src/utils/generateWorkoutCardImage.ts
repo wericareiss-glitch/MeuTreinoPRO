@@ -32,14 +32,28 @@ function drawRoundedRect(
   }
 }
 
+export interface WorkoutCardOptions {
+  format?: 'story' | 'post';
+  prsCount?: number;
+  durationMinutes?: number;
+}
+
 /**
  * Generates a high-resolution, social-ready image card for the workout session.
- * Rendered at 1080px width, crisp typography, dark theme and gold/emerald highlights.
+ * Supports 9:16 Instagram Story (1080x1920) and Feed Post formats with Total Volume (kg),
+ * PRs Broken, Workout Duration, and the MeuTreino PRO official badge.
  */
 export async function generateWorkoutCardImage(
   session: WorkoutSessionSummary,
-  athleteName: string
+  athleteName: string,
+  options: WorkoutCardOptions = {}
 ): Promise<{ blob: Blob; dataUrl: string; file: File }> {
+  const format = options.format || 'story';
+  const prsCount = options.prsCount ?? 0;
+  const estimatedDuration =
+    options.durationMinutes ||
+    Math.max(25, Math.round(session.totalSets * 2.5));
+
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) {
@@ -47,55 +61,59 @@ export async function generateWorkoutCardImage(
   }
 
   const width = 1080;
-  
-  // Calculate height dynamically based on items
-  const baseHeaderHeight = 440;
+
+  // Calculate height dynamically based on format (1920px for 9:16 Story)
+  const baseHeaderHeight = 460;
   const notesHeight = session.notes ? 90 : 0;
-  const exerciseRowHeight = 92;
-  const exerciseCount = Math.min(session.completedExercises.length, 8);
-  const footerHeight = 130;
-  const totalHeight = Math.max(1080, baseHeaderHeight + notesHeight + (exerciseCount * exerciseRowHeight) + footerHeight);
+  const exerciseRowHeight = 96;
+  const exerciseCount = Math.min(session.completedExercises.length, format === 'story' ? 9 : 8);
+  const footerHeight = 160;
+  const computedHeight = baseHeaderHeight + notesHeight + exerciseCount * exerciseRowHeight + footerHeight;
+  const totalHeight = format === 'story' ? Math.max(1920, computedHeight) : Math.max(1080, computedHeight);
 
   canvas.width = width;
   canvas.height = totalHeight;
 
   // 1. Deep luxury athletic background
   const bgGradient = ctx.createLinearGradient(0, 0, width, totalHeight);
-  bgGradient.addColorStop(0, '#0a0f1d');
-  bgGradient.addColorStop(0.5, '#070b14');
-  bgGradient.addColorStop(1, '#05070d');
+  bgGradient.addColorStop(0, '#070c18');
+  bgGradient.addColorStop(0.5, '#04070f');
+  bgGradient.addColorStop(1, '#000000');
   ctx.fillStyle = bgGradient;
   ctx.fillRect(0, 0, width, totalHeight);
 
   // Radial glow accents
-  const glow1 = ctx.createRadialGradient(200, 150, 20, 200, 150, 450);
-  glow1.addColorStop(0, 'rgba(16, 185, 129, 0.15)'); // emerald
+  const glow1 = ctx.createRadialGradient(220, 180, 20, 220, 180, 520);
+  glow1.addColorStop(0, 'rgba(16, 185, 129, 0.20)'); // emerald
   glow1.addColorStop(1, 'rgba(16, 185, 129, 0)');
   ctx.fillStyle = glow1;
   ctx.fillRect(0, 0, width, totalHeight);
 
-  const glow2 = ctx.createRadialGradient(width - 200, 250, 20, width - 200, 250, 450);
-  glow2.addColorStop(0, 'rgba(14, 165, 233, 0.12)'); // cyan/sky
-  glow2.addColorStop(1, 'rgba(14, 165, 233, 0)');
+  const glow2 = ctx.createRadialGradient(width - 180, 380, 20, width - 180, 380, 520);
+  glow2.addColorStop(0, 'rgba(245, 158, 11, 0.16)'); // gold
+  glow2.addColorStop(1, 'rgba(245, 158, 11, 0)');
   ctx.fillStyle = glow2;
   ctx.fillRect(0, 0, width, totalHeight);
 
   // Outer border frame
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-  ctx.lineWidth = 2;
-  drawRoundedRect(ctx, 24, 24, width - 48, totalHeight - 48, 36);
+  ctx.strokeStyle = 'rgba(16, 185, 129, 0.22)';
+  ctx.lineWidth = 2.5;
+  drawRoundedRect(ctx, 28, 28, width - 56, totalHeight - 56, 42);
   ctx.stroke();
 
-  // 2. Brand Header Banner
-  const brandY = 70;
-  ctx.font = '800 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillStyle = '#38bdf8'; // sky-400
-  ctx.textAlign = 'left';
-  ctx.fillText('⚡ MEUTREINO PRO', 64, brandY);
+  // 2. Official MeuTreino PRO Seal Banner
+  const brandY = 82;
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.14)';
+  drawRoundedRect(ctx, 64, brandY - 30, 310, 44, 22);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(16, 185, 129, 0.45)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 
-  ctx.font = '600 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillStyle = '#94a3b8';
-  ctx.fillText('HIPERTROFIA INDIVIDUALIZADA', 290, brandY - 2);
+  ctx.font = '900 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillStyle = '#34d399';
+  ctx.textAlign = 'left';
+  ctx.fillText('⚡ SELO MEUTREINO PRO', 84, brandY - 1);
 
   // Date on the right
   const dateFormatted = new Date(session.date).toLocaleDateString('pt-BR', {
@@ -150,10 +168,10 @@ export async function generateWorkoutCardImage(
   ctx.fillStyle = '#e2e8f0';
   ctx.fillText(`Atleta: ${athleteName}`, 64, heroY + 118);
 
-  // 4. Three Big KPI Blocks
+  // 4. Four Big KPI Blocks (Volume Movido, PRs Batidos, Duração do Treino, Séries/Carga)
   const kpiY = heroY + 150;
-  const kpiWidth = (width - 128 - 36) / 3;
-  const kpiHeight = 110;
+  const kpiWidth = (width - 128 - 42) / 4;
+  const kpiHeight = 118;
 
   // Max load calculation
   let maxWeight = 0;
@@ -165,33 +183,41 @@ export async function generateWorkoutCardImage(
 
   const kpis = [
     {
-      label: 'TONELAGEM TOTAL',
+      label: 'VOLUME MOVIDO',
       value: `${session.totalVolumeLoadKg.toLocaleString('pt-BR')} kg`,
-      sub: 'Volume Load Acumulado',
+      sub: 'Tonelagem Total',
       accent: '#10b981', // emerald
-      bg: 'rgba(16, 185, 129, 0.08)',
-      border: 'rgba(16, 185, 129, 0.25)',
+      bg: 'rgba(16, 185, 129, 0.10)',
+      border: 'rgba(16, 185, 129, 0.32)',
     },
     {
-      label: 'SÉRIES EFETIVAS',
-      value: `${session.totalSets}`,
-      sub: 'Séries Válidas',
+      label: 'PRs BATIDOS',
+      value: prsCount > 0 ? `${prsCount} PR${prsCount > 1 ? 's' : ''} 🔥` : `${session.totalSets} séries`,
+      sub: prsCount > 0 ? 'Recordes Superados' : '100% Concluído',
+      accent: '#f59e0b', // gold/amber
+      bg: 'rgba(245, 158, 11, 0.10)',
+      border: 'rgba(245, 158, 11, 0.35)',
+    },
+    {
+      label: 'DURAÇÃO',
+      value: `${estimatedDuration} min`,
+      sub: 'Tempo de Sessão',
       accent: '#38bdf8', // sky
-      bg: 'rgba(56, 189, 248, 0.08)',
-      border: 'rgba(56, 189, 248, 0.25)',
+      bg: 'rgba(56, 189, 248, 0.10)',
+      border: 'rgba(56, 189, 248, 0.32)',
     },
     {
-      label: 'CARGA MÁXIMA',
-      value: maxWeight > 0 ? `${maxWeight} kg` : `${session.completedExercises.length} exerc.`,
-      sub: maxWeight > 0 ? 'Pico de Sobrecarga' : 'Exercícios Concluídos',
-      accent: '#f59e0b', // amber
-      bg: 'rgba(245, 158, 11, 0.08)',
-      border: 'rgba(245, 158, 11, 0.25)',
+      label: 'PICO / SÉRIES',
+      value: maxWeight > 0 ? `${maxWeight} kg` : `${session.totalSets}x`,
+      sub: `${session.totalSets} séries válidas`,
+      accent: '#c084fc', // purple
+      bg: 'rgba(192, 132, 252, 0.10)',
+      border: 'rgba(192, 132, 252, 0.30)',
     },
   ];
 
   kpis.forEach((kpi, idx) => {
-    const kX = 64 + idx * (kpiWidth + 18);
+    const kX = 64 + idx * (kpiWidth + 14);
     // Box
     ctx.fillStyle = kpi.bg;
     drawRoundedRect(ctx, kX, kpiY, kpiWidth, kpiHeight, 20);
@@ -201,24 +227,24 @@ export async function generateWorkoutCardImage(
     ctx.stroke();
 
     // Label
-    ctx.font = '700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = '800 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'left';
-    ctx.fillText(kpi.label, kX + 22, kpiY + 30);
+    ctx.fillText(kpi.label, kX + 18, kpiY + 30);
 
     // Value
-    ctx.font = '800 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = '900 25px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = kpi.accent;
-    ctx.fillText(kpi.value, kX + 22, kpiY + 68);
+    ctx.fillText(kpi.value, kX + 18, kpiY + 68);
 
     // Sub
-    ctx.font = '500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = '#64748b';
-    ctx.fillText(kpi.sub, kX + 22, kpiY + 92);
+    ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(kpi.sub, kX + 18, kpiY + 94);
   });
 
   // 5. Session Notes (if present)
-  let currentY = kpiY + kpiHeight + 28;
+  let currentY = kpiY + kpiHeight + 32;
   if (session.notes) {
     ctx.fillStyle = 'rgba(168, 85, 247, 0.07)';
     drawRoundedRect(ctx, 64, currentY, width - 128, 68, 16);
@@ -234,7 +260,6 @@ export async function generateWorkoutCardImage(
 
     ctx.font = 'italic 500 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = '#e2e8f0';
-    // Truncate if long
     const noteText = session.notes.length > 95 ? session.notes.slice(0, 92) + '...' : session.notes;
     ctx.fillText(`"${noteText}"`, 88, currentY + 50);
 
@@ -247,19 +272,19 @@ export async function generateWorkoutCardImage(
   ctx.textAlign = 'left';
   ctx.fillText('📋 PERFORMANCE POR EXERCÍCIO & TOP SETS', 64, currentY);
 
-  currentY += 18;
+  currentY += 20;
 
   // 7. Exercise Rows
-  const maxExercises = Math.min(session.completedExercises.length, 8);
+  const maxExercises = Math.min(session.completedExercises.length, format === 'story' ? 9 : 8);
   for (let i = 0; i < maxExercises; i++) {
     const ex = session.completedExercises[i];
-    const rowY = currentY + (i * exerciseRowHeight);
+    const rowY = currentY + i * exerciseRowHeight;
 
     // Background card for exercise
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.025)';
-    drawRoundedRect(ctx, 64, rowY, width - 128, 76, 16);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+    drawRoundedRect(ctx, 64, rowY, width - 128, 78, 18);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
@@ -268,11 +293,11 @@ export async function generateWorkoutCardImage(
     ctx.font = '700 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = '#ffffff';
     const truncatedName = ex.name.length > 32 ? ex.name.slice(0, 30) + '...' : ex.name;
-    ctx.fillText(`${i + 1}. ${truncatedName}`, 86, rowY + 32);
+    ctx.fillText(`${i + 1}. ${truncatedName}`, 86, rowY + 33);
 
     ctx.font = '500 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText(`${ex.muscleGroup} • ${ex.sets.length} séries`, 86, rowY + 56);
+    ctx.fillText(`${ex.muscleGroup} • ${ex.sets.length} séries`, 86, rowY + 57);
 
     // Find top set
     let topSet = ex.sets[0];
@@ -284,37 +309,52 @@ export async function generateWorkoutCardImage(
     if (topSet) {
       const pillWidth = 230;
       const pillX = width - 64 - pillWidth - 20;
-      const pillY = rowY + 18;
+      const pillY = rowY + 19;
 
-      ctx.fillStyle = 'rgba(245, 158, 11, 0.12)';
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.14)';
       drawRoundedRect(ctx, pillX, pillY, pillWidth, 40, 12);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(245, 158, 11, 0.35)';
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.38)';
       ctx.lineWidth = 1;
       ctx.stroke();
 
       ctx.textAlign = 'center';
       ctx.font = '700 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.fillStyle = '#fbbf24';
-      ctx.fillText(`⭐ TOP: ${topSet.weight}kg × ${topSet.reps}`, pillX + (pillWidth / 2), pillY + 25);
+      ctx.fillText(`⭐ TOP: ${topSet.weight}kg × ${topSet.reps}`, pillX + pillWidth / 2, pillY + 25);
     }
   }
 
-  // If there are more exercises than 8, note it
-  if (session.completedExercises.length > 8) {
-    const extra = session.completedExercises.length - 8;
-    ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = '#64748b';
+  // If there are more exercises than maxExercises, note it
+  if (session.completedExercises.length > maxExercises) {
+    const extra = session.completedExercises.length - maxExercises;
+    ctx.font = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'center';
-    ctx.fillText(`+ ${extra} outro(s) exercício(s) concluído(s)`, width / 2, currentY + (maxExercises * exerciseRowHeight) + 12);
+    ctx.fillText(
+      `+ ${extra} outro(s) exercício(s) concluído(s)`,
+      width / 2,
+      currentY + maxExercises * exerciseRowHeight + 16
+    );
   }
 
-  // 8. Footer Signature
-  const footerY = totalHeight - 60;
+  // 8. Official MeuTreino PRO Stamp & Footer Signature
+  const footerY = totalHeight - 85;
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+  drawRoundedRect(ctx, width / 2 - 220, footerY - 34, 440, 48, 24);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(16, 185, 129, 0.40)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
   ctx.textAlign = 'center';
-  ctx.font = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.font = '900 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillStyle = '#34d399';
+  ctx.fillText('⚡ MEUTREINO PRO • ATLETA VERIFICADO', width / 2, footerY - 4);
+
+  ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   ctx.fillStyle = '#64748b';
-  ctx.fillText('MeuTreino Pro — Hipertrofia Individualizada • Evolução Constante & Resultados Reais', width / 2, footerY);
+  ctx.fillText('Hipertrofia Individualizada • Sobrecarga Progressiva & Ciência', width / 2, footerY + 32);
 
   // Return Blob, File and DataURL
   return new Promise((resolve, reject) => {

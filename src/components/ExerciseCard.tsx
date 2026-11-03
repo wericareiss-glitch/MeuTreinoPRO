@@ -35,7 +35,8 @@ import {
   Unlink,
   Video,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  GripVertical
 } from 'lucide-react';
 import { WorkoutItem, WorkoutLogs, WorkoutSessionSummary, SET_INTENSITY_TYPES, SetIntensityType } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
@@ -73,6 +74,13 @@ interface ExerciseCardProps {
   nextExerciseName?: string;
   prevExerciseName?: string;
   onToggleBisetWithNext?: (index: number) => void;
+  isDragging?: boolean;
+  isDropTarget?: boolean;
+  onDragStartCard?: (index: number, e: React.DragEvent<HTMLDivElement>) => void;
+  onDragOverCard?: (index: number, e: React.DragEvent<HTMLDivElement>) => void;
+  onDropCard?: (index: number, e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEndCard?: () => void;
+  onPointerDownDragHandle?: (index: number, e: React.PointerEvent<HTMLButtonElement>) => void;
 }
 
 // RPE de 6 a 10 com cálculo automático de RIR (RIR = 10 - RPE)
@@ -84,7 +92,7 @@ const RPE_PRESETS = [
   { rpe: 10, rir: 0, label: 'RPE 10', rirDesc: 'RIR 0 (Falha concêntrica total)', color: 'text-rose-300' },
 ];
 
-export const ExerciseCard: React.FC<ExerciseCardProps> = ({
+export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   item,
   index,
   logs,
@@ -110,6 +118,13 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   nextExerciseName,
   prevExerciseName,
   onToggleBisetWithNext,
+  isDragging = false,
+  isDropTarget = false,
+  onDragStartCard,
+  onDragOverCard,
+  onDropCard,
+  onDragEndCard,
+  onPointerDownDragHandle,
 }) => {
   const [expandedSets, setExpandedSets] = useState<Record<string, boolean>>({});
   const [isCardCollapsed, setIsCardCollapsed] = useState(false);
@@ -611,7 +626,15 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
   return (
     <div
       id={`exercise-card-${index}`}
+      data-exercise-card-index={index}
+      draggable={Boolean(onDragStartCard)}
+      onDragStart={(e) => onDragStartCard?.(index, e)}
+      onDragOver={(e) => onDragOverCard?.(index, e)}
+      onDrop={(e) => onDropCard?.(index, e)}
+      onDragEnd={() => onDragEndCard?.()}
       className={`active-workout-card bg-slate-900 border rounded-2xl overflow-hidden shadow-lg transition-all scroll-mt-20 ${
+        isDragging ? 'card-dragging' : ''
+      } ${isDropTarget ? 'card-drop-target' : ''} ${
         isAllSetsDone
           ? 'border-emerald-500/45 ring-1 ring-emerald-500/15'
           : isBisetWithNext || isSecondInBiset
@@ -619,11 +642,24 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           : 'border-slate-800 hover:border-slate-700/80'
       }`}
     >
-      {/* 1. Header do Exercício (Layout Espaçoso & Otimizado para Mobile) */}
+      {/* 1. Header do Exercício (Layout Espaçoso & Otimizado para Mobile com Alça de Segurar e Arrastar) */}
       <div className="p-3 sm:p-3.5 bg-slate-950/80 border-b border-slate-800 flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
-          {/* Título & Músculo */}
+          {/* Alça de Segurar e Arrastar (Drag Handle) + Título & Músculo */}
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 flex-wrap">
+            <button
+              type="button"
+              onPointerDown={(e) => onPointerDownDragHandle?.(index, e)}
+              className="drag-handle-touch p-1.5 -ml-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-emerald-400 border border-slate-800 hover:border-emerald-500/40 cursor-grab active:cursor-grabbing flex items-center gap-0.5 shrink-0 transition-all"
+              title="Segurar e arrastar para reordenar este exercício"
+              aria-label={`Segurar e arrastar exercício ${index + 1}`}
+            >
+              <GripVertical className="w-4 h-4" />
+              <span className="text-[10px] font-mono font-black text-slate-300 pr-0.5">
+                #{index + 1}
+              </span>
+            </button>
+
             <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/20 shrink-0">
               {muscleName}
             </span>
@@ -2276,4 +2312,5 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       )}
     </div>
   );
-};
+});
+

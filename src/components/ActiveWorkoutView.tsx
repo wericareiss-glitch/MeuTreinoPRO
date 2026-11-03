@@ -63,6 +63,7 @@ interface ActiveWorkoutViewProps {
   onOpenAddExercise: () => void;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
+  onReorderExercises?: (fromIndex: number, toIndex: number) => void;
   onDeleteExercise: (index: number) => void;
   onUpdateLog: (key: string, field: 'weight' | 'reps' | 'rpe' | 'rir' | 'setType', val: string) => void;
   onToggleSet: (key: string, restSec: number) => void;
@@ -96,6 +97,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   onOpenAddExercise,
   onMoveUp,
   onMoveDown,
+  onReorderExercises,
   onDeleteExercise,
   onUpdateLog,
   onToggleSet,
@@ -116,10 +118,108 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   const [isMobilityOpen, setIsMobilityOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [hideCompletedExercises, setHideCompletedExercises] = useState(false);
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [isLegendsExpanded, setIsLegendsExpanded] = useState<boolean>(() =>
     safeStorage.get<boolean>('meutreino_legends_expanded', false)
   );
   const toolsMenuRef = useRef<HTMLDivElement>(null);
+
+  const performReorder = React.useCallback(
+    (fromIdx: number, toIdx: number) => {
+      if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return;
+      if (onReorderExercises) {
+        onReorderExercises(fromIdx, toIdx);
+      } else if (toIdx < fromIdx) {
+        for (let i = fromIdx; i > toIdx; i--) onMoveUp(i);
+      } else {
+        for (let i = fromIdx; i < toIdx; i++) onMoveDown(i);
+      }
+      soundManager.vibrate(25);
+    },
+    [onReorderExercises, onMoveUp, onMoveDown]
+  );
+
+  // HTML5 Drag & Drop Handlers
+  const handleDragStartCard = React.useCallback((idx: number, e: React.DragEvent<HTMLDivElement>) => {
+    setDraggingIdx(idx);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+  }, []);
+
+  const handleDragOverCard = React.useCallback((idx: number, e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTargetIdx(idx);
+  }, []);
+
+  const handleDropCard = React.useCallback(
+    (targetIdx: number, e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const fromIdx = draggingIdx !== null ? draggingIdx : parseInt(e.dataTransfer.getData('text/plain'), 10);
+      if (!isNaN(fromIdx) && fromIdx !== targetIdx) {
+        performReorder(fromIdx, targetIdx);
+      }
+      setDraggingIdx(null);
+      setDropTargetIdx(null);
+    },
+    [draggingIdx, performReorder]
+  );
+
+  const handleDragEndCard = React.useCallback(() => {
+    setDraggingIdx(null);
+    setDropTargetIdx(null);
+  }, []);
+
+  // Mobile/Touch & Mouse Pointer Hold-and-Drag on Grip Handle
+  const handlePointerDownDragHandle = React.useCallback(
+    (startIdx: number, e: React.PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDraggingIdx(startIdx);
+      setDropTargetIdx(startIdx);
+      soundManager.vibrate(15);
+
+      let latestTarget = startIdx;
+
+      const handlePointerMove = (moveEvt: PointerEvent) => {
+        // Auto-scroll viewport when dragging near top or bottom edges
+        const viewportH = window.innerHeight;
+        if (moveEvt.clientY < 90) {
+          window.scrollBy({ top: -14, behavior: 'auto' });
+        } else if (moveEvt.clientY > viewportH - 90) {
+          window.scrollBy({ top: 14, behavior: 'auto' });
+        }
+
+        const elUnder = document.elementFromPoint(moveEvt.clientX, moveEvt.clientY);
+        const cardEl = elUnder?.closest('[data-exercise-card-index]') as HTMLElement | null;
+        if (cardEl) {
+          const overIdx = parseInt(cardEl.getAttribute('data-exercise-card-index') || '', 10);
+          if (!isNaN(overIdx) && overIdx !== latestTarget) {
+            latestTarget = overIdx;
+            setDropTargetIdx(overIdx);
+            soundManager.vibrate(10);
+          }
+        }
+      };
+
+      const handlePointerUp = () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerUp);
+        if (latestTarget !== startIdx) {
+          performReorder(startIdx, latestTarget);
+        }
+        setDraggingIdx(null);
+        setDropTargetIdx(null);
+      };
+
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerUp);
+    },
+    [performReorder]
+  );
 
   // Detecta dinamicamente a fase de periodização a partir da estratégia selecionada, foco ou faixa de repetições da rotina
   const inferPhaseFromWorkout = React.useCallback((): PeriodizationStrategy => {
@@ -1048,6 +1148,13 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
                 nextExerciseName={nextItem?.exercise.name}
                 prevExerciseName={prevItem?.exercise.name}
                 onToggleBisetWithNext={handleToggleBisetWithNext}
+                isDragging={draggingIdx === index}
+                isDropTarget={dropTargetIdx === index && draggingIdx !== index}
+                onDragStartCard={handleDragStartCard}
+                onDragOverCard={handleDragOverCard}
+                onDropCard={handleDropCard}
+                onDragEndCard={handleDragEndCard}
+                onPointerDownDragHandle={handlePointerDownDragHandle}
               />
 
               {isBisetFirst && nextItem && (

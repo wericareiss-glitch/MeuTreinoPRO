@@ -43,12 +43,22 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'image_card'>('details');
+  const [cardFormat, setCardFormat] = useState<'story' | 'post'>('story');
   const [cardImage, setCardImage] = useState<{ blob: Blob; dataUrl: string; file: File } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
 
-  // Generate image card automatically whenever modal opens with session
+  // Extrai recordes pessoais batidos nesta sessão
+  const sessionPRs = useMemo(() => {
+    if (!session) return [];
+    const olderSessions = previousSessions.filter(
+      (s) => s.id !== session.id && new Date(s.date).getTime() < new Date(session.date).getTime()
+    );
+    return extractSessionPRs(session, olderSessions);
+  }, [session, previousSessions]);
+
+  // Generate image card automatically whenever modal opens with session or format changes
   useEffect(() => {
     if (!isOpen || !session) {
       setCardImage(null);
@@ -58,7 +68,10 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
     let isMounted = true;
     setIsGenerating(true);
 
-    generateWorkoutCardImage(session, athleteName)
+    generateWorkoutCardImage(session, athleteName, {
+      format: cardFormat,
+      prsCount: sessionPRs.length,
+    })
       .then((res) => {
         if (isMounted) {
           setCardImage(res);
@@ -75,16 +88,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, session, athleteName]);
-
-  // Extrai recordes pessoais batidos nesta sessão
-  const sessionPRs = useMemo(() => {
-    if (!session) return [];
-    const olderSessions = previousSessions.filter(
-      (s) => s.id !== session.id && new Date(s.date).getTime() < new Date(session.date).getTime()
-    );
-    return extractSessionPRs(session, olderSessions);
-  }, [session, previousSessions]);
+  }, [isOpen, session, athleteName, cardFormat, sessionPRs.length]);
 
   if (!isOpen || !session) return null;
 
@@ -151,7 +155,13 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
   const handleWhatsAppShare = () => {
     const text = encodeURIComponent(buildShareText());
-    window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+    const a = document.createElement('a');
+    a.href = `https://api.whatsapp.com/send?text=${text}`;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const handleExportSessionCSV = () => {
@@ -505,18 +515,46 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         {/* Tab 2: Visual Image Card Preview */}
         {activeTab === 'image_card' && (
           <div className="p-4 sm:p-5 overflow-y-auto space-y-3 flex-1 flex flex-col items-center">
+            {/* Format Selector: Story do Instagram (9:16) vs Feed */}
+            <div className="flex items-center gap-1.5 bg-[#0b1220] p-1 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setCardFormat('story')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                  cardFormat === 'story'
+                    ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Story do Instagram (9:16)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCardFormat('post')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  cardFormat === 'post'
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>Card Compacto (Feed)</span>
+              </button>
+            </div>
+
             {isGenerating ? (
               <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-sky-400" />
-                <p className="text-xs font-semibold">Renderizando cartão gráfico em alta resolução...</p>
+                <p className="text-xs font-semibold">Renderizando Story gráfico em alta resolução...</p>
               </div>
             ) : cardImage ? (
               <div className="w-full flex flex-col items-center gap-3">
-                <div className="relative group rounded-2xl overflow-hidden border border-slate-700 shadow-2xl bg-black max-h-[50vh] flex items-center justify-center">
+                <div className="relative group rounded-2xl overflow-hidden border border-slate-700 shadow-2xl bg-black max-h-[46vh] flex items-center justify-center">
                   <img
                     src={cardImage.dataUrl}
                     alt="Cartão de Treino Concluído"
-                    className="max-h-[50vh] w-auto object-contain rounded-2xl"
+                    className="max-h-[46vh] w-auto object-contain rounded-2xl"
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                     <button
@@ -525,7 +563,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                       className="px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-lg cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Baixar PNG</span>
+                      <span>Baixar Story PNG</span>
                     </button>
                   </div>
                 </div>
