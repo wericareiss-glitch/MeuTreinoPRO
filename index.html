@@ -3,12 +3,96 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#090d16" />
-    <title>MeuTreino Pro - Hipertrofia Individualizada</title>
-    <meta name="description" content="Plataforma avançada de hipertrofia individualizada com gestão de séries, sobrecarga progressiva, calculadora de anilhas e periodização biomecânica." />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <title>MeuTreino Pro</title>
+    <meta name="description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
+    <meta name="theme-color" id="meta-theme-color" content="#0d1424" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MeuTreino" />
+    <meta name="application-name" content="MeuTreino Pro" />
+    <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/pwa-512x512.png" />
+    <meta property="og:title" content="MeuTreino Pro" />
+    <meta property="og:description" content="Plataforma avançada de periodização para hipertrofia individualizada com cálculo de volume MEV/MAV/MRV, biomecânica e sobrecarga progressiva preditiva." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        // Captura o evento beforeinstallprompt imediatamente antes mesmo do React montar (crucial no Android Chrome)
+        window.__deferredPWAInstallPrompt = null;
+        window.addEventListener('beforeinstallprompt', function(e) {
+          e.preventDefault();
+          window.__deferredPWAInstallPrompt = e;
+          window.dispatchEvent(new CustomEvent('meutreino:pwa-prompt-ready'));
+        });
+
+        // Limpa caches antigos do Service Worker (< v4.4) que podiam reter versões antigas do CSS/JS
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            names.forEach(function(name) {
+              if (name.indexOf('meutreino-sw-v4.4') === -1) {
+                caches.delete(name);
+              }
+            });
+          }).catch(function() {});
+        }
+
+        try {
+          var saved = localStorage.getItem('meutreino_theme');
+          var mode = localStorage.getItem('meutreino_theme_mode');
+          var accent = localStorage.getItem('meutreino_accent_color') || 'emerald';
+          var systemPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+          var theme = 'dark';
+          if (mode === 'system' || (!saved && !mode)) {
+            theme = systemPrefersLight ? 'light' : 'dark';
+          } else if (saved === 'light' || saved === 'dark' || saved === 'oled') {
+            theme = saved;
+          } else {
+            theme = systemPrefersLight ? 'light' : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.setAttribute('data-accent', accent);
+          document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+          if (theme === 'light') {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.classList.add('theme-light');
+          } else {
+            document.documentElement.classList.remove('theme-light');
+            document.documentElement.classList.add('dark');
+          }
+
+          var paletteMap = {
+            emerald: { base: '16, 185, 129', hover: '52, 211, 153', active: '#34d399' },
+            gold: { base: '245, 158, 11', hover: '251, 191, 36', active: '#fbbf24' },
+            cyan: { base: '6, 182, 212', hover: '34, 211, 238', active: '#22d3ee' },
+            crimson: { base: '244, 63, 94', hover: '251, 113, 133', active: '#fb7185' }
+          };
+          var p = paletteMap[accent] || paletteMap.emerald;
+          var styleEl = document.createElement('style');
+          styleEl.id = 'meutreino-scrollbar-theme';
+          styleEl.textContent =
+            '::-webkit-scrollbar, html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { width: 6px !important; height: 6px !important; background: transparent !important; background-color: transparent !important; }' +
+            '::-webkit-scrollbar-track, ::-webkit-scrollbar-track-piece, html::-webkit-scrollbar-track, body::-webkit-scrollbar-track, *::-webkit-scrollbar-track { background: transparent !important; background-color: transparent !important; border: none !important; box-shadow: none !important; }' +
+            '::-webkit-scrollbar-thumb, html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb, *::-webkit-scrollbar-thumb { background: rgba(' + p.base + ', 0.55) !important; background-color: rgba(' + p.base + ', 0.55) !important; border-radius: 9999px !important; border: none !important; }' +
+            '::-webkit-scrollbar-thumb:hover, html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover, *::-webkit-scrollbar-thumb:hover { background: rgba(' + p.hover + ', 0.85) !important; background-color: rgba(' + p.hover + ', 0.85) !important; }' +
+            '::-webkit-scrollbar-thumb:active, html::-webkit-scrollbar-thumb:active, body::-webkit-scrollbar-thumb:active, *::-webkit-scrollbar-thumb:active { background: ' + p.active + ' !important; background-color: ' + p.active + ' !important; }' +
+            '::-webkit-scrollbar-button, ::-webkit-scrollbar-corner { display: none !important; width: 0 !important; height: 0 !important; background: transparent !important; }';
+          document.head.appendChild(styleEl);
+
+          var metaTheme = document.getElementById('meta-theme-color');
+          if (metaTheme) {
+            metaTheme.setAttribute(
+              'content',
+              theme === 'light' ? '#f8fafc' : theme === 'oled' ? '#000000' : '#0d1424'
+            );
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

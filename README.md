@@ -1,9 +1,20 @@
-# MeuTreino Pro - Hipertrofia Individualizada & Cinesiologia Aplicada
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-Plataforma profissional de prescrição de treino, periodização baseada em perfis de resistência (alongamento vs. encurtamento), controlo de tonelagem, rastreio de RIR/RPE com auto-save debounced e relatórios de evolução.
+# Run and deploy your AI Studio app
 
-## Funcionalidades Principais
-* **Gerador Biomecânico Inteligente:** Prescrição baseada no nível, objetivo, frequência e divisão muscular escolhida.
-* **Smart Rest & Auto-Save:** Temporizador dinâmico de descanso adaptativo (+30s após RIR 0/1) e gravação contínua sem latência.
-* **Calculadora de 1RM (Epley) e Tonelagem:** Acompanhamento preciso de recordes pessoais (PRs) e progresso de carga.
-* **Diário de Medições e Fotos:** Acompanhamento de check-ins corporais e comparador lado a lado.
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/333f96f5-2bf7-485e-9862-ccf6f2750091
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
