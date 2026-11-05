@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles, HelpCircle, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export type TechnicalTermKey =
@@ -175,39 +176,101 @@ export const SmartTermTooltip: React.FC<SmartTermTooltipProps> = ({
   align = 'center',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [coords, setCoords] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    isMobile: boolean;
+  }>({ left: 12, top: 80, isMobile: true });
+
   const containerRef = useRef<HTMLSpanElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const meta = TECHNICAL_TERMS_DICTIONARY[term];
+
+  const updatePosition = useCallback(() => {
+    if (!containerRef.current || typeof window === 'undefined') return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const isMobile = vw < 640;
+    const tooltipWidth = isMobile ? Math.min(vw - 24, 384) : 320;
+    const estimatedHeight = 290;
+
+    // Horizontal alignment clamped strictly inside viewport margins (12px)
+    let left = 12;
+    if (isMobile) {
+      left = Math.max(12, Math.round((vw - tooltipWidth) / 2));
+    } else {
+      if (align === 'left') {
+        left = rect.left;
+      } else if (align === 'right') {
+        left = rect.right - tooltipWidth;
+      } else {
+        left = rect.left + rect.width / 2 - tooltipWidth / 2;
+      }
+      left = Math.max(12, Math.min(vw - tooltipWidth - 12, Math.round(left)));
+    }
+
+    // Vertical placement: prefer above if there is enough room, otherwise place below, clamped to screen
+    const spaceAbove = rect.top;
+    const spaceBelow = vh - rect.bottom;
+
+    if (spaceAbove >= estimatedHeight + 16 || (spaceAbove > spaceBelow && spaceAbove >= 180)) {
+      const bottomVal = Math.max(12, Math.min(vh - 200, Math.round(vh - rect.top + 8)));
+      setCoords({ left, bottom: bottomVal, top: undefined, isMobile });
+    } else {
+      const topVal = Math.max(12, Math.min(vh - estimatedHeight - 12, Math.round(rect.bottom + 8)));
+      setCoords({ left, top: topVal, bottom: undefined, isMobile });
+    }
+  }, [align]);
 
   useEffect(() => {
     if (!isOpen) return;
+    updatePosition();
+
     const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        (!popoverRef.current || !popoverRef.current.contains(target))
+      ) {
         setIsOpen(false);
       }
     };
+
+    const handleScrollOrResize = () => {
+      updatePosition();
+    };
+
     document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('touchstart', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
       document.removeEventListener('touchstart', handleOutsideClick);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
     };
-  }, [isOpen]);
+  }, [isOpen, updatePosition]);
 
   if (!meta) return <>{children}</>;
-
-  const alignClasses =
-    align === 'left'
-      ? 'left-0'
-      : align === 'right'
-      ? 'right-0'
-      : 'left-1/2 -translate-x-1/2';
 
   return (
     <span
       ref={containerRef}
       className={`relative inline-flex items-center group/smartterm ${className}`}
-      onMouseEnter={() => setIsOpen(true)}
-      onMouseLeave={() => setIsOpen(false)}
+      onMouseEnter={() => {
+        if (typeof window !== 'undefined' && window.innerWidth >= 640) {
+          setIsOpen(true);
+        }
+      }}
+      onMouseLeave={() => {
+        if (typeof window !== 'undefined' && window.innerWidth >= 640) {
+          setIsOpen(false);
+        }
+      }}
     >
       <button
         type="button"
@@ -215,7 +278,7 @@ export const SmartTermTooltip: React.FC<SmartTermTooltipProps> = ({
           e.stopPropagation();
           setIsOpen((prev) => !prev);
         }}
-        className="inline-flex items-center gap-1 cursor-pointer focus:outline-none decoration-dotted underline-offset-2 hover:underline"
+        className="inline-flex items-center justify-between gap-1 w-full cursor-pointer focus:outline-none decoration-dotted underline-offset-2 hover:underline text-left"
         aria-label={`Explicação sobre ${meta.title}`}
       >
         {children || <span>{meta.code}</span>}
@@ -224,68 +287,83 @@ export const SmartTermTooltip: React.FC<SmartTermTooltipProps> = ({
         )}
       </button>
 
-      {/* Popover Inteligente (Hover no Desktop ou Toque no Mobile) */}
-      {isOpen && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className={`absolute bottom-full mb-2 ${alignClasses} z-50 w-72 sm:w-80 p-3.5 rounded-2xl bg-[#070c18] border ${meta.accentColor} shadow-2xl text-left animate-fadeIn space-y-2`}
-        >
-          {/* Header */}
-          <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <h4 className="text-xs font-black text-white leading-tight">
-                  {meta.title}
-                </h4>
+      {/* Popover Inteligente via Portal (Sempre 100% alinhado com a tela no Mobile e Desktop, sem corte por overflow-hidden) */}
+      {isOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              left: coords.isMobile ? '12px' : `${coords.left}px`,
+              right: coords.isMobile ? '12px' : undefined,
+              top: coords.top !== undefined ? `${coords.top}px` : undefined,
+              bottom: coords.bottom !== undefined ? `${coords.bottom}px` : undefined,
+            }}
+            className={`z-[120] ${
+              coords.isMobile ? 'mx-auto max-w-[384px]' : 'w-80'
+            } p-3.5 rounded-2xl bg-[#070c18]/98 backdrop-blur-md border ${
+              meta.accentColor
+            } shadow-[0_16px_40px_rgba(0,0,0,0.85)] text-left animate-fadeIn space-y-2 max-h-[80vh] overflow-y-auto`}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <h4 className="text-xs font-black text-white leading-tight break-words">
+                    {meta.title}
+                  </h4>
+                </div>
+                <span className="text-[10px] text-slate-400 font-medium block mt-0.5 leading-snug">
+                  {meta.shortSubtitle}
+                </span>
               </div>
-              <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
-                {meta.shortSubtitle}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-              aria-label="Fechar explicação"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Explicação Concisa */}
-          <p className="text-[11px] text-slate-200 leading-relaxed">
-            {meta.conciseExplanation}
-          </p>
-
-          {/* Como sentir a Falha Técnica */}
-          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1">
-            <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-300">
-              <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
-              <span>Como Sentir a Falha Técnica:</span>
-            </div>
-            <p className="text-[10.5px] text-amber-100/90 leading-relaxed">
-              {meta.technicalFailureGuide}
-            </p>
-          </div>
-
-          {/* Exemplos Práticos */}
-          <div className="space-y-1 pt-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
-              Exemplos na Prática:
-            </span>
-            {meta.practicalExamples.map((exText, idx) => (
-              <div
-                key={idx}
-                className="flex items-start gap-1.5 text-[10.5px] text-slate-300 leading-snug"
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                aria-label="Fechar explicação"
               >
-                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0 mt-0.5" />
-                <span>{exText}</span>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Explicação Concisa */}
+            <p className="text-[11px] text-slate-200 leading-relaxed break-words">
+              {meta.conciseExplanation}
+            </p>
+
+            {/* Como sentir a Falha Técnica */}
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1">
+              <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-300">
+                <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+                <span>Como Sentir a Falha Técnica:</span>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <p className="text-[10.5px] text-amber-100/90 leading-relaxed break-words">
+                {meta.technicalFailureGuide}
+              </p>
+            </div>
+
+            {/* Exemplos Práticos */}
+            <div className="space-y-1 pt-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                Exemplos na Prática:
+              </span>
+              {meta.practicalExamples.map((exText, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start gap-1.5 text-[10.5px] text-slate-300 leading-snug"
+                >
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0 mt-0.5" />
+                  <span className="break-words flex-1">{exText}</span>
+                </div>
+              ))}
+            </div>
+          </div>,
+          document.body
+        )}
     </span>
   );
 };

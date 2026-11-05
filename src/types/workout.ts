@@ -234,6 +234,7 @@ export interface WorkoutSessionSummary {
     muscleGroup: string;
     sets: { weight: number; reps: number; rpe?: string; rir?: string }[];
   }[];
+  updatedAt?: string;
 }
 
 export interface CardioSession {
@@ -272,6 +273,7 @@ export interface UserProfile {
   id: string;
   username: string;
   name: string;
+  email?: string;
   password: string;
   weightKg: number;
   heightM: number;
@@ -290,6 +292,7 @@ export interface UserProfile {
   nutritionPlan?: NutritionPlan;
   isVisitor?: boolean; // Se o atleta entrou como visitante
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface BodyMeasurement {

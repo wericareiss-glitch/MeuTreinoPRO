@@ -34,19 +34,11 @@ import {
 } from '../types/workout';
 import { VolumeDashboard } from './VolumeDashboard';
 import { TopLoadProgressComponent } from './TopLoadProgressComponent';
-import { DailyNutritionTrackerWidget } from './DailyNutritionTrackerWidget';
-import { MuscleRecoveryHeatmap } from './MuscleRecoveryHeatmap';
 import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { useI18n } from '../utils/i18n';
 
 const HomeAnalyticsDashboard = React.lazy(() =>
   import('./HomeAnalyticsDashboard').then((m) => ({ default: m.HomeAnalyticsDashboard }))
-);
-const WeeklyVolumeOverloadChart = React.lazy(() =>
-  import('./WeeklyVolumeOverloadChart').then((m) => ({ default: m.WeeklyVolumeOverloadChart }))
-);
-const MuscleSymmetryRadar = React.lazy(() =>
-  import('./MuscleSymmetryRadar').then((m) => ({ default: m.MuscleSymmetryRadar }))
 );
 import { 
   getWeeklyMicrocycleStatus, 
@@ -76,8 +68,6 @@ interface HomeViewProps {
   onViewSummary: (session: WorkoutSessionSummary) => void;
   onOpenAnalytics?: (exerciseName?: string) => void;
   onOpenMeasurements?: () => void;
-  onOpenDeloadAssistant?: () => void;
-  isDeloadActive?: boolean;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -94,8 +84,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onViewSummary,
   onOpenAnalytics,
   onOpenMeasurements,
-  onOpenDeloadAssistant,
-  isDeloadActive = false,
 }) => {
   const { t, language } = useI18n();
 
@@ -284,18 +272,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
   };
 
-  // Detecção científica de Deload: 4+ semanas consecutivas de alta frequência
-  const isDeloadRecommended = useMemo(() => {
-    if (microcycle.consecutiveWeeksStreak >= 4) return true;
-    if (sessions.length >= 16) {
-      const recent = sessions.filter((s) => {
-        const time = new Date(s.date).getTime();
-        return !isNaN(time) && Date.now() - time < 28 * 24 * 60 * 60 * 1000;
-      });
-      return recent.length >= 14;
-    }
-    return false;
-  }, [microcycle.consecutiveWeeksStreak, sessions]);
 
   // Aggregate stats across all sessions
   const stats = useMemo(() => {
@@ -393,8 +369,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </div>
 
-      {/* 💧🥩 RASTREADOR RÁPIDO DE ÁGUA & BATER META DE PROTEÍNA NO TOPO DA ABA INÍCIO */}
-      <DailyNutritionTrackerWidget user={user} />
 
       {/* Overview KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -841,95 +815,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
         onGoToWorkout={onGoToWorkout}
       />
 
-      {/* 📊 VISUALIZAÇÃO DE DADOS RECHARTS: VOLUME TOTAL SEMANAL (KG) & SOBRECARGA PROGRESSIVA (Lazy Loaded) */}
-      <React.Suspense
-        fallback={
-          <div className="h-48 rounded-3xl bg-[#0f172a]/60 border border-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-500">
-            Carregando gráfico de sobrecarga semanal...
-          </div>
-        }
-      >
-        <WeeklyVolumeOverloadChart
-          sessions={sessions}
-          onGoToWorkout={onGoToWorkout}
-        />
-      </React.Suspense>
-
-      {/* ⚖️ RADAR DE SIMETRIA & PROPORÇÃO AGONISTA/ANTAGONISTA (RECHARTS RADARCHART - Lazy Loaded) */}
-      <React.Suspense
-        fallback={
-          <div className="h-56 rounded-3xl bg-[#0f172a]/60 border border-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-500">
-            Carregando radar de simetria muscular...
-          </div>
-        }
-      >
-        <MuscleSymmetryRadar
-          sessions={sessions}
-          completedSetsByMuscle={completedSetsByMuscle}
-        />
-      </React.Suspense>
-
       {/* 📅 CALENDÁRIO DE CONSISTÊNCIA & STREAK (Últimos 35 dias) */}
       <ConsistencyCalendar
         sessions={sessions}
         weeklyFrequencyGoal={user?.frequency || 4}
       />
-
-      {/* 🛡️ ALERTA CIENTÍFICO DE DELOAD / FADIGA */}
-      {(isDeloadRecommended || isDeloadActive) && (
-        <div className={`bg-gradient-to-r ${
-          isDeloadActive ? 'from-sky-950/40 via-sky-900/20 to-slate-900 border-sky-500/40' : 'from-amber-950/40 via-amber-900/20 to-slate-900 border-amber-500/40'
-        } border rounded-3xl p-4 sm:p-5 shadow-xl relative overflow-hidden animate-fadeIn`}>
-          <div className="flex items-start gap-3.5">
-            <div className={`p-2.5 rounded-2xl ${
-              isDeloadActive ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-            } shrink-0`}>
-              <ShieldCheck className="w-6 h-6" />
-            </div>
-            <div className="space-y-1.5 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={`text-xs font-black uppercase tracking-wider ${
-                  isDeloadActive ? 'text-sky-400 bg-sky-500/10 border-sky-500/20' : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-                } px-2.5 py-0.5 rounded-full border`}>
-                  {isDeloadActive ? 'Deload Ativo em Andamento' : 'Fase de Supercompensação Recomendada'}
-                </span>
-                <span className="text-[11px] text-amber-300 font-bold font-mono">
-                  {microcycle.consecutiveWeeksStreak} semanas consecutivas de estímulo
-                </span>
-              </div>
-              <h3 className="text-sm sm:text-base font-extrabold text-white">
-                {isDeloadActive ? 'Semana de Recuperação e Regeneração Articular' : 'Alerta Fisiológico de Deload Sugerido'}
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                {isDeloadActive
-                  ? 'Seu volume semanal está adaptado para dissipar a fadiga acumulada e regenerar ligamentos e tendões mantendo sua massa muscular.'
-                  : 'Seu acúmulo de volume atingiu a marca de semanas de sobrecarga contínua. Para dissipar a fadiga residual do SNC e consolidar a hipertrofia, recomenda-se uma semana de deload.'}
-              </p>
-              <div className="pt-1 flex items-center gap-2 flex-wrap">
-                {onOpenDeloadAssistant ? (
-                  <button
-                    type="button"
-                    onClick={onOpenDeloadAssistant}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold ${
-                      isDeloadActive ? 'bg-sky-500 hover:bg-sky-400 text-slate-950' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-                    } transition-all cursor-pointer shadow-md`}
-                  >
-                    {isDeloadActive ? 'Gerenciar Semana de Deload' : 'Abrir Assistente de Deload'}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onOpenVolumeBudget}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all cursor-pointer shadow-md"
-                  >
-                    Ajustar Volume para Deload
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 📈 DASHBOARD DE ANALYTICS (Curvas de 1RM, Carga e Volume Mensal Recharts - Lazy Loaded) */}
       <React.Suspense
@@ -945,9 +835,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
           onOpenAnalyticsModal={onOpenAnalytics}
         />
       </React.Suspense>
-
-      {/* 🧬 MAPA DE RECUPERAÇÃO MUSCULAR */}
-      <MuscleRecoveryHeatmap sessions={sessions} />
 
       {/* Weekly Volume Tracking & Periodization Dashboard */}
       <VolumeDashboard

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Home, Dumbbell, User, Flame, Zap, MessageSquare } from 'lucide-react';
+import { Home, Dumbbell, User, Zap } from 'lucide-react';
 import { TabType } from '../types/navigation';
 import { useI18n } from '../utils/i18n';
 import { soundManager } from '../utils/audio';
@@ -15,7 +15,6 @@ interface NavigationTabsProps {
   activeSetsCount?: number;
   completedSetsCount?: number;
   sessionsCount?: number;
-  isCardioRunning?: boolean;
   hasActiveWorkout?: boolean;
 }
 
@@ -25,7 +24,6 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   activeSetsCount = 0,
   completedSetsCount = 0,
   sessionsCount = 0,
-  isCardioRunning = false,
   hasActiveWorkout = false,
 }) => {
   const { t } = useI18n();
@@ -68,26 +66,13 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     });
   }
 
-  desktopTabs.push(
-    {
-      id: 'cardio',
-      label: t.tabCardio || 'Cardio',
-      icon: Flame,
-      badge: isCardioRunning ? '●' : null,
-    },
-    {
-      id: 'perfil',
-      label: t.tabProfile,
-      icon: User,
-    },
-    {
-      id: 'feedback',
-      label: 'Sugestões & Bugs',
-      icon: MessageSquare,
-    }
-  );
+  desktopTabs.push({
+    id: 'perfil',
+    label: t.tabProfile,
+    icon: User,
+  });
 
-  // Mobile Tabs (Maximum 5 for ideal touch targets and ergonomics)
+  // Mobile Tabs (Clean, large touch targets)
   const mobileTabs = hasActiveWorkout
     ? [
         { id: 'inicio' as TabType, label: t.tabHome, icon: Home, badge: null },
@@ -99,15 +84,12 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
           badge: activeSetsCount > 0 ? `${completedSetsCount}/${activeSetsCount}` : null,
           isHighlight: true,
         },
-        { id: 'cardio' as TabType, label: 'Cardio', icon: Flame, badge: isCardioRunning ? '●' : null },
         { id: 'perfil' as TabType, label: t.tabProfile, icon: User, badge: null },
       ]
     : [
         { id: 'inicio' as TabType, label: t.tabHome, icon: Home, badge: null },
         { id: 'treino' as TabType, label: t.tabWorkout, icon: Dumbbell, badge: null },
-        { id: 'cardio' as TabType, label: 'Cardio', icon: Flame, badge: isCardioRunning ? '●' : null },
         { id: 'perfil' as TabType, label: t.tabProfile, icon: User, badge: null },
-        { id: 'feedback' as TabType, label: 'Suporte', icon: MessageSquare, badge: null },
       ];
 
   const workoutProgressPct =
@@ -167,9 +149,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                 {activeTab === 'inicio' && t.historySectionSubtitle}
                 {activeTab === 'treino' && 'Selecione um treino para iniciar'}
                 {activeTab === 'treino_ativo' && `Sessão em andamento · ${completedSetsCount}/${activeSetsCount} séries`}
-                {activeTab === 'cardio' && (isCardioRunning ? 'Cardio em andamento' : 'Cronômetro & Registro')}
                 {activeTab === 'perfil' && 'Personalizar treinos e metas'}
-                {activeTab === 'feedback' && 'Envie sugestões e relatos de bugs'}
               </span>
             </span>
           </div>
@@ -181,7 +161,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
         aria-label="Navegação Principal Mobile"
         className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#090f1d]/95 backdrop-blur-xl border-t border-[#1d2942] pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1.5 px-2 shadow-2xl"
       >
-        <div className="grid grid-cols-5 gap-1 max-w-md mx-auto">
+        <div className={`grid ${hasActiveWorkout ? 'grid-cols-4' : 'grid-cols-3'} gap-1 max-w-md mx-auto`}>
           {mobileTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;

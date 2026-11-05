@@ -16,7 +16,6 @@ import {
   MoreVertical,
   Sparkles,
   Link2,
-  FileDown,
   BookOpen,
   HelpCircle,
   ChevronDown,
@@ -52,9 +51,6 @@ import { SmartTermTooltip } from './SmartTermTooltip';
 const JointMobilityModal = React.lazy(() =>
   import('./JointMobilityModal').then((m) => ({ default: m.JointMobilityModal }))
 );
-const WorkoutPdfExportModal = React.lazy(() =>
-  import('./WorkoutPdfExportModal').then((m) => ({ default: m.WorkoutPdfExportModal }))
-);
 
 export type ActiveWorkoutDisplayMode = 'padrao' | 'compacto' | 'foco';
 export type LandscapeSetCardLayout = 'grid' | 'inline';
@@ -72,6 +68,7 @@ interface WorkoutItemRowProps {
   nextExerciseName?: string;
   prevExerciseName?: string;
   isDragging: boolean;
+  isHoldingDrag: boolean;
   isDropTarget: boolean;
   forceCollapsed?: boolean;
   landscapeSetLayout?: LandscapeSetCardLayout;
@@ -104,6 +101,7 @@ function areWorkoutItemRowEqual(prev: WorkoutItemRowProps, next: WorkoutItemRowP
     prev.nextExerciseName !== next.nextExerciseName ||
     prev.prevExerciseName !== next.prevExerciseName ||
     prev.isDragging !== next.isDragging ||
+    prev.isHoldingDrag !== next.isHoldingDrag ||
     prev.isDropTarget !== next.isDropTarget ||
     prev.forceCollapsed !== next.forceCollapsed ||
     prev.landscapeSetLayout !== next.landscapeSetLayout ||
@@ -151,6 +149,7 @@ const MemoizedWorkoutItemRow: React.FC<WorkoutItemRowProps> = React.memo(
     nextExerciseName,
     prevExerciseName,
     isDragging,
+    isHoldingDrag,
     isDropTarget,
     forceCollapsed,
     landscapeSetLayout,
@@ -200,6 +199,7 @@ const MemoizedWorkoutItemRow: React.FC<WorkoutItemRowProps> = React.memo(
           prevExerciseName={prevExerciseName}
           onToggleBisetWithNext={onToggleBisetWithNext}
           isDragging={isDragging}
+          isHoldingDrag={isHoldingDrag}
           isDropTarget={isDropTarget}
           onDragStartCard={onDragStartCard}
           onDragOverCard={onDragOverCard}
@@ -292,7 +292,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   const [isConfirmingCancel, setIsConfirmingCancel] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [isMobilityOpen, setIsMobilityOpen] = useState(false);
-  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [hideCompletedExercises, setHideCompletedExercises] = useState(false);
   const [displayMode, setDisplayMode] = useState<ActiveWorkoutDisplayMode>(() =>
     safeStorage.get<ActiveWorkoutDisplayMode>('meutreino_active_view_mode', 'padrao')
@@ -301,11 +300,9 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
     safeStorage.get<LandscapeSetCardLayout>('meutreino_landscape_set_layout', 'grid')
   );
   const [focusedExerciseIdx, setFocusedExerciseIdx] = useState<number>(0);
+  const [holdingIdx, setHoldingIdx] = useState<number | null>(null);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
-  const [isLegendsExpanded, setIsLegendsExpanded] = useState<boolean>(() =>
-    safeStorage.get<boolean>('meutreino_legends_expanded', false)
-  );
   const toolsMenuRef = useRef<HTMLDivElement>(null);
 
   const handleChangeDisplayMode = React.useCallback((mode: ActiveWorkoutDisplayMode) => {
@@ -335,7 +332,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
     [onReorderExercises, onMoveUp, onMoveDown]
   );
 
-  // HTML5 Drag & Drop Handlers
+  // HTML5 Drag & Drop Handlers (somente habilitado após desbloqueio por pressão longa)
   const handleDragStartCard = React.useCallback((idx: number, e: React.DragEvent<HTMLDivElement>) => {
     setDraggingIdx(idx);
     e.dataTransfer.effectAllowed = 'move';
@@ -355,6 +352,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
       if (!isNaN(fromIdx) && fromIdx !== targetIdx) {
         performReorder(fromIdx, targetIdx);
       }
+      setHoldingIdx(null);
       setDraggingIdx(null);
       setDropTargetIdx(null);
     },
@@ -362,22 +360,55 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   );
 
   const handleDragEndCard = React.useCallback(() => {
+    setHoldingIdx(null);
     setDraggingIdx(null);
     setDropTargetIdx(null);
   }, []);
 
-  // Mobile/Touch & Mouse Pointer Hold-and-Drag on Grip Handle
+  // Mobile/Touch & Mouse Pointer Hold-and-Drag on Grip Handle com tempo maior de pressão longa (600ms)
+  const HOLD_TO_DRAG_DELAY_MS = 600;
+  const HOLD_MOVE_TOLERANCE_PX = 10;
+
   const handlePointerDownDragHandle = React.useCallback(
     (startIdx: number, e: React.PointerEvent<HTMLButtonElement>) => {
-      e.preventDefault();
       e.stopPropagation();
-      setDraggingIdx(startIdx);
-      setDropTargetIdx(startIdx);
-      soundManager.vibrate(15);
-
+      const startX = e.clientX;
+      const startY = e.clientY;
+      let dragUnlocked = false;
       let latestTarget = startIdx;
 
+      setHoldingIdx(startIdx);
+
+      const holdTimer = window.setTimeout(() => {
+        dragUnlocked = true;
+        setHoldingIdx(null);
+        setDraggingIdx(startIdx);
+        setDropTargetIdx(startIdx);
+        soundManager.vibrate([20, 35, 25]);
+      }, HOLD_TO_DRAG_DELAY_MS);
+
+      const cleanupListeners = () => {
+        window.clearTimeout(holdTimer);
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerUp);
+      };
+
       const handlePointerMove = (moveEvt: PointerEvent) => {
+        if (!dragUnlocked) {
+          const dist = Math.hypot(moveEvt.clientX - startX, moveEvt.clientY - startY);
+          if (dist > HOLD_MOVE_TOLERANCE_PX) {
+            // Usuário moveu o dedo antes de completar o tempo de segurar: cancela o arraste para permitir rolagem normal
+            cleanupListeners();
+            setHoldingIdx(null);
+          }
+          return;
+        }
+
+        if (moveEvt.cancelable) {
+          moveEvt.preventDefault();
+        }
+
         // Auto-scroll viewport when dragging near top or bottom edges
         const viewportH = window.innerHeight;
         if (moveEvt.clientY < 90) {
@@ -399,17 +430,16 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
       };
 
       const handlePointerUp = () => {
-        window.removeEventListener('pointermove', handlePointerMove);
-        window.removeEventListener('pointerup', handlePointerUp);
-        window.removeEventListener('pointercancel', handlePointerUp);
-        if (latestTarget !== startIdx) {
+        cleanupListeners();
+        setHoldingIdx(null);
+        if (dragUnlocked && latestTarget !== startIdx) {
           performReorder(startIdx, latestTarget);
         }
         setDraggingIdx(null);
         setDropTargetIdx(null);
       };
 
-      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointermove', handlePointerMove, { passive: false });
       window.addEventListener('pointerup', handlePointerUp);
       window.addEventListener('pointercancel', handlePointerUp);
     },
@@ -473,14 +503,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   };
 
   const currentPhaseConfig = PERIODIZATION_PHASES[activePhase] || PERIODIZATION_PHASES.hypertrophy;
-
-  const toggleLegendsExpanded = () => {
-    setIsLegendsExpanded((prev) => {
-      const next = !prev;
-      safeStorage.set('meutreino_legends_expanded', next);
-      return next;
-    });
-  };
 
   // Estado persistente de pares Bi-set / Super-série por rotina
   const bisetStorageKey = `meutreino_bisets_${routine.id}`;
@@ -727,144 +749,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
 
   return (
     <div className="space-y-4 landscape:space-y-3 animate-fadeIn pb-28 landscape:pb-20 max-w-4xl landscape:max-w-7xl mx-auto">
-      {/* 0. Painel Centralizado no Topo — Legendas para Iniciantes e Consulta Rápida (Compacto em Paisagem) */}
-      <div className="bg-[#0f172a] border border-sky-500/30 rounded-2xl p-3 sm:p-4 landscape:py-2 landscape:px-3.5 shadow-lg text-center">
-        <div className="flex flex-col landscape:flex-row items-center justify-center landscape:justify-between gap-2">
-          <div className="inline-flex items-center gap-2 shrink-0">
-            <BookOpen className="w-4 h-4 text-sky-400 shrink-0" />
-            <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
-              Legendas:
-            </h2>
-            <button
-              type="button"
-              onClick={toggleLegendsExpanded}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 text-[10px] font-bold transition-colors cursor-pointer"
-              title={isLegendsExpanded ? 'Recolher detalhes das legendas' : 'Expandir explicação detalhada'}
-            >
-              <HelpCircle className="w-3 h-3 text-sky-400" />
-              <span>{isLegendsExpanded ? 'Recolher' : 'Ver Explicações'}</span>
-              {isLegendsExpanded ? (
-                <ChevronUp className="w-3 h-3" />
-              ) : (
-                <ChevronDown className="w-3 h-3" />
-              )}
-            </button>
-          </div>
-
-          {/* Resumo Rápido Sempre Visível e Centralizado com Tooltips Inteligentes */}
-          <div className="flex flex-wrap items-center justify-center gap-1.5">
-            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
-              <SmartTermTooltip term="SERIES" align="left">
-                <span>
-                  <strong className="text-emerald-400">Séries:</strong> rodadas do exercício
-                </span>
-              </SmartTermTooltip>
-            </span>
-
-            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-sky-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
-              <SmartTermTooltip term="REPS" align="center">
-                <span>
-                  <strong className="text-sky-400">Reps:</strong> movimentos seguidos
-                </span>
-              </SmartTermTooltip>
-            </span>
-
-            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
-              <SmartTermTooltip term="RIR" align="center">
-                <span>
-                  <strong className="text-amber-400">RIR:</strong> repetições na reserva
-                </span>
-              </SmartTermTooltip>
-            </span>
-
-            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-sky-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
-              <SmartTermTooltip term="RPE" align="center">
-                <span>
-                  <strong className="text-amber-300">RPE (6–10):</strong> nota de esforço
-                </span>
-              </SmartTermTooltip>
-            </span>
-
-            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-purple-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
-              <SmartTermTooltip term="1RM" align="right">
-                <span>
-                  <strong className="text-purple-400">1RM / 6RM:</strong> carga máx.
-                </span>
-              </SmartTermTooltip>
-            </span>
-
-            <span className="px-2 py-0.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-rose-500/40 text-[10px] sm:text-[11px] text-slate-300 transition-colors">
-              <SmartTermTooltip term="SET_TYPES" align="right">
-                <span>
-                  <strong className="text-rose-400">W/T/F/D/RP:</strong> tipos de série
-                </span>
-              </SmartTermTooltip>
-            </span>
-          </div>
-        </div>
-        <span className="text-[10px] text-slate-500 mt-1 block landscape:hidden lg:landscape:block">
-          💡 Passe o mouse ou toque em qualquer termo técnico (RPE, RIR, 1RM, etc.) durante o treino para ver como sentir a falha técnica.
-        </span>
-
-        {/* Grade Detalhada de Termos para Iniciantes (Expansível) */}
-        {isLegendsExpanded && (
-          <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 landscape:grid-cols-3 gap-2 text-left animate-fadeIn">
-            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
-              <div className="text-[11px] font-black text-emerald-400 mb-0.5">
-                📌 Séries & Repetições (Reps)
-              </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                <strong>3 séries × 10 reps</strong> significa fazer 10 movimentos seguidos, descansar, e repetir esse bloco por 3 vezes no total.
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
-              <div className="text-[11px] font-black text-amber-400 mb-0.5">
-                🎯 RIR (Repetições na Reserva)
-              </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                Quantas repetições você <strong>ainda aguentaria fazer</strong> antes de travar. Ex: <strong>RIR 2</strong> = parou sentindo que cabiam mais 2. <strong>RIR 0</strong> = falha total.
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
-              <div className="text-[11px] font-black text-sky-400 mb-0.5">
-                🔥 RPE (Percepção de Esforço 6 a 10)
-              </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                Nota de quão difícil foi a série: <strong>RPE 10</strong> = limite máximo (0 sobrando); <strong>RPE 9</strong> = sobrou 1; <strong>RPE 8</strong> = sobraram 2; <strong>RPE 6–7</strong> = leve/moderado.
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
-              <div className="text-[11px] font-black text-purple-400 mb-0.5">
-                🏋️ 1RM e 6RM (Força Máxima)
-              </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                Cálculo automático de quanto peso você aguentaria levantar em <strong>1 repetição única (1RM)</strong> ou <strong>6 repetições (6RM)</strong>, usado para medir sua evolução.
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
-              <div className="text-[11px] font-black text-rose-400 mb-0.5">
-                ⚡ Tipos de Série (W, T, F, D, RP)
-              </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                <strong>W:</strong> Aquecimento (peso leve) · <strong>T:</strong> Série principal · <strong>F:</strong> Até a falha · <strong>D (Drop-set):</strong> reduz 20% do peso sem descanso · <strong>RP:</strong> pausa 15s + reps extras.
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-[#090f1d] border border-slate-800/90">
-              <div className="text-[11px] font-black text-teal-400 mb-0.5">
-                🏆 PR & Bi-set (Super-série)
-              </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                <strong>PR (Recorde Pessoal):</strong> quando você bate seu maior peso ou volume histórico. <strong>Bi-set:</strong> fazer 2 exercícios seguidos e só descansar após o segundo.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* 1. Header do Treino Ativo (Compacto & Adaptado para Paisagem em Smartphones/Tablets) */}
       <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-3.5 sm:p-4 landscape:p-3 shadow-xl">
@@ -916,161 +800,79 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
           />
         </div>
 
-        {/* Em modo Paisagem (Landscape), divide Periodização (Rep-Target) e Índice Rápido de Exercícios lado a lado */}
-        <div
-          className={
-            workoutItems.length > 1
-              ? 'mt-2.5 grid grid-cols-1 landscape:grid-cols-12 gap-2.5 items-stretch'
-              : 'mt-2.5'
-          }
-        >
-          {/* Badge Dinâmico 'Rep-Target' de Periodização (Força 3-5 | Hipertrofia 8-12 | Metabólico 15+) */}
-          <div
-            className={`${
-              workoutItems.length > 1 ? 'landscape:col-span-6' : ''
-            } p-2.5 sm:p-3 landscape:p-2.5 rounded-xl border transition-all duration-300 flex flex-col justify-center ${
-              activePhase === 'strength'
-                ? 'bg-amber-950/25 border-amber-500/35 shadow-sm shadow-amber-500/5'
-                : activePhase === 'metabolic'
-                ? 'bg-purple-950/25 border-purple-500/35 shadow-sm shadow-purple-500/5'
-                : 'bg-emerald-950/25 border-emerald-500/35 shadow-sm shadow-emerald-500/5'
-            }`}
-          >
-            <div className="flex flex-col sm:flex-row landscape:flex-col xl:landscape:flex-row sm:items-center xl:landscape:items-center justify-between gap-2">
-              {/* Identificador principal do Rep-Target */}
-              <div className="flex items-center gap-2 min-w-0">
-                <div
-                  className={`px-2 py-1 rounded-lg border font-mono font-black text-[11px] flex items-center gap-1 shrink-0 shadow-inner ${
-                    activePhase === 'strength'
-                      ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
-                      : activePhase === 'metabolic'
-                      ? 'bg-purple-500/20 border-purple-400/50 text-purple-300'
-                      : 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
-                  }`}
-                >
-                  <Target className="w-3.5 h-3.5 shrink-0" />
-                  <span>META DE REPS: {currentPhaseConfig.repRange}</span>
-                </div>
+        {/* Anotações do Treino no Topo com Auto-Save Debounced */}
+        <div className="mt-2.5 bg-[#090e1a] border border-slate-800/90 rounded-2xl p-3 shadow-sm">
+          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <FileEdit className="w-3.5 h-3.5 text-purple-400" />
+              <span className="text-xs font-bold text-white uppercase tracking-wider">
+                Anotações do Treino
+              </span>
+            </div>
 
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span
-                      className={`text-xs font-black tracking-tight ${
-                        activePhase === 'strength'
-                          ? 'text-amber-300'
-                          : activePhase === 'metabolic'
-                          ? 'text-purple-300'
-                          : 'text-emerald-300'
-                      }`}
-                    >
-                      {currentPhaseConfig.label} ({currentPhaseConfig.repBadge})
-                    </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900/90 border border-slate-700/80 text-slate-300">
-                      {currentPhaseConfig.intensityPct} · {currentPhaseConfig.rirTarget}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                    {currentPhaseConfig.stimulus} · Descanso ~{currentPhaseConfig.restRecommended}s
-                  </p>
-                </div>
-              </div>
-
-              {/* Pílulas de Destaque das 3 Fases de Periodização (Seleção/Destaque em 1 Toque) */}
-              <div
-                className="grid grid-cols-3 gap-1 bg-[#080d19] p-1 rounded-xl border border-slate-800 shrink-0"
-                role="group"
-                aria-label="Fase da Estratégia de Periodização (Rep-Target)"
-              >
-                {/* 1. FORÇA (3-5) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectPhase('strength')}
-                  className={`px-2 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                    activePhase === 'strength'
-                      ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/25 scale-[1.02]'
-                      : 'text-slate-400 hover:text-amber-300 hover:bg-slate-800/70 font-semibold'
-                  }`}
-                  title="Fase de Força Pura: 3 a 5 repetições com alta carga neural (85-92% 1RM)"
-                >
-                  <Dumbbell className="w-3 h-3 shrink-0" />
-                  <span>Força</span>
-                  <span className={activePhase === 'strength' ? 'text-slate-950 font-black' : 'text-amber-400/80'}>
-                    3-5
-                  </span>
-                </button>
-
-                {/* 2. HIPERTROFIA (8-12) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectPhase('hypertrophy')}
-                  className={`px-2 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                    activePhase === 'hypertrophy'
-                      ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/25 scale-[1.02]'
-                      : 'text-slate-400 hover:text-emerald-300 hover:bg-slate-800/70 font-semibold'
-                  }`}
-                  title="Fase de Hipertrofia Mecânica: 8 a 12 repetições para volume e tensão mecânica (70-80% 1RM)"
-                >
-                  <Flame className="w-3 h-3 shrink-0" />
-                  <span>Hipertrofia</span>
-                  <span className={activePhase === 'hypertrophy' ? 'text-slate-950 font-black' : 'text-emerald-400/80'}>
-                    8-12
-                  </span>
-                </button>
-
-                {/* 3. METABÓLICO (15+) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectPhase('metabolic')}
-                  className={`px-2 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                    activePhase === 'metabolic'
-                      ? 'bg-purple-500 text-slate-950 font-black shadow-md shadow-purple-500/25 scale-[1.02]'
-                      : 'text-slate-400 hover:text-purple-300 hover:bg-slate-800/70 font-semibold'
-                  }`}
-                  title="Fase Metabólica: 15+ repetições para estresse metabólico, resistência e oclusão (55-65% 1RM)"
-                >
-                  <Zap className="w-3 h-3 shrink-0" />
-                  <span>Metabólico</span>
-                  <span className={activePhase === 'metabolic' ? 'text-slate-950 font-black' : 'text-purple-400/80'}>
-                    15+
-                  </span>
-                </button>
-              </div>
+            <div className="flex items-center gap-1.5">
+              {notesSaveStatus === 'saving' && (
+                <span className="flex items-center gap-1 text-[11px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                  <span>Salvando...</span>
+                </span>
+              )}
+              {notesSaveStatus === 'saved' && (
+                <span className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-medium">
+                  <Check className="w-3 h-3 stroke-[2.5]" />
+                  <span>Salvo</span>
+                </span>
+              )}
+              {notesSaveStatus === 'idle' && localNotes.trim().length > 0 && (
+                <span className="text-[10px] text-slate-500 font-mono">
+                  Auto-salvo
+                </span>
+              )}
             </div>
           </div>
+          <textarea
+            value={localNotes}
+            onChange={(e) => handleNotesChange(e.target.value)}
+            onBlur={handleNotesBlur}
+            placeholder="Observações rápidas: carga subiu fácil, dor articular zero, sensação geral..."
+            rows={2}
+            className="w-full bg-[#060a14] border border-slate-700/80 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 transition-colors resize-none font-medium leading-relaxed"
+          />
+        </div>
 
-          {/* Índice de Navegação Rápida por Exercício (Lado a Lado no Modo Paisagem) */}
-          {workoutItems.length > 1 && (
-            <div className="landscape:col-span-6 p-2.5 rounded-xl bg-[#0b1220] border border-slate-800/90 flex flex-col justify-center">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                  Navegação Rápida ({workoutItems.length} exercícios):
-                </span>
-                <div className="flex items-center gap-1.5">
-                  {nextIncompleteExerciseIndex !== -1 && completedSets > 0 && (
+        {/* Índice de Navegação Rápida por Exercício */}
+        {workoutItems.length > 1 && (
+          <div className="mt-2.5 p-2.5 rounded-xl bg-[#0b1220] border border-slate-800/90 flex flex-col justify-center">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                Navegação Rápida ({workoutItems.length} exercícios):
+              </span>
+              <div className="flex items-center gap-1.5">
+                {nextIncompleteExerciseIndex !== -1 && completedSets > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => scrollToExercise(nextIncompleteExerciseIndex)}
+                    className="px-2 py-0.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[10px] font-bold cursor-pointer active:scale-95"
+                  >
+                    Ir p/ Próximo (#{nextIncompleteExerciseIndex + 1}) ➔
+                  </button>
+                )}
+                {exerciseCompletionStats.some((st) => st.isComplete) &&
+                  !exerciseCompletionStats.every((st) => st.isComplete) && (
                     <button
                       type="button"
-                      onClick={() => scrollToExercise(nextIncompleteExerciseIndex)}
-                      className="px-2 py-0.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[10px] font-bold cursor-pointer active:scale-95"
+                      onClick={() => setHideCompletedExercises((prev) => !prev)}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer active:scale-95 ${
+                        hideCompletedExercises
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                      }`}
                     >
-                      Ir p/ Próximo (#{nextIncompleteExerciseIndex + 1}) ➔
+                      {hideCompletedExercises ? 'Mostrar Todos' : 'Ocultar Concluídos'}
                     </button>
                   )}
-                  {exerciseCompletionStats.some((st) => st.isComplete) &&
-                    !exerciseCompletionStats.every((st) => st.isComplete) && (
-                      <button
-                        type="button"
-                        onClick={() => setHideCompletedExercises((prev) => !prev)}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer active:scale-95 ${
-                          hideCompletedExercises
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                        }`}
-                      >
-                        {hideCompletedExercises ? 'Mostrar Todos' : 'Ocultar Concluídos'}
-                      </button>
-                    )}
-                </div>
               </div>
+            </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
                 {workoutItems.map((it, idx) => {
@@ -1115,7 +917,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
               </div>
             </div>
           )}
-        </div>
 
         {/* Alertas de Recordes Batidos e Aquecimento Articular (Lado a Lado em Paisagem quando ambos visíveis) */}
         {(beatenSetsCount > 0 || completedSets === 0) && (
@@ -1133,17 +934,17 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             )}
 
             {completedSets === 0 && (
-              <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2 text-amber-300 min-w-0">
+              <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 text-amber-300 min-w-0 flex-1">
                   <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span className="truncate">
+                  <span className="leading-snug break-words flex-1">
                     Aquecimento articular ({mobilityRoutine.totalExercises} etapas · ~{mobilityRoutine.totalDurationMinutes} min)
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsMobilityOpen(true)}
-                  className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] shrink-0 cursor-pointer shadow-sm transition-all active:scale-95"
+                  className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] shrink-0 cursor-pointer shadow-sm transition-all active:scale-95"
                 >
                   Iniciar Aquecimento
                 </button>
@@ -1291,17 +1092,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
               <span>Mobilidade</span>
             </button>
 
-            {/* Exportar Ficha PDF */}
-            <button
-              type="button"
-              onClick={() => setIsPdfModalOpen(true)}
-              className="flex py-1.5 px-2.5 rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
-              title="Exportar ou imprimir Ficha de Treino em PDF A4"
-            >
-              <FileDown className="w-3.5 h-3.5 text-emerald-400" />
-              <span>PDF</span>
-            </button>
-
             {/* Adicionar Exercício */}
             <button
               type="button"
@@ -1339,21 +1129,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
                     <div>
                       <span className="block font-bold">Aquecimento Articular</span>
                       <span className="block text-[10px] text-slate-400">3-5 min de mobilidade específica</span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowToolsMenu(false);
-                      setIsPdfModalOpen(true);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-emerald-300 hover:bg-emerald-950/40 text-left transition-colors cursor-pointer"
-                  >
-                    <FileDown className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <div>
-                      <span className="block font-bold">Exportar Ficha PDF</span>
-                      <span className="block text-[10px] text-slate-400">Folha A4 imprimível de academia</span>
                     </div>
                   </button>
                 </div>
@@ -1444,6 +1219,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
               nextExerciseName={nextItem?.exercise.name}
               prevExerciseName={prevItem?.exercise.name}
               isDragging={draggingIdx === index}
+              isHoldingDrag={holdingIdx === index}
               isDropTarget={dropTargetIdx === index && draggingIdx !== index}
               forceCollapsed={shouldForceCollapse}
               landscapeSetLayout={landscapeSetLayout}
@@ -1469,93 +1245,50 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
         })}
       </div>
 
-      {/* 4 & 5. Rodapé Responsivo em Paisagem: Anotações do Treino + Ações de Conclusão/Cancelamento Lado a Lado */}
-      <div className="grid grid-cols-1 landscape:grid-cols-12 gap-3 items-stretch">
-        {/* 4. Anotações do Treino com Auto-Save Debounced */}
-        <div className="landscape:col-span-7 bg-[#0f172a] border border-slate-800 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-            <div className="flex items-center gap-2 text-slate-300">
-              <FileEdit className="w-3.5 h-3.5 text-purple-400" />
-              <span className="text-xs font-bold text-white uppercase tracking-wider">
-                Anotações do Treino
-              </span>
-            </div>
+      {/* 4. Ações Finais de Conclusão / Cancelamento */}
+      <div className="p-3.5 sm:p-4 rounded-2xl bg-[#090d19] border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+        <button
+          type="button"
+          onClick={onFinishSession}
+          className="w-full sm:flex-1 py-3.5 px-5 rounded-xl font-black text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all cursor-pointer"
+        >
+          <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+          <span>Concluir & Salvar Treino</span>
+        </button>
 
+        {isConfirmingCancel ? (
+          <div className="w-full sm:w-auto flex items-center justify-between gap-2 bg-slate-900 border border-rose-500/40 p-1.5 rounded-xl animate-fadeIn">
+            <span className="text-xs text-rose-300 font-bold px-1.5">Descartar treino?</span>
             <div className="flex items-center gap-1.5">
-              {notesSaveStatus === 'saving' && (
-                <span className="flex items-center gap-1 text-[11px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                  <span>Salvando...</span>
-                </span>
-              )}
-              {notesSaveStatus === 'saved' && (
-                <span className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-medium">
-                  <Check className="w-3 h-3 stroke-[2.5]" />
-                  <span>Salvo</span>
-                </span>
-              )}
-              {notesSaveStatus === 'idle' && localNotes.trim().length > 0 && (
-                <span className="text-[10px] text-slate-500 font-mono">
-                  Auto-salvo
-                </span>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConfirmingCancel(false);
+                  onDiscardSession();
+                }}
+                className="py-2 px-3 rounded-lg font-black text-xs bg-rose-600 hover:bg-rose-500 text-white cursor-pointer transition-all shadow-md active:scale-95"
+              >
+                Sim, Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsConfirmingCancel(false)}
+                className="py-2 px-2.5 rounded-lg font-bold text-xs bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+              >
+                Voltar
+              </button>
             </div>
           </div>
-          <textarea
-            value={localNotes}
-            onChange={(e) => handleNotesChange(e.target.value)}
-            onBlur={handleNotesBlur}
-            placeholder="Observações rápidas: carga subiu fácil, dor zero, etc."
-            rows={2}
-            className="w-full bg-[#070b14] border border-slate-700/80 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 transition-colors resize-none font-medium leading-relaxed"
-          />
-        </div>
-
-        {/* 5. Ações Finais de Conclusão / Cancelamento */}
-        <div className="landscape:col-span-5 p-3.5 rounded-2xl bg-[#090d19] border border-slate-800 flex flex-col sm:flex-row landscape:flex-col items-center justify-center gap-2.5 shadow-lg">
+        ) : (
           <button
             type="button"
-            onClick={onFinishSession}
-            className="w-full sm:w-auto landscape:w-full flex-1 py-3.5 px-5 rounded-xl font-black text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all cursor-pointer"
+            onClick={() => setIsConfirmingCancel(true)}
+            className="w-full sm:w-auto py-3.5 px-4 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-slate-800 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
-            <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-            <span>Concluir & Salvar Treino</span>
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Cancelar Treino</span>
           </button>
-
-          {isConfirmingCancel ? (
-            <div className="w-full sm:w-auto landscape:w-full flex items-center justify-between gap-2 bg-slate-900 border border-rose-500/40 p-1.5 rounded-xl animate-fadeIn">
-              <span className="text-xs text-rose-300 font-bold px-1.5">Descartar treino?</span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsConfirmingCancel(false);
-                    onDiscardSession();
-                  }}
-                  className="py-2 px-3 rounded-lg font-black text-xs bg-rose-600 hover:bg-rose-500 text-white cursor-pointer transition-all shadow-md active:scale-95"
-                >
-                  Sim, Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsConfirmingCancel(false)}
-                  className="py-2 px-2.5 rounded-lg font-bold text-xs bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
-                >
-                  Voltar
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsConfirmingCancel(true)}
-              className="w-full sm:w-auto landscape:w-full py-3 px-4 rounded-xl font-bold text-xs bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-slate-800 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Cancelar Treino</span>
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Modal de Aquecimento Articular Guiado (Lazy Loaded) */}
@@ -1566,17 +1299,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             onClose={() => setIsMobilityOpen(false)}
             routine={mobilityRoutine}
             routineTitle={routine.name}
-          />
-        </Suspense>
-      )}
-
-      {/* Modal de Exportação de Ficha PDF A4 (Lazy Loaded) */}
-      {isPdfModalOpen && (
-        <Suspense fallback={null}>
-          <WorkoutPdfExportModal
-            isOpen={isPdfModalOpen}
-            onClose={() => setIsPdfModalOpen(false)}
-            routine={{ ...routine, items: workoutItems }}
           />
         </Suspense>
       )}

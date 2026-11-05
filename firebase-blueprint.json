@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile and training preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Auth UID of the user" },
+        "email": { "type": "string", "format": "email", "description": "Email address of the user" },
+        "name": { "type": "string", "description": "Display name of the athlete" },
+        "weightKg": { "type": "number", "description": "Current body weight in kilograms" },
+        "heightM": { "type": "number", "description": "Height in meters" },
+        "gender": { "type": "string", "enum": ["male", "female"], "description": "Biological sex" },
+        "level": { "type": "string", "enum": ["beginner", "intermediate", "advanced"], "description": "Experience level" },
+        "focus": { "type": "string", "enum": ["glutes", "strength", "v_taper", "balanced"], "description": "Target training focus" },
+        "frequency": { "type": "number", "description": "Weekly workout frequency (1 to 6)" },
+        "preferredSplit": { "type": "string", "description": "Preferred muscle split" },
+        "weeklyBudget": { "type": "number", "description": "Total weekly sets target" },
+        "periodizationStrategy": { "type": "string", "enum": ["hypertrophy", "strength", "metabolic"], "description": "Current periodization phase" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["userId", "name", "createdAt"]
+    },
+    "WorkoutRoutine": {
+      "title": "WorkoutRoutine",
+      "description": "Workout routine definition belonging to a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the routine" },
+        "userId": { "type": "string", "description": "Auth UID of the owner" },
+        "letter": { "type": "string", "description": "Workout letter (A, B, C...)" },
+        "name": { "type": "string", "description": "Title of the workout routine" },
+        "subtitle": { "type": "string", "description": "Subtitle describing the target muscles" },
+        "split": { "type": "string", "description": "Workout split category" },
+        "totalSets": { "type": "number", "description": "Total sets in the routine" },
+        "estimatedMinutes": { "type": "number", "description": "Estimated duration in minutes" },
+        "version": { "type": "number", "description": "Version number of the routine" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when routine was created" }
+      },
+      "required": ["id", "userId", "name", "letter"]
+    },
+    "WorkoutSession": {
+      "title": "WorkoutSession",
+      "description": "A completed workout session logged by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Session identifier" },
+        "userId": { "type": "string", "description": "Auth UID of the user" },
+        "date": { "type": "string", "format": "date-time", "description": "ISO timestamp of the workout session" },
+        "splitName": { "type": "string", "description": "Name or split of the session" },
+        "totalSets": { "type": "number", "description": "Number of completed sets" },
+        "totalVolumeLoadKg": { "type": "number", "description": "Total tonnage lifted (kg)" },
+        "notes": { "type": "string", "description": "Optional athlete notes" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of session completion" }
+      },
+      "required": ["id", "userId", "date", "totalSets"]
+    },
+    "BodyMeasurement": {
+      "title": "BodyMeasurement",
+      "description": "Physical body measurements entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Measurement entry ID" },
+        "userId": { "type": "string", "description": "Auth UID of the user" },
+        "date": { "type": "string", "format": "date-time", "description": "Measurement date" },
+        "weightKg": { "type": "number", "description": "Body weight in kg" },
+        "waistCm": { "type": "number", "description": "Waist circumference in cm" },
+        "chestCm": { "type": "number", "description": "Chest circumference in cm" },
+        "armsCm": { "type": "number", "description": "Arms circumference in cm" },
+        "thighsCm": { "type": "number", "description": "Thighs circumference in cm" },
+        "calvesCm": { "type": "number", "description": "Calves circumference in cm" },
+        "hipsCm": { "type": "number", "description": "Hips circumference in cm" },
+        "bodyFatPercent": { "type": "number", "description": "Body fat percentage" },
+        "notes": { "type": "string", "description": "Additional notes" }
+      },
+      "required": ["id", "userId", "date", "weightKg"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "UserProfile" },
+      "description": "Stores user profile and global training settings"
+    },
+    "/users/{userId}/routines/{routineId}": {
+      "schema": { "$ref": "WorkoutRoutine" },
+      "description": "User workout routines"
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": { "$ref": "WorkoutSession" },
+      "description": "User completed workout sessions history"
+    },
+    "/users/{userId}/measurements/{measurementId}": {
+      "schema": { "$ref": "BodyMeasurement" },
+      "description": "User physical body measurement logs"
+    }
+  }
+}

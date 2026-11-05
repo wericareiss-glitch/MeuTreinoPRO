@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { X, Check, Plus, Dumbbell, Sparkles } from 'lucide-react';
+import { X, Check, Plus, Dumbbell, Sparkles, Search } from 'lucide-react';
 import { Exercise, EquipmentRequirement, MuscleGroup } from '../types/workout';
 import { EXERCISE_DATABASE, MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { safeStorage } from '../utils/storage';
@@ -29,6 +29,7 @@ export const SwapExerciseModal: React.FC<SwapExerciseModalProps> = ({
   onSelectExercise,
 }) => {
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [customName, setCustomName] = useState('');
   const [customProfile, setCustomProfile] = useState<'Alongamento' | 'Encurtamento' | 'Tensão Contínua'>('Alongamento');
   const [customEquip, setCustomEquip] = useState<'full_gym' | 'cables_free' | 'dumbbells_only'>('full_gym');
@@ -48,7 +49,17 @@ export const SwapExerciseModal: React.FC<SwapExerciseModalProps> = ({
     return true;
   });
 
-  const displayList = filteredExercises.length > 0 ? filteredExercises : muscleList;
+  const baseList = filteredExercises.length > 0 ? filteredExercises : muscleList;
+  const cleanSearch = searchQuery.trim().toLowerCase();
+  const displayList = cleanSearch
+    ? baseList.filter(
+        (ex) =>
+          ex.name.toLowerCase().includes(cleanSearch) ||
+          ex.category.toLowerCase().includes(cleanSearch) ||
+          ex.target.toLowerCase().includes(cleanSearch) ||
+          ex.profile.toLowerCase().includes(cleanSearch)
+      )
+    : baseList;
 
   const handleCreateAndSelectCustomExercise = (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,6 +203,18 @@ export const SwapExerciseModal: React.FC<SwapExerciseModalProps> = ({
             </form>
           )}
 
+          {/* Busca Rápida no Catálogo */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={`Buscar entre ${baseList.length} exercícios de ${muscleName}...`}
+              className="w-full bg-[#0a101d] border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
           {/* Lista de Exercícios Existentes */}
           <div className="space-y-2">
             {displayList.map((exercise) => {
@@ -215,8 +238,15 @@ export const SwapExerciseModal: React.FC<SwapExerciseModalProps> = ({
                       <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
                         {exercise.profile}
                       </span>
-                      <span className="text-[9px] text-slate-400">
-                        {exercise.category === 'compound' ? 'Composto' : 'Isolador'}
+                      <span className="text-[9px] font-semibold text-sky-300 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
+                        {exercise.category === 'compound'
+                          ? 'Composto'
+                          : exercise.category === 'isolation'
+                          ? 'Isolador'
+                          : exercise.category}
+                      </span>
+                      <span className="text-[9px] text-slate-400 truncate">
+                        • {exercise.target}
                       </span>
                     </div>
 

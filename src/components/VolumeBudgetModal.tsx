@@ -12,7 +12,9 @@ import {
   Sparkles, 
   AlertTriangle, 
   CheckCircle2, 
-  Layers 
+  Layers,
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 import { MuscleGroup } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
@@ -43,6 +45,9 @@ export const VolumeBudgetModal: React.FC<VolumeBudgetModalProps> = ({
   const totalAllocated = Object.values(budgets).reduce((a, b) => a + b, 0);
   const diff = targetBudget - totalAllocated;
 
+  const activeMusclesCount = ALL_MUSCLE_GROUPS.filter((m) => (budgets[m] || 0) > 0).length;
+  const excludedMusclesCount = ALL_MUSCLE_GROUPS.length - activeMusclesCount;
+
   // Status color logic
   let statusColor = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
   let balanceMessage = 'Séries 100% equilibradas e perfeitas!';
@@ -61,8 +66,20 @@ export const VolumeBudgetModal: React.FC<VolumeBudgetModalProps> = ({
   const handleAdjustMuscle = (m: MuscleGroup, delta: number) => {
     setBudgets((prev) => ({
       ...prev,
-      [m]: Math.max(1, (prev[m] || 0) + delta),
+      [m]: Math.max(0, (prev[m] || 0) + delta),
     }));
+  };
+
+  const handleToggleExcludeMuscle = (m: MuscleGroup) => {
+    setBudgets((prev) => {
+      const current = prev[m] || 0;
+      if (current > 0) {
+        // Exclui o músculo (0 séries)
+        return { ...prev, [m]: 0 };
+      }
+      // Restaura para 8 séries padrão
+      return { ...prev, [m]: 8 };
+    });
   };
 
   const handleApplyPreset = (presetKey: string) => {
@@ -203,55 +220,98 @@ export const VolumeBudgetModal: React.FC<VolumeBudgetModalProps> = ({
             </div>
           </div>
 
-          {/* Ajuste Fino (+ e -) por Grupo Muscular */}
+          {/* Ajuste Fino (+ e -) por Grupo Muscular com Opção de Exclusão */}
           <div>
-            <div className="flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5 flex-wrap gap-2">
               <div className="flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-sky-400" />
                 <span>Distribuição por Grupo Muscular (11 Grupamentos)</span>
               </div>
-              <span className="text-[10px] text-slate-500 font-normal">
-                Séries semanais recomendadas: 6 a 16
-              </span>
+              <div className="flex items-center gap-2 text-[10px] font-mono">
+                <span className="text-emerald-400 font-bold">{activeMusclesCount} ativos</span>
+                {excludedMusclesCount > 0 && (
+                  <span className="text-rose-400 font-bold bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
+                    {excludedMusclesCount} excluídos
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {ALL_MUSCLE_GROUPS.map((m) => {
                 const val = budgets[m] || 0;
+                const isExcluded = val === 0;
+
                 return (
                   <div
                     key={m}
-                    className="p-2.5 rounded-xl bg-[#0b1220] border border-slate-800/80 flex items-center justify-between gap-2"
+                    className={`p-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                      isExcluded
+                        ? 'bg-rose-950/20 border-rose-500/30 opacity-75'
+                        : 'bg-[#0b1220] border-slate-800/80 hover:border-slate-700'
+                    }`}
                   >
-                    <div className="truncate flex-1">
-                      <span className="text-xs font-semibold text-white truncate block">
-                        {MUSCLE_NAMES[m]}
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        ~{Math.round((val / (totalAllocated || 1)) * 100)}% do volume total
+                    <div className="truncate flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs font-semibold truncate block ${isExcluded ? 'text-slate-400 line-through' : 'text-white'}`}>
+                          {MUSCLE_NAMES[m]}
+                        </span>
+                        {isExcluded && (
+                          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                            Excluído
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-mono block">
+                        {isExcluded ? 'Não entrará nos treinos' : `~${Math.round((val / (totalAllocated || 1)) * 100)}% do volume total`}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleAdjustMuscle(m, -1)}
-                        className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-sm transition-colors"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
+                      {isExcluded ? (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleExcludeMuscle(m)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Restaurar músculo na rotina"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Incluir</span>
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustMuscle(m, -1)}
+                            className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-sm transition-colors cursor-pointer"
+                            title="Diminuir 1 série"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
 
-                      <span className="w-8 text-center font-mono font-black text-sm text-amber-300">
-                        {val}
-                      </span>
+                          <span className="w-8 text-center font-mono font-black text-sm text-amber-300">
+                            {val}
+                          </span>
 
-                      <button
-                        type="button"
-                        onClick={() => handleAdjustMuscle(m, 1)}
-                        className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-sm transition-colors"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustMuscle(m, 1)}
+                            className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold text-sm transition-colors cursor-pointer"
+                            title="Aumentar 1 série"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleToggleExcludeMuscle(m)}
+                            className="w-7 h-7 rounded-lg bg-slate-900 hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 border border-slate-800 hover:border-rose-500/40 flex items-center justify-center transition-colors cursor-pointer ml-0.5"
+                            title="Excluir músculo dos treinos (0 séries)"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );

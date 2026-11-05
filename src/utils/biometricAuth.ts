@@ -176,28 +176,53 @@ export function setBiometricAppLockEnabled(userId: string, enabled: boolean): vo
   notifyBiometricChange();
 }
 
+// Nonce criptográfico em memória por execução para impedir bypass manual via DevTools sessionStorage
+const SESSION_RUNTIME_NONCE = (() => {
+  const arr = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(arr);
+  }
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+})();
+const unlockedUsersInMemory = new Set<string>();
+
+function computeSessionUnlockToken(userId: string): string {
+  return `mtp_bio_ok_${userId}_${SESSION_RUNTIME_NONCE}`;
+}
+
 /**
- * Controla se a sessão atual já foi desbloqueada por biometria nesta abertura do app
+ * Controla se a sessão atual já foi desbloqueada por biometria nesta abertura do app (Fail-Closed)
  */
 export function isBiometricSessionUnlocked(userId: string): boolean {
-  if (typeof window === 'undefined') return true;
+  if (!userId) return false;
+  if (typeof window === 'undefined') return false;
+  if (!unlockedUsersInMemory.has(userId)) return false;
   try {
-    return sessionStorage.getItem(`${BIOMETRIC_SESSION_UNLOCKED_KEY}_${userId}`) === 'true';
+    const expectedToken = computeSessionUnlockToken(userId);
+    return sessionStorage.getItem(`${BIOMETRIC_SESSION_UNLOCKED_KEY}_${userId}`) === expectedToken;
   } catch {
-    return true;
+    return unlockedUsersInMemory.has(userId);
   }
 }
 
 export function markBiometricSessionUnlocked(userId: string, unlocked: boolean): void {
-  if (typeof window === 'undefined') return;
+  if (!userId || typeof window === 'undefined') return;
+  if (unlocked) {
+    unlockedUsersInMemory.add(userId);
+  } else {
+    unlockedUsersInMemory.delete(userId);
+  }
   try {
     if (unlocked) {
-      sessionStorage.setItem(`${BIOMETRIC_SESSION_UNLOCKED_KEY}_${userId}`, 'true');
+      sessionStorage.setItem(
+        `${BIOMETRIC_SESSION_UNLOCKED_KEY}_${userId}`,
+        computeSessionUnlockToken(userId)
+      );
     } else {
       sessionStorage.removeItem(`${BIOMETRIC_SESSION_UNLOCKED_KEY}_${userId}`);
     }
   } catch {
-    // Ignore sessionStorage restrictions
+    // Ignore sessionStorage restrictions; unlockedUsersInMemory still enforces state
   }
   notifyBiometricChange();
 }
@@ -276,10 +301,34 @@ export async function registerBiometricCredential(
       publicKey: publicKeyOptions,
     })) as PublicKeyCredential | null;
 
-    if (!createdCredential || !createdCredential.rawId) {
+    if (!createdCredential || !createdCredential.rawId || !createdCredential.response) {
       return {
         success: false,
         error: 'Não foi possível concluir o registro da biometria.',
+      };
+    }
+
+    // Valida clientDataJSON (type, challenge e origin) para garantir integridade da cerimônia WebAuthn
+    const expectedChallengeB64 = bufferToBase64Url(challenge);
+    try {
+      const clientDataJsonStr = new TextDecoder().decode(
+        createdCredential.response.clientDataJSON
+      );
+      const clientData = JSON.parse(clientDataJsonStr);
+      if (
+        clientData.type !== 'webauthn.create' ||
+        clientData.challenge !== expectedChallengeB64 ||
+        clientData.origin !== window.location.origin
+      ) {
+        return {
+          success: false,
+          error: 'Falha na validação criptográfica de origem/desafio da biometria.',
+        };
+      }
+    } catch {
+      return {
+        success: false,
+        error: 'Resposta de registro biométrico inválida.',
       };
     }
 
@@ -412,30 +461,62 @@ export async function authenticateWithBiometrics(options?: {
       publicKey: publicKeyRequestOptions,
     })) as PublicKeyCredential | null;
 
-    if (!assertion || !assertion.rawId) {
+    if (!assertion || !assertion.rawId || !assertion.response) {
       return {
         success: false,
         error: 'Verificação biométrica não concluída.',
       };
     }
 
-    const assertedCredentialId = bufferToBase64Url(assertion.rawId);
-    let matchedRecord = candidateCredentials.find(
-      (c) => c.credentialId === assertedCredentialId
-    );
+    const assertionResponse = assertion.response as AuthenticatorAssertionResponse;
 
-    // Fallback por userHandle caso o autenticador retorne passkey residente
-    if (!matchedRecord) {
-      const response = assertion.response as AuthenticatorAssertionResponse;
-      if (response?.userHandle) {
-        const handleUserId = new TextDecoder().decode(response.userHandle);
-        matchedRecord = candidateCredentials.find((c) => c.userId === handleUserId);
+    // 1. Verifica clientDataJSON (type === 'webauthn.get', challenge exato e origin exata)
+    const expectedChallengeB64 = bufferToBase64Url(challenge);
+    try {
+      const clientDataStr = new TextDecoder().decode(assertionResponse.clientDataJSON);
+      const clientData = JSON.parse(clientDataStr);
+      if (
+        clientData.type !== 'webauthn.get' ||
+        clientData.challenge !== expectedChallengeB64 ||
+        clientData.origin !== window.location.origin
+      ) {
+        return {
+          success: false,
+          error: 'Desafio ou origem WebAuthn inválidos. Autenticação bloqueada.',
+        };
+      }
+    } catch {
+      return {
+        success: false,
+        error: 'Dados de resposta WebAuthn corrompidos.',
+      };
+    }
+
+    // 2. Verifica authenticatorData: exige flags UP (User Present = 0x01) e UV (User Verified = 0x04)
+    if (assertionResponse.authenticatorData) {
+      const authData = new Uint8Array(assertionResponse.authenticatorData);
+      if (authData.byteLength < 37) {
+        return {
+          success: false,
+          error: 'AuthenticatorData WebAuthn inválido.',
+        };
+      }
+      const flags = authData[32];
+      const isUserPresent = (flags & 0x01) !== 0;
+      const isUserVerified = (flags & 0x04) !== 0;
+      if (!isUserPresent || !isUserVerified) {
+        return {
+          success: false,
+          error: 'Verificação biométrica presencial não confirmada pelo sensor do dispositivo.',
+        };
       }
     }
 
-    if (!matchedRecord && candidateCredentials.length === 1) {
-      matchedRecord = candidateCredentials[0];
-    }
+    // 3. Exige correspondência exata do credentialId retornado pelo autenticador (sem fallback inseguro)
+    const assertedCredentialId = bufferToBase64Url(assertion.rawId);
+    const matchedRecord = candidateCredentials.find(
+      (c) => c.credentialId === assertedCredentialId
+    );
 
     if (!matchedRecord) {
       return {

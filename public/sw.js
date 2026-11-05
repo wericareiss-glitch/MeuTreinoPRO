@@ -6,7 +6,7 @@
  * 3. App Shell Offline Navigation Fallback + Background Sync ('sync') + Notificações Push Locais
  */
 
-const SW_VERSION = 'meutreino-sw-v4.4';
+const SW_VERSION = 'meutreino-sw-v4.5';
 const STATIC_CACHE_NAME = `${SW_VERSION}-static-assets`;
 const WORKOUT_DATA_CACHE_NAME = `${SW_VERSION}-workout-data`;
 const APP_SHELL_CACHE_NAME = `${SW_VERSION}-app-shell`;
@@ -35,10 +35,231 @@ const PRECACHE_STATIC_ASSETS = [
 ];
 
 const SYNTHETIC_WORKOUT_DATA_URL = '/__sw_workout_data__/latest_bundle.json';
+const SYNTHETIC_OUTBOX_URL = '/__sw_workout_data__/pending_outbox.json';
 const BACKGROUND_SYNC_TAG = 'meutreino-workout-sync-buffer';
+const CRITICAL_BACKGROUND_SYNC_TAG = 'meutreino-critical-workout-sync';
+const BG_SYNC_DB_NAME = 'meutreino_bg_sync_db';
+const BG_SYNC_STORE_NAME = 'sync_outbox';
 
 let activeHabitSchedule = null;
 let habitTimerInterval = null;
+
+/**
+ * Abre o banco IndexedDB compartilhado para leitura/escrita do Outbox no Service Worker
+ */
+function openOutboxDB() {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(BG_SYNC_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(BG_SYNC_STORE_NAME)) {
+          db.createObjectStore(BG_SYNC_STORE_NAME, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function saveOutboxEntryInSW(record) {
+  if (!record || !record.id) return;
+  try {
+    const db = await openOutboxDB();
+    if (db) {
+      await new Promise((resolve) => {
+        try {
+          const tx = db.transaction(BG_SYNC_STORE_NAME, 'readwrite');
+          tx.objectStore(BG_SYNC_STORE_NAME).put(record);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+        } catch {
+          resolve();
+        }
+      });
+    }
+  } catch {}
+
+  try {
+    const cache = await caches.open(WORKOUT_DATA_CACHE_NAME);
+    const response = new Response(JSON.stringify(record), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+    await cache.put(SYNTHETIC_OUTBOX_URL, response);
+  } catch {}
+}
+
+async function removeOutboxEntryInSW(recordId) {
+  try {
+    const db = await openOutboxDB();
+    if (db && recordId) {
+      await new Promise((resolve) => {
+        try {
+          const tx = db.transaction(BG_SYNC_STORE_NAME, 'readwrite');
+          tx.objectStore(BG_SYNC_STORE_NAME).delete(recordId);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+        } catch {
+          resolve();
+        }
+      });
+    }
+  } catch {}
+
+  try {
+    const cache = await caches.open(WORKOUT_DATA_CACHE_NAME);
+    await cache.delete(SYNTHETIC_OUTBOX_URL);
+  } catch {}
+}
+
+async function getAllPendingOutboxEntries() {
+  const entries = [];
+  const seenIds = new Set();
+
+  try {
+    const db = await openOutboxDB();
+    if (db) {
+      const dbRecords = await new Promise((resolve) => {
+        try {
+          const tx = db.transaction(BG_SYNC_STORE_NAME, 'readonly');
+          const req = tx.objectStore(BG_SYNC_STORE_NAME).getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        } catch {
+          resolve([]);
+        }
+      });
+      for (const item of dbRecords) {
+        if (item && item.id && !seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          entries.push(item);
+        }
+      }
+    }
+  } catch {}
+
+  try {
+    const cache = await caches.open(WORKOUT_DATA_CACHE_NAME);
+    const cachedRes = await cache.match(SYNTHETIC_OUTBOX_URL);
+    if (cachedRes) {
+      const cachedItem = await cachedRes.json();
+      if (cachedItem && cachedItem.id && !seenIds.has(cachedItem.id)) {
+        seenIds.add(cachedItem.id);
+        entries.push(cachedItem);
+      }
+    }
+  } catch {}
+
+  return entries;
+}
+
+/**
+ * Envia diretamente do Service Worker os dados de 'workoutLogs' e 'sessions' para o Supabase REST API,
+ * funcionando mesmo quando o usuário fechou o app prematuramente após concluir o treino (zero abas abertas).
+ */
+async function flushOutboxDirectlyToSupabase() {
+  const entries = await getAllPendingOutboxEntries();
+  const clients = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  });
+
+  // Se houver abas abertas, solicita também que o cliente faça o flush da fila em memória
+  for (const client of clients) {
+    client.postMessage({
+      type: 'SW_FLUSH_MUTATION_BUFFER',
+      timestamp: Date.now(),
+    });
+  }
+
+  for (const entry of entries) {
+    if (!entry || !entry.userId || !entry.bundle) continue;
+    const supabaseUrl = (entry.supabaseUrl || '').trim().replace(/\/+$/, '');
+    const supabaseAnonKey = (entry.supabaseAnonKey || '').trim();
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.startsWith('https://')) {
+      continue;
+    }
+
+    try {
+      const parsed = new URL(supabaseUrl);
+      const host = parsed.hostname.toLowerCase();
+      if (
+        parsed.protocol !== 'https:' ||
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '0.0.0.0' ||
+        host === '169.254.169.254'
+      ) {
+        continue;
+      }
+    } catch {
+      continue;
+    }
+
+    // Garante que workoutLogs e sessions estejam consolidados dentro do bundle enviado ao Supabase
+    const bundleToSync = {
+      ...entry.bundle,
+      sessions: entry.sessions || entry.bundle.sessions || [],
+      workoutLogs: entry.workoutLogs || entry.bundle.workoutLogs || {
+        currentLogs: entry.bundle.currentLogs || {},
+        historyLogs: entry.bundle.historyLogs || {},
+      },
+      updatedAt: entry.updatedAt || new Date().toISOString(),
+    };
+
+    const endpoint = `${supabaseUrl}/rest/v1/meutreino_sync?on_conflict=user_id`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        'x-meutreino-user-id': String(entry.userId),
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({
+        user_id: entry.userId,
+        data: bundleToSync,
+        updated_at: bundleToSync.updatedAt,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Supabase Background Sync HTTP ${response.status}`);
+    }
+
+    // Sucesso: remove do Outbox e atualiza snapshot Stale-While-Revalidate
+    await removeOutboxEntryInSW(entry.id);
+    try {
+      const cache = await caches.open(WORKOUT_DATA_CACHE_NAME);
+      await cache.put(
+        SYNTHETIC_WORKOUT_DATA_URL,
+        new Response(JSON.stringify(bundleToSync), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'X-Sw-Cached-At': bundleToSync.updatedAt,
+            'X-Cache-Strategy': 'Background-Sync-Confirmed',
+          },
+        })
+      );
+    } catch {}
+
+    for (const client of clients) {
+      client.postMessage({
+        type: 'SW_BACKGROUND_SYNC_COMPLETED',
+        userId: entry.userId,
+        syncedAt: bundleToSync.updatedAt,
+      });
+    }
+  }
+}
 
 /**
  * Limita o número de entradas em um cache para evitar uso excessivo de armazenamento no Android.
@@ -376,21 +597,14 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(staleWhileRevalidateWorkoutData(request, event));
 });
 
-// 4. BACKGROUND SYNC: Aciona o envio do buffer de mutações locais assim que a conectividade retorna no Android
+// 4. BACKGROUND SYNC: Envia 'workoutLogs' e 'sessions' diretamente do Service Worker ao Supabase
+// mesmo se o usuário tiver fechado o app prematuramente após o treino
 self.addEventListener('sync', (event) => {
-  if (event.tag === BACKGROUND_SYNC_TAG) {
-    event.waitUntil(
-      self.clients
-        .matchAll({ type: 'window', includeUncontrolled: true })
-        .then((clients) => {
-          for (const client of clients) {
-            client.postMessage({
-              type: 'SW_FLUSH_MUTATION_BUFFER',
-              timestamp: Date.now(),
-            });
-          }
-        })
-    );
+  if (
+    event.tag === BACKGROUND_SYNC_TAG ||
+    event.tag === CRITICAL_BACKGROUND_SYNC_TAG
+  ) {
+    event.waitUntil(flushOutboxDirectlyToSupabase());
   }
 });
 
@@ -491,9 +705,10 @@ function checkHabitSchedule() {
   }
 }
 
-// 6. MESSAGE: Escuta mensagens da aplicação cliente (Snapshots de Treino, Atualização SW e Notificações)
+// 6. MESSAGE: Escuta mensagens da aplicação cliente com validação de origem (Same-Origin Policy)
 self.addEventListener('message', (event) => {
   if (!event.data || typeof event.data !== 'object') return;
+  if (event.origin && event.origin !== self.location.origin) return;
 
   const { type, payload } = event.data;
 
@@ -517,6 +732,18 @@ self.addEventListener('message', (event) => {
         return cache.put(SYNTHETIC_WORKOUT_DATA_URL, response);
       })
     );
+    return;
+  }
+
+  // Enfileira pacote de 'workoutLogs' e 'sessions' no Outbox do Service Worker para Background Sync autônomo
+  if (type === 'QUEUE_BACKGROUND_SYNC_OUTBOX' && payload) {
+    event.waitUntil(saveOutboxEntryInSW(payload));
+    return;
+  }
+
+  // Limpa pacote confirmado do Outbox do Service Worker
+  if (type === 'CLEAR_BACKGROUND_SYNC_OUTBOX' && payload) {
+    event.waitUntil(removeOutboxEntryInSW(payload.id));
     return;
   }
 

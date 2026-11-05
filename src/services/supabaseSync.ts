@@ -24,6 +24,10 @@ export interface MeuTreinoSyncBundle {
   userProfile?: any;
   routines?: any[];
   sessions?: any[];
+  workoutLogs?: {
+    currentLogs?: Record<string, any>;
+    historyLogs?: Record<string, any>;
+  };
   historyLogs?: Record<string, any>;
   currentLogs?: Record<string, any>;
   measurements?: any[];
@@ -38,6 +42,26 @@ export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'error' | '
 const DEFAULT_URL = (import.meta as any).env?.VITE_SUPABASE_URL || '';
 const DEFAULT_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
+const BG_SYNC_DB_NAME = 'meutreino_bg_sync_db';
+const BG_SYNC_STORE_NAME = 'sync_outbox';
+const BG_SYNC_TAG_BUFFER = 'meutreino-workout-sync-buffer';
+const BG_SYNC_TAG_CRITICAL = 'meutreino-critical-workout-sync';
+
+export interface BackgroundSyncOutboxRecord {
+  id: string;
+  userId: string;
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  bundle: MeuTreinoSyncBundle;
+  workoutLogs: {
+    currentLogs: Record<string, any>;
+    historyLogs: Record<string, any>;
+  };
+  sessions: any[];
+  updatedAt: string;
+  status: 'pending' | 'syncing';
+}
+
 let supabaseInstance: SupabaseClient | null = null;
 let realtimeChannel: any = null;
 let syncBroadcastChannel: BroadcastChannel | null = null;
@@ -51,14 +75,84 @@ if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
 }
 
 /**
+ * Abre o banco IndexedDB compartilhado com o Service Worker para o Background Sync Outbox
+ */
+function openBackgroundSyncOutboxDB(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(BG_SYNC_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(BG_SYNC_STORE_NAME)) {
+          db.createObjectStore(BG_SYNC_STORE_NAME, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+function sanitizeProfileForSync(profile: any): any {
+  if (!profile || typeof profile !== 'object') return undefined;
+  const copy = { ...profile };
+  delete copy.password;
+  return copy;
+}
+
+function sanitizeRemoteObject<T>(input: T): T {
+  if (input === null || typeof input !== 'object') return input;
+  if (Array.isArray(input)) {
+    return input.map((item) => sanitizeRemoteObject(item)) as unknown as T;
+  }
+  const clean: Record<string, any> = {};
+  for (const [k, v] of Object.entries(input as Record<string, any>)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    clean[k] = sanitizeRemoteObject(v);
+  }
+  return clean as T;
+}
+
+export function isValidHttpsSupabaseUrl(rawUrl: string): boolean {
+  if (!rawUrl || typeof rawUrl !== 'string') return false;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    // Bloqueia endereços locais/privados (prevenção de SSRF)
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '0.0.0.0' ||
+      host === '169.254.169.254' ||
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    ) {
+      return false;
+    }
+    return Boolean(host && host.includes('.'));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Sincroniza um snapshot dos dados de treino com o cache Stale-While-Revalidate do Service Worker
  */
 function notifyServiceWorkerWorkoutSnapshot(bundle: MeuTreinoSyncBundle): void {
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
     try {
+      const safeBundle: MeuTreinoSyncBundle = {
+        ...bundle,
+        userProfile: sanitizeProfileForSync(bundle.userProfile),
+      };
       navigator.serviceWorker.controller.postMessage({
         type: 'CACHE_WORKOUT_DATA_SNAPSHOT',
-        payload: bundle,
+        payload: safeBundle,
       });
     } catch {
       // Ignora caso o Service Worker ainda esteja ativando
@@ -77,31 +171,37 @@ export function getStoredSupabaseConfig(): SupabaseConfig {
 }
 
 export function saveStoredSupabaseConfig(config: SupabaseConfig): void {
-  safeStorage.set(SUPABASE_URL_KEY, (config.url || '').trim());
-  safeStorage.set(SUPABASE_KEY_KEY, (config.anonKey || '').trim());
+  const cleanUrl = (config.url || '').trim();
+  const cleanKey = (config.anonKey || '').trim();
+  safeStorage.set(SUPABASE_URL_KEY, cleanUrl);
+  safeStorage.set(SUPABASE_KEY_KEY, cleanKey);
   // Reset instance to reinitialize with new credentials
   supabaseInstance = null;
 }
 
 export function isSupabaseConfigured(): boolean {
   const cfg = getStoredSupabaseConfig();
-  return Boolean(cfg.url && cfg.anonKey && cfg.url.startsWith('https://'));
+  return Boolean(cfg.url && cfg.anonKey && isValidHttpsSupabaseUrl(cfg.url));
 }
 
 export function getSupabaseClient(): SupabaseClient | null {
   if (supabaseInstance) return supabaseInstance;
 
   const cfg = getStoredSupabaseConfig();
-  if (!cfg.url || !cfg.anonKey || !cfg.url.startsWith('https://')) {
+  if (!cfg.url || !cfg.anonKey || !isValidHttpsSupabaseUrl(cfg.url)) {
     return null;
   }
 
   try {
+    const activeUid = safeStorage.get<string | null>('alex_active_user_id', null) || '';
     supabaseInstance = createClient(cfg.url, cfg.anonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: false,
+      },
+      global: {
+        headers: activeUid ? { 'x-meutreino-user-id': activeUid } : {},
       },
       realtime: {
         params: {
@@ -241,9 +341,13 @@ export function buildLocalSyncBundle(userId: string, userProfile?: any): MeuTrei
     userId,
     updatedAt: new Date().toISOString(),
     sourceDevice: device,
-    userProfile,
+    userProfile: sanitizeProfileForSync(userProfile),
     routines,
     sessions,
+    workoutLogs: {
+      currentLogs,
+      historyLogs,
+    },
     historyLogs,
     currentLogs,
     measurements,
@@ -254,20 +358,41 @@ export function buildLocalSyncBundle(userId: string, userProfile?: any): MeuTrei
 }
 
 /**
- * Aplica uma bundle remota nos armazenamentos locais (safeStorage e IndexedDB)
+ * Aplica uma bundle remota nos armazenamentos locais (safeStorage e IndexedDB) com sanitização contra Prototype Pollution
  */
-export function applyRemoteSyncBundle(bundle: MeuTreinoSyncBundle): void {
-  if (!bundle || !bundle.userId) return;
-  const uid = bundle.userId;
+export function applyRemoteSyncBundle(rawBundle: MeuTreinoSyncBundle): void {
+  const bundle = sanitizeRemoteObject(rawBundle);
+  if (!bundle || typeof bundle.userId !== 'string' || !bundle.userId.trim()) return;
+  const uid = bundle.userId.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
 
-  if (bundle.routines) safeStorage.set(`alex_u_${uid}_routines`, bundle.routines);
-  if (bundle.sessions) safeStorage.set(`alex_u_${uid}_sessions`, bundle.sessions);
-  if (bundle.historyLogs) safeStorage.set(`alex_u_${uid}_history_logs`, bundle.historyLogs);
-  if (bundle.measurements) safeStorage.set(`alex_u_${uid}_measurements`, bundle.measurements);
-  if (bundle.workoutNotes !== undefined) safeStorage.set(`alex_u_${uid}_workout_notes`, bundle.workoutNotes);
-  if (bundle.activeRoutineId !== undefined) safeStorage.set(`alex_u_${uid}_active_routine_id`, bundle.activeRoutineId);
+  // Garante que apenas dados pertencentes ao usuário ativo (ou quando explicitamente solicitado) sejam aplicados
+  const currentActiveUid = safeStorage.get<string | null>('alex_active_user_id', null);
+  if (currentActiveUid && currentActiveUid !== uid) {
+    return;
+  }
 
-  if (bundle.settings) {
+  if (Array.isArray(bundle.routines)) safeStorage.set(`alex_u_${uid}_routines`, bundle.routines);
+  if (Array.isArray(bundle.sessions)) safeStorage.set(`alex_u_${uid}_sessions`, bundle.sessions);
+  const resolvedHistoryLogs = bundle.workoutLogs?.historyLogs || bundle.historyLogs;
+  const resolvedCurrentLogs = bundle.workoutLogs?.currentLogs || bundle.currentLogs;
+  if (resolvedHistoryLogs && typeof resolvedHistoryLogs === 'object' && !Array.isArray(resolvedHistoryLogs)) {
+    safeStorage.set(`alex_u_${uid}_history_logs`, resolvedHistoryLogs);
+  }
+  if (
+    resolvedCurrentLogs &&
+    typeof resolvedCurrentLogs === 'object' &&
+    !Array.isArray(resolvedCurrentLogs) &&
+    Object.keys(resolvedCurrentLogs).length > 0
+  ) {
+    safeStorage.set(`alex_u_${uid}_current_logs`, resolvedCurrentLogs);
+  }
+  if (Array.isArray(bundle.measurements)) safeStorage.set(`alex_u_${uid}_measurements`, bundle.measurements);
+  if (typeof bundle.workoutNotes === 'string') safeStorage.set(`alex_u_${uid}_workout_notes`, bundle.workoutNotes);
+  if (bundle.activeRoutineId === null || typeof bundle.activeRoutineId === 'string') {
+    safeStorage.set(`alex_u_${uid}_active_routine_id`, bundle.activeRoutineId);
+  }
+
+  if (bundle.settings && typeof bundle.settings === 'object') {
     if (bundle.settings.split) safeStorage.set(`alex_u_${uid}_split`, bundle.settings.split);
     if (bundle.settings.strategy) safeStorage.set(`alex_u_${uid}_strategy`, bundle.settings.strategy);
     if (bundle.settings.level) safeStorage.set(`alex_u_${uid}_level`, bundle.settings.level);
@@ -487,6 +612,7 @@ export const FINISH_WORKOUT_PRIORITY_DEBOUNCE_MS = 120; // Micro-janela de 120ms
 const FINISH_WORKOUT_MODE_TTL_MS = 45000; // Janela de 45s de prioridade máxima após concluir treino
 
 export type SyncDeltaEntity =
+  | 'workoutLogs'
   | 'currentLogs'
   | 'historyLogs'
   | 'routines'
@@ -498,22 +624,28 @@ export type SyncDeltaEntity =
 
 export const CRITICAL_FINISH_WORKOUT_ENTITIES: readonly SyncDeltaEntity[] = [
   'sessions',
+  'workoutLogs',
   'measurements',
 ];
 
 const ENTITY_PRIORITY_WEIGHTS: Record<SyncDeltaEntity, number> = {
   sessions: 100,
+  workoutLogs: 98,
   measurements: 95,
-  historyLogs: 70,
+  historyLogs: 75,
   routines: 60,
   workoutNotes: 40,
   settings: 30,
   activeRoutineId: 20,
-  currentLogs: 10,
+  currentLogs: 15,
 };
 
 export function isCriticalPriorityEntity(entity: SyncDeltaEntity): boolean {
-  return entity === 'sessions' || entity === 'measurements';
+  return (
+    entity === 'sessions' ||
+    entity === 'workoutLogs' ||
+    entity === 'measurements'
+  );
 }
 
 export interface OfflineDeltaMutation {
@@ -730,16 +862,173 @@ function clearUserMutationBuffer(userId: string, flushedSnapshot?: Map<SyncDelta
   return remaining.length > 0;
 }
 
-function requestServiceWorkerBackgroundSync(): void {
+function requestServiceWorkerBackgroundSync(isCriticalWorkoutData = false): void {
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
     navigator.serviceWorker.ready
       .then((reg: any) => {
         if (reg && 'sync' in reg && typeof reg.sync.register === 'function') {
-          reg.sync.register('meutreino-workout-sync-buffer').catch(() => {});
+          reg.sync.register(BG_SYNC_TAG_BUFFER).catch(() => {});
+          if (isCriticalWorkoutData) {
+            reg.sync.register(BG_SYNC_TAG_CRITICAL).catch(() => {});
+          }
         }
       })
       .catch(() => {});
   }
+}
+
+/**
+ * Armazena um pacote autossuficiente no Outbox do IndexedDB e Cache do Service Worker
+ * contendo 'workoutLogs' (currentLogs + historyLogs), 'sessions' e credenciais do Supabase.
+ * Assim, mesmo que o usuário feche o app prematuramente após o treino, o Service Worker
+ * consegue enviar os dados ao Supabase via Background Sync API sem nenhuma aba aberta.
+ */
+export async function stageWorkoutDataForBackgroundSync(
+  userId: string,
+  userProfile?: any
+): Promise<void> {
+  if (!userId) return;
+  const cfg = getStoredSupabaseConfig();
+  const resolvedProfile = userProfile ?? activeBatchUserProfile;
+  const bundle = buildLocalSyncBundle(userId, resolvedProfile);
+  const queue = getOfflineMutationQueue(userId);
+  if (queue.length > 0) {
+    applyMutationsToBundle(bundle, queue);
+  }
+  bundle.updatedAt = new Date().toISOString();
+  bundle.workoutLogs = {
+    currentLogs: bundle.currentLogs || {},
+    historyLogs: bundle.historyLogs || {},
+  };
+
+  const outboxRecord: BackgroundSyncOutboxRecord = {
+    id: `outbox_${userId}`,
+    userId,
+    supabaseUrl: cfg.url || '',
+    supabaseAnonKey: cfg.anonKey || '',
+    bundle,
+    workoutLogs: {
+      currentLogs: bundle.currentLogs || {},
+      historyLogs: bundle.historyLogs || {},
+    },
+    sessions: bundle.sessions || [],
+    updatedAt: bundle.updatedAt,
+    status: 'pending',
+  };
+
+  // 1. Grava no IndexedDB acessível pelo Service Worker em background
+  try {
+    const db = await openBackgroundSyncOutboxDB();
+    if (db) {
+      await new Promise<void>((resolve) => {
+        try {
+          const tx = db.transaction(BG_SYNC_STORE_NAME, 'readwrite');
+          tx.objectStore(BG_SYNC_STORE_NAME).put(outboxRecord);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+        } catch {
+          resolve();
+        }
+      });
+    }
+  } catch {}
+
+  // 2. Espelha para o Service Worker via postMessage + Cache Storage fallback
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    try {
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'QUEUE_BACKGROUND_SYNC_OUTBOX',
+          payload: outboxRecord,
+        });
+      } else {
+        navigator.serviceWorker.ready
+          .then((reg) => {
+            reg.active?.postMessage({
+              type: 'QUEUE_BACKGROUND_SYNC_OUTBOX',
+              payload: outboxRecord,
+            });
+          })
+          .catch(() => {});
+      }
+    } catch {}
+  }
+
+  // 3. Registra as tags na Background Sync API do navegador
+  requestServiceWorkerBackgroundSync(true);
+}
+
+/**
+ * Remove o registro pendente do Outbox do IndexedDB quando a sincronização já foi confirmada.
+ */
+async function clearBackgroundSyncOutboxEntry(userId: string): Promise<void> {
+  if (!userId) return;
+  try {
+    const db = await openBackgroundSyncOutboxDB();
+    if (db) {
+      await new Promise<void>((resolve) => {
+        try {
+          const tx = db.transaction(BG_SYNC_STORE_NAME, 'readwrite');
+          tx.objectStore(BG_SYNC_STORE_NAME).delete(`outbox_${userId}`);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+        } catch {
+          resolve();
+        }
+      });
+    }
+  } catch {}
+
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    try {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'CLEAR_BACKGROUND_SYNC_OUTBOX',
+        payload: { id: `outbox_${userId}`, userId },
+      });
+    } catch {}
+  }
+}
+
+/**
+ * Dispara um POST REST com `keepalive: true` para o Supabase.
+ * O navegador garante a entrega da requisição mesmo se a aba/app for fechada imediatamente.
+ */
+function executeKeepaliveSupabaseUpsert(userId: string, userProfile?: any): void {
+  if (!userId || typeof fetch === 'undefined') return;
+  const cfg = getStoredSupabaseConfig();
+  if (!cfg.url || !cfg.anonKey || !isValidHttpsSupabaseUrl(cfg.url)) return;
+
+  try {
+    const resolvedProfile = userProfile ?? activeBatchUserProfile;
+    const bundle = buildLocalSyncBundle(userId, resolvedProfile);
+    const queue = getOfflineMutationQueue(userId);
+    if (queue.length > 0) {
+      applyMutationsToBundle(bundle, queue);
+    }
+    bundle.updatedAt = new Date().toISOString();
+    bundle.workoutLogs = {
+      currentLogs: bundle.currentLogs || {},
+      historyLogs: bundle.historyLogs || {},
+    };
+
+    const endpoint = `${cfg.url.replace(/\/+$/, '')}/rest/v1/meutreino_sync?on_conflict=user_id`;
+    fetch(endpoint, {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        apikey: cfg.anonKey,
+        Authorization: `Bearer ${cfg.anonKey}`,
+        'x-meutreino-user-id': userId,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        data: bundle,
+        updated_at: bundle.updatedAt,
+      }),
+    }).catch(() => {});
+  } catch {}
 }
 
 function notifyQueueListeners(userId: string) {
@@ -851,9 +1140,11 @@ function scheduleBatchedCommit(userId: string, userProfile?: any): void {
 
   const userBuffer = getOrHydrateUserBuffer(userId);
   const hasCriticalEntities =
-    userBuffer.has('sessions') || userBuffer.has('measurements');
+    userBuffer.has('sessions') ||
+    userBuffer.has('workoutLogs') ||
+    userBuffer.has('measurements');
 
-  // Se o app está no modo 'finish workout' e existem dados críticos ('sessions' / 'measurements'),
+  // Se o app está no modo 'finish workout' e existem dados críticos ('sessions' / 'workoutLogs' / 'measurements'),
   // usa a via expressa prioritária para garantir que o progresso chegue à nuvem primeiro.
   if (isFinishWorkoutSyncMode(userId) && hasCriticalEntities) {
     schedulePriorityFinishWorkoutCommit(userId, userProfile);
@@ -883,15 +1174,27 @@ function scheduleBatchedCommit(userId: string, userProfile?: any): void {
   }, COMMIT_BATCH_WINDOW_MS);
 }
 
-// Garante envio imediato do buffer pendente caso o usuário minimize o app ou quando o Service Worker disparar Background Sync
+// Garante envio imediato do buffer pendente e registro de Background Sync caso o usuário feche ou minimize o app prematuramente
 if (typeof window !== 'undefined') {
   const flushOnBackground = () => {
-    if (bufferPersistTimer && activeBatchUserId) {
+    const targetUid = activeBatchUserId;
+    if (!targetUid) return;
+
+    if (bufferPersistTimer) {
       clearTimeout(bufferPersistTimer);
       bufferPersistTimer = null;
-      persistUserBufferToStorage(activeBatchUserId);
+      persistUserBufferToStorage(targetUid);
     }
-    if ((batchCommitTimer || priorityCommitTimer) && activeBatchUserId) {
+
+    const pendingQueue = getOfflineMutationQueue(targetUid);
+    if (pendingQueue.length > 0 || isFinishWorkoutSyncMode(targetUid)) {
+      // 1. Prepara o Outbox no IndexedDB + Service Worker e registra Background Sync API
+      stageWorkoutDataForBackgroundSync(targetUid, activeBatchUserProfile).catch(() => {});
+      // 2. Dispara requisição HTTP REST com keepalive: true que sobrevive ao fechamento da aba/app
+      executeKeepaliveSupabaseUpsert(targetUid, activeBatchUserProfile);
+    }
+
+    if (batchCommitTimer || priorityCommitTimer) {
       if (batchCommitTimer) {
         clearTimeout(batchCommitTimer);
         batchCommitTimer = null;
@@ -901,7 +1204,7 @@ if (typeof window !== 'undefined') {
         priorityCommitTimer = null;
       }
       nextBatchFlushTimestamp = null;
-      flushOfflineMutationQueue(activeBatchUserId, activeBatchUserProfile).catch(() => {});
+      flushOfflineMutationQueue(targetUid, activeBatchUserProfile).catch(() => {});
     }
   };
 
@@ -911,6 +1214,7 @@ if (typeof window !== 'undefined') {
     }
   });
   window.addEventListener('pagehide', flushOnBackground);
+  window.addEventListener('beforeunload', flushOnBackground);
 
   // Escuta evento global de modo 'finish workout' disparado pela interface
   window.addEventListener('meutreino:finish-workout-mode', (ev: Event) => {
@@ -927,8 +1231,17 @@ if (typeof window !== 'undefined') {
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (event) => {
-      if (event.data && event.data.type === 'SW_FLUSH_MUTATION_BUFFER' && activeBatchUserId) {
+      if (!event.data) return;
+      if (event.data.type === 'SW_FLUSH_MUTATION_BUFFER' && activeBatchUserId) {
         flushOfflineMutationQueue(activeBatchUserId, activeBatchUserProfile).catch(() => {});
+      } else if (event.data.type === 'SW_BACKGROUND_SYNC_COMPLETED') {
+        const syncedUid = event.data.userId || activeBatchUserId;
+        const syncedAt = event.data.syncedAt || new Date().toISOString();
+        safeStorage.set(SUPABASE_LAST_SYNC_KEY, syncedAt);
+        if (syncedUid) {
+          clearUserMutationBuffer(syncedUid);
+          notifyQueueListeners(syncedUid);
+        }
       }
     });
   }
@@ -991,7 +1304,7 @@ function upsertMutationIntoBuffer(
 
     let mergedPayload = deltaPayload;
     if (
-      (entity === 'currentLogs' || entity === 'historyLogs' || entity === 'settings') &&
+      (entity === 'workoutLogs' || entity === 'currentLogs' || entity === 'historyLogs' || entity === 'settings') &&
       prev.deltaPayload &&
       typeof prev.deltaPayload === 'object' &&
       !Array.isArray(prev.deltaPayload) &&
@@ -1034,16 +1347,48 @@ function applyMutationsToBundle(
   mutations: OfflineDeltaMutation[]
 ): void {
   for (const item of mutations) {
-    if (item.entity === 'currentLogs' && item.deltaPayload) {
+    if (item.entity === 'workoutLogs' && item.deltaPayload) {
+      if (item.deltaPayload.currentLogs !== undefined || item.deltaPayload.historyLogs !== undefined) {
+        if (item.deltaPayload.currentLogs) {
+          targetBundle.currentLogs = mergeDictionaryPayloads(
+            targetBundle.currentLogs || {},
+            item.deltaPayload.currentLogs
+          );
+        }
+        if (item.deltaPayload.historyLogs) {
+          targetBundle.historyLogs = mergeDictionaryPayloads(
+            targetBundle.historyLogs || {},
+            item.deltaPayload.historyLogs
+          );
+        }
+      } else {
+        targetBundle.currentLogs = mergeDictionaryPayloads(
+          targetBundle.currentLogs || {},
+          item.deltaPayload
+        );
+      }
+      targetBundle.workoutLogs = {
+        currentLogs: targetBundle.currentLogs || {},
+        historyLogs: targetBundle.historyLogs || {},
+      };
+    } else if (item.entity === 'currentLogs' && item.deltaPayload) {
       targetBundle.currentLogs = mergeDictionaryPayloads(
         targetBundle.currentLogs || {},
         item.deltaPayload
       );
+      targetBundle.workoutLogs = {
+        currentLogs: targetBundle.currentLogs || {},
+        historyLogs: targetBundle.historyLogs || {},
+      };
     } else if (item.entity === 'historyLogs' && item.deltaPayload) {
       targetBundle.historyLogs = mergeDictionaryPayloads(
         targetBundle.historyLogs || {},
         item.deltaPayload
       );
+      targetBundle.workoutLogs = {
+        currentLogs: targetBundle.currentLogs || {},
+        historyLogs: targetBundle.historyLogs || {},
+      };
     } else if (item.entity === 'settings' && item.deltaPayload) {
       targetBundle.settings = {
         ...(targetBundle.settings || {}),
@@ -1070,8 +1415,9 @@ function bufferBundleMutations(bundle: MeuTreinoSyncBundle): void {
   if (!bundle || !bundle.userId) return;
   const uid = bundle.userId;
 
-  // Insere primeiro as entidades críticas ('sessions' e 'measurements')
+  // Insere primeiro as entidades críticas ('sessions', 'workoutLogs' e 'measurements')
   if (bundle.sessions !== undefined) upsertMutationIntoBuffer(uid, 'sessions', bundle.sessions);
+  if (bundle.workoutLogs !== undefined) upsertMutationIntoBuffer(uid, 'workoutLogs', bundle.workoutLogs);
   if (bundle.measurements !== undefined) upsertMutationIntoBuffer(uid, 'measurements', bundle.measurements);
   if (bundle.routines !== undefined) upsertMutationIntoBuffer(uid, 'routines', bundle.routines);
   if (bundle.historyLogs !== undefined) upsertMutationIntoBuffer(uid, 'historyLogs', bundle.historyLogs);
@@ -1083,19 +1429,20 @@ function bufferBundleMutations(bundle: MeuTreinoSyncBundle): void {
   }
 
   scheduleDebouncedBufferPersistence(uid);
+  stageWorkoutDataForBackgroundSync(uid, bundle.userProfile).catch(() => {});
 
   const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
   if (isOnline && isSupabaseConfigured()) {
     scheduleBatchedCommit(uid, bundle.userProfile);
   } else {
-    requestServiceWorkerBackgroundSync();
+    requestServiceWorkerBackgroundSync(true);
   }
 }
 
 /**
  * Enfileira uma mutação local com debounce de 5 segundos (5000ms).
- * Quando detecta que o usuário está concluindo o treino ('finish workout' mode ou mutação de 'sessions'),
- * ativa automaticamente a priorização de 'sessions' e 'measurements' para que cheguem à nuvem primeiro.
+ * Além disso, persiste imediatamente 'workoutLogs' e 'sessions' no Outbox do Background Sync API
+ * para garantir o envio ao Supabase pelo Service Worker mesmo se o app for fechado prematuramente.
  */
 export function enqueueOfflineMutation(
   userId: string,
@@ -1106,13 +1453,18 @@ export function enqueueOfflineMutation(
 ): void {
   if (!userId) return;
 
+  if (userProfile !== undefined) {
+    activeBatchUserProfile = userProfile;
+  }
+  activeBatchUserId = userId;
+
   // Detecta automaticamente o modo 'finish workout' quando uma nova sessão concluída é enfileirada
   // ou quando explicitamente sinalizado via options.isFinishWorkout
   if (options?.isFinishWorkout || entity === 'sessions') {
     setFinishWorkoutSyncMode(userId, true, userProfile);
   } else if (entity === 'activeRoutineId' && deltaPayload === null) {
     const buf = getOrHydrateUserBuffer(userId);
-    if (buf.has('sessions') || buf.has('measurements')) {
+    if (buf.has('sessions') || buf.has('workoutLogs') || buf.has('measurements')) {
       setFinishWorkoutSyncMode(userId, true, userProfile);
     }
   }
@@ -1120,11 +1472,23 @@ export function enqueueOfflineMutation(
   upsertMutationIntoBuffer(userId, entity, deltaPayload);
   scheduleDebouncedBufferPersistence(userId);
 
+  // Sempre prepara o Outbox do Background Sync quando 'workoutLogs', 'currentLogs', 'historyLogs' ou 'sessions' mudam
+  const isWorkoutOrSessionEntity =
+    entity === 'workoutLogs' ||
+    entity === 'currentLogs' ||
+    entity === 'historyLogs' ||
+    entity === 'sessions' ||
+    Boolean(options?.isFinishWorkout);
+
+  if (isWorkoutOrSessionEntity) {
+    stageWorkoutDataForBackgroundSync(userId, userProfile).catch(() => {});
+  }
+
   const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
   if (isOnline && isSupabaseConfigured()) {
     scheduleBatchedCommit(userId, userProfile);
   } else {
-    requestServiceWorkerBackgroundSync();
+    requestServiceWorkerBackgroundSync(isWorkoutOrSessionEntity);
   }
 }
 
@@ -1325,11 +1689,17 @@ export async function flushOfflineMutationQueue(
     const flushedCount = queue.length;
     const hasRemainingMutations = clearUserMutationBuffer(userId, flushedSnapshot);
 
+    // Se todas as mutações foram confirmadas na nuvem, limpa o registro correspondente no Outbox do Background Sync
+    if (!hasRemainingMutations) {
+      clearBackgroundSyncOutboxEntry(userId).catch(() => {});
+    }
+
     // Se todas as mutações críticas do finish workout foram enviadas, desativa o flag de urgência
     const updatedBuffer = getOrHydrateUserBuffer(userId);
     if (
       inFinishWorkoutMode &&
       !updatedBuffer.has('sessions') &&
+      !updatedBuffer.has('workoutLogs') &&
       !updatedBuffer.has('measurements')
     ) {
       setFinishWorkoutSyncMode(userId, false);
@@ -1370,28 +1740,53 @@ export async function flushOfflineMutationQueue(
   }
 }
 
-export const SUPABASE_SETUP_SQL = `-- Copie e cole no SQL Editor do seu projeto Supabase para ativar a sincronização em tempo real:
+export const SUPABASE_SETUP_SQL = `-- Copie e cole no SQL Editor do seu projeto Supabase para ativar a sincronização segura com Row Level Security (RLS):
 create table if not exists public.meutreino_sync (
-  user_id text primary key,
+  user_id text primary key check (char_length(user_id) >= 3 and char_length(user_id) <= 128),
   data jsonb not null,
   updated_at timestamptz default now()
 );
 
--- Ativar RLS permissivo para sincronização dos atletas
+-- Ativar Row Level Security (RLS) restrito ao proprietário do perfil
 alter table public.meutreino_sync enable row level security;
 
-create policy "Permitir leitura para todos" 
-  on public.meutreino_sync for select 
-  using (true);
+-- Remove políticas legadas permissivas caso existam
+drop policy if exists "Permitir leitura para todos" on public.meutreino_sync;
+drop policy if exists "Permitir insercao e atualizacao para todos" on public.meutreino_sync;
+drop policy if exists "Permitir atualizacao para todos" on public.meutreino_sync;
 
-create policy "Permitir insercao e atualizacao para todos" 
-  on public.meutreino_sync for insert 
-  with check (true);
+-- Política de Leitura: somente o próprio atleta (via Supabase Auth UID ou cabeçalho autenticado do perfil) pode ler seu registro
+create policy "Leitura restrita ao proprio atleta"
+  on public.meutreino_sync for select
+  using (
+    auth.uid()::text = user_id
+    or coalesce((current_setting('request.headers', true)::json->>'x-meutreino-user-id'), '') = user_id
+  );
 
-create policy "Permitir atualizacao para todos" 
-  on public.meutreino_sync for update 
-  using (true);
+-- Política de Inserção: somente para o próprio user_id válido
+create policy "Insercao restrita ao proprio atleta"
+  on public.meutreino_sync for insert
+  with check (
+    char_length(user_id) >= 3
+    and (
+      auth.uid()::text = user_id
+      or coalesce((current_setting('request.headers', true)::json->>'x-meutreino-user-id'), '') = user_id
+    )
+  );
+
+-- Política de Atualização: somente para o próprio user_id válido
+create policy "Atualizacao restrita ao proprio atleta"
+  on public.meutreino_sync for update
+  using (
+    auth.uid()::text = user_id
+    or coalesce((current_setting('request.headers', true)::json->>'x-meutreino-user-id'), '') = user_id
+  )
+  with check (
+    auth.uid()::text = user_id
+    or coalesce((current_setting('request.headers', true)::json->>'x-meutreino-user-id'), '') = user_id
+  );
 
 -- Habilitar Realtime
 alter publication supabase_realtime add table public.meutreino_sync;
 `;
+

@@ -5,40 +5,124 @@
 
 import { WorkoutLogs } from '../types/workout';
 
-const ENC_PREFIX = '__mtp_sec_v1__:';
+const ENC_PREFIX_V1 = '__mtp_sec_v1__:';
+const ENC_PREFIX_V2 = '__mtp_sec_v2__:';
 const CIPHER_KEY = 'MTP_PRO_2026_PRIVATE_VAULT_KEY_#9812';
+const DEVICE_SALT_STORAGE_KEY = '__mtp_device_vault_salt_v2__';
 
 const sharedEncoder = new TextEncoder();
 const sharedDecoder = new TextDecoder();
 const CIPHER_KEY_BYTES = sharedEncoder.encode(CIPHER_KEY);
 const CHUNK_SIZE = 0x8000; // 32KB chunks for fast String.fromCharCode conversion
 
+let cachedDeviceKeyBytes: Uint8Array | null = null;
+
+function getSecureRandomBytes(length: number): Uint8Array {
+  const bytes = new Uint8Array(length);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return bytes;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+function getDeviceKeyBytes(): Uint8Array {
+  if (cachedDeviceKeyBytes) return cachedDeviceKeyBytes;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      let saltHex = localStorage.getItem(DEVICE_SALT_STORAGE_KEY);
+      if (!saltHex || saltHex.length < 32) {
+        saltHex = bytesToHex(getSecureRandomBytes(16));
+        try {
+          localStorage.setItem(DEVICE_SALT_STORAGE_KEY, saltHex);
+        } catch {}
+      }
+      cachedDeviceKeyBytes = sharedEncoder.encode(`${CIPHER_KEY}::${saltHex}`);
+      return cachedDeviceKeyBytes;
+    }
+  } catch {}
+  cachedDeviceKeyBytes = CIPHER_KEY_BYTES;
+  return cachedDeviceKeyBytes;
+}
+
+/**
+ * Parses JSON while stripping dangerous prototype-pollution keys (__proto__, constructor, prototype)
+ */
+export function safeJsonParse<T>(rawJson: string): T {
+  return JSON.parse(rawJson, (key, value) => {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      return undefined;
+    }
+    return value;
+  }) as T;
+}
+
 function encodePayload(rawJson: string): string {
   try {
     const utf8Bytes = sharedEncoder.encode(rawJson);
-    const keyLen = CIPHER_KEY_BYTES.length;
+    const keyBytes = getDeviceKeyBytes();
+    const keyLen = keyBytes.length;
+    const nonceBytes = getSecureRandomBytes(8);
+    const nonceHex = bytesToHex(nonceBytes);
     const len = utf8Bytes.length;
     const out = new Uint8Array(len);
     for (let i = 0; i < len; i++) {
-      out[i] = utf8Bytes[i] ^ CIPHER_KEY_BYTES[i % keyLen] ^ ((i * 31) & 0xff);
+      const nonceByte = nonceBytes[i & 7] ^ ((i * 53) & 0xff);
+      out[i] = utf8Bytes[i] ^ keyBytes[i % keyLen] ^ nonceByte;
     }
     const chunks: string[] = [];
     for (let i = 0; i < len; i += CHUNK_SIZE) {
       const sub = out.subarray(i, Math.min(i + CHUNK_SIZE, len));
       chunks.push(String.fromCharCode.apply(null, sub as unknown as number[]));
     }
-    return ENC_PREFIX + btoa(chunks.join(''));
+    return `${ENC_PREFIX_V2}${nonceHex}:${btoa(chunks.join(''))}`;
   } catch {
     return rawJson;
   }
 }
 
 function decodePayload(stored: string): string {
-  if (!stored.startsWith(ENC_PREFIX)) {
+  if (stored.startsWith(ENC_PREFIX_V2)) {
+    try {
+      const payload = stored.slice(ENC_PREFIX_V2.length);
+      const sepIdx = payload.indexOf(':');
+      if (sepIdx !== 16) return stored;
+      const nonceHex = payload.slice(0, 16);
+      const b64 = payload.slice(17);
+      const nonceBytes = new Uint8Array(8);
+      for (let j = 0; j < 8; j++) {
+        nonceBytes[j] = parseInt(nonceHex.slice(j * 2, j * 2 + 2), 16) || 0;
+      }
+      const binary = atob(b64);
+      const keyBytes = getDeviceKeyBytes();
+      const keyLen = keyBytes.length;
+      const len = binary.length;
+      const out = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        const nonceByte = nonceBytes[i & 7] ^ ((i * 53) & 0xff);
+        out[i] = binary.charCodeAt(i) ^ keyBytes[i % keyLen] ^ nonceByte;
+      }
+      return sharedDecoder.decode(out);
+    } catch {
+      return stored;
+    }
+  }
+  if (!stored.startsWith(ENC_PREFIX_V1)) {
     return stored;
   }
   try {
-    const b64 = stored.slice(ENC_PREFIX.length);
+    const b64 = stored.slice(ENC_PREFIX_V1.length);
     const binary = atob(b64);
     const keyLen = CIPHER_KEY_BYTES.length;
     const len = binary.length;
@@ -50,6 +134,10 @@ function decodePayload(stored: string): string {
   } catch {
     return stored;
   }
+}
+
+function isEncryptedPayload(raw: string): boolean {
+  return raw.startsWith(ENC_PREFIX_V2) || raw.startsWith(ENC_PREFIX_V1);
 }
 
 // ============================================================================
@@ -203,10 +291,10 @@ async function migrateAndHydrateIndexedDB(): Promise<void> {
       const storeWrite = txWrite.objectStore(IDB_STORE);
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (!k || k === IDB_MIGRATION_FLAG) continue;
+        if (!k || k === IDB_MIGRATION_FLAG || k === DEVICE_SALT_STORAGE_KEY) continue;
         const raw = localStorage.getItem(k);
         if (raw) {
-          const encoded = raw.startsWith(ENC_PREFIX) ? raw : encodePayload(raw);
+          const encoded = isEncryptedPayload(raw) ? raw : encodePayload(raw);
           storeWrite.put(encoded, k);
         }
       }
@@ -237,8 +325,8 @@ async function migrateAndHydrateIndexedDB(): Promise<void> {
           const rawVal = getReq.result;
           if (typeof rawVal === 'string') {
             try {
-              const decoded = rawVal.startsWith(ENC_PREFIX) ? decodePayload(rawVal) : rawVal;
-              const parsed = JSON.parse(decoded);
+              const decoded = isEncryptedPayload(rawVal) ? decodePayload(rawVal) : rawVal;
+              const parsed = safeJsonParse<any>(decoded);
               if (!memoryCache.has(keyStr)) {
                 memoryCache.set(keyStr, parsed);
                 hydratedNewData = true;
@@ -313,13 +401,14 @@ export const safeStorage = {
     try {
       const raw = localStorage.getItem(key);
       if (!raw) return defaultValue;
-      const isEncrypted = raw.startsWith(ENC_PREFIX);
+      const isEncrypted = isEncryptedPayload(raw);
+      const isV2 = raw.startsWith(ENC_PREFIX_V2);
       const decoded = isEncrypted ? decodePayload(raw) : raw;
-      const parsed = JSON.parse(decoded) as T;
+      const parsed = safeJsonParse<T>(decoded);
       memoryCache.set(key, parsed);
-      // Transparently upgrade legacy plaintext entries to encrypted format & mirror to IndexedDB
-      const encoded = isEncrypted ? raw : encodePayload(decoded);
-      if (!isEncrypted) {
+      // Transparently upgrade legacy plaintext or v1 entries to v2 encrypted format & mirror to IndexedDB
+      const encoded = isV2 ? raw : encodePayload(decoded);
+      if (!isV2) {
         try {
           localStorage.setItem(key, encoded);
         } catch {

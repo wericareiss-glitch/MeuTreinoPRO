@@ -9,7 +9,16 @@ import { setPrivacyShieldState } from './privacy';
 
 const USERS_KEY = 'alex_all_users';
 const ACTIVE_USER_KEY = 'alex_active_user_id';
-const HASH_PREFIX = 'mtp_hash_v1$';
+const LOGIN_RATE_LIMIT_KEY = 'mtp_auth_rate_limit_v1';
+const HASH_PREFIX_V1 = 'mtp_hash_v1$';
+const HASH_PREFIX_V2 = 'mtp_hash_v2$';
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 60 * 1000; // 60 segundos de bloqueio após 5 tentativas inválidas
+
+interface LoginAttemptRecord {
+  count: number;
+  lockedUntil: number;
+}
 
 export const ALL_MUSCLE_GROUPS: MuscleGroup[] = [
   'chest',
@@ -25,7 +34,39 @@ export const ALL_MUSCLE_GROUPS: MuscleGroup[] = [
   'abs',
 ];
 
-function computeSaltedDigest(password: string, salt: string): string {
+function generateSecureRandomHex(byteLength = 16): string {
+  const bytes = new Uint8Array(byteLength);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < byteLength; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+/**
+ * Comparação em tempo constante para mitigar ataques de canal lateral por tempo (Timing Attacks)
+ */
+function constantTimeEqual(a: string, b: string): boolean {
+  const lenA = a.length;
+  const lenB = b.length;
+  const maxLen = Math.max(lenA, lenB);
+  let diff = lenA ^ lenB;
+  for (let i = 0; i < maxLen; i++) {
+    const codeA = i < lenA ? a.charCodeAt(i) : 0;
+    const codeB = i < lenB ? b.charCodeAt(i) : 0;
+    diff |= codeA ^ codeB;
+  }
+  return diff === 0;
+}
+
+function computeSaltedDigestV1(password: string, salt: string): string {
   const input = `${salt}::MTP_PEPPER_2026::${password}`;
   let h1 = 0xdeadbeef ^ input.length;
   let h2 = 0x41c6ce57 ^ input.length;
@@ -44,25 +85,124 @@ function computeSaltedDigest(password: string, salt: string): string {
   return `${part1}${part2}${part3}`;
 }
 
+/**
+ * Key stretching V2 com 10.000 iterações e 4 registradores de estado de 32 bits (128-bit digest)
+ */
+function computeSaltedDigestV2(password: string, salt: string): string {
+  const input = `${salt}::MTP_PEPPER_V2_2026::${password}`;
+  let s0 = 0x6a09e667 ^ input.length;
+  let s1 = 0xbb67ae85 ^ input.length;
+  let s2 = 0x3c6ef372 ^ input.length;
+  let s3 = 0xa54ff53a ^ input.length;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input.charCodeAt(i);
+    s0 = Math.imul(s0 ^ ch, 0x85ebca6b);
+    s1 = Math.imul(s1 ^ (ch + i), 0xc2b2ae35);
+    s2 = Math.imul(s2 ^ (ch * 31), 0x27d4eb2f);
+    s3 = Math.imul(s3 ^ (ch ^ (i * 17)), 0x165667b1);
+  }
+
+  for (let round = 0; round < 10000; round++) {
+    s0 = Math.imul(s0 ^ (s0 >>> 16) ^ round, 0x85ebca6b) ^ s1;
+    s1 = Math.imul(s1 ^ (s1 >>> 13), 0xc2b2ae35) ^ s2;
+    s2 = Math.imul(s2 ^ (s2 >>> 15) ^ round, 0x27d4eb2f) ^ s3;
+    s3 = Math.imul(s3 ^ (s3 >>> 14), 0x165667b1) ^ s0;
+  }
+
+  const p0 = (s0 >>> 0).toString(16).padStart(8, '0');
+  const p1 = (s1 >>> 0).toString(16).padStart(8, '0');
+  const p2 = (s2 >>> 0).toString(16).padStart(8, '0');
+  const p3 = (s3 >>> 0).toString(16).padStart(8, '0');
+  return `${p0}${p1}${p2}${p3}`;
+}
+
+function isHashedPassword(value?: string): boolean {
+  if (!value) return false;
+  return value.startsWith(HASH_PREFIX_V2) || value.startsWith(HASH_PREFIX_V1);
+}
+
 export function hashPassword(plainPassword: string, existingSalt?: string): string {
   if (!plainPassword) return '';
-  if (plainPassword.startsWith(HASH_PREFIX)) return plainPassword;
-  const salt = existingSalt || Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-  const digest = computeSaltedDigest(plainPassword, salt);
-  return `${HASH_PREFIX}${salt}$${digest}`;
+  if (plainPassword.startsWith(HASH_PREFIX_V2)) return plainPassword;
+  const salt = existingSalt || generateSecureRandomHex(16);
+  const digest = computeSaltedDigestV2(plainPassword, salt);
+  return `${HASH_PREFIX_V2}${salt}$${digest}`;
 }
 
 export function verifyPasswordHash(inputPassword: string, storedPassword: string): boolean {
   if (!storedPassword) return inputPassword === '';
-  if (storedPassword.startsWith(HASH_PREFIX)) {
+  if (storedPassword.startsWith(HASH_PREFIX_V2)) {
     const parts = storedPassword.split('$');
     const salt = parts[1] || '';
     const expected = parts[2] || '';
-    const actual = computeSaltedDigest(inputPassword, salt);
-    return actual === expected;
+    const actual = computeSaltedDigestV2(inputPassword, salt);
+    return constantTimeEqual(actual, expected);
+  }
+  if (storedPassword.startsWith(HASH_PREFIX_V1)) {
+    const parts = storedPassword.split('$');
+    const salt = parts[1] || '';
+    const expected = parts[2] || '';
+    const actual = computeSaltedDigestV1(inputPassword, salt);
+    return constantTimeEqual(actual, expected);
   }
   // Legacy fallback for pre-existing plaintext passwords
-  return storedPassword === inputPassword;
+  return constantTimeEqual(storedPassword, inputPassword);
+}
+
+function checkRateLimit(identifier: string): { blocked: boolean; remainingSec: number } {
+  const key = identifier.trim().toLowerCase();
+  const map = safeStorage.get<Record<string, LoginAttemptRecord>>(LOGIN_RATE_LIMIT_KEY, {});
+  const rec = map[key];
+  if (!rec) return { blocked: false, remainingSec: 0 };
+  const now = Date.now();
+  if (rec.lockedUntil > now) {
+    return { blocked: true, remainingSec: Math.ceil((rec.lockedUntil - now) / 1000) };
+  }
+  return { blocked: false, remainingSec: 0 };
+}
+
+function recordFailedAttempt(identifier: string): void {
+  const key = identifier.trim().toLowerCase();
+  const map = safeStorage.get<Record<string, LoginAttemptRecord>>(LOGIN_RATE_LIMIT_KEY, {});
+  const now = Date.now();
+  const prev = map[key];
+  const nextCount = prev && prev.lockedUntil <= now ? prev.count + 1 : 1;
+  map[key] = {
+    count: nextCount,
+    lockedUntil: nextCount >= MAX_FAILED_ATTEMPTS ? now + LOCKOUT_DURATION_MS : 0,
+  };
+  safeStorage.set(LOGIN_RATE_LIMIT_KEY, map);
+}
+
+function clearFailedAttempts(identifier: string): void {
+  const key = identifier.trim().toLowerCase();
+  const map = safeStorage.get<Record<string, LoginAttemptRecord>>(LOGIN_RATE_LIMIT_KEY, {});
+  if (map[key]) {
+    delete map[key];
+    safeStorage.set(LOGIN_RATE_LIMIT_KEY, map);
+  }
+}
+
+function sanitizeSafeId(rawId: unknown): string {
+  if (typeof rawId !== 'string' || !rawId.trim()) {
+    return `user_${Date.now()}_${generateSecureRandomHex(6)}`;
+  }
+  const cleaned = rawId.trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+  return cleaned || `user_${Date.now()}_${generateSecureRandomHex(6)}`;
+}
+
+function sanitizeUntrustedObject<T>(input: T): T {
+  if (input === null || typeof input !== 'object') return input;
+  if (Array.isArray(input)) {
+    return input.map((item) => sanitizeUntrustedObject(item)) as unknown as T;
+  }
+  const cleanObj: Record<string, any> = {};
+  for (const [k, v] of Object.entries(input as Record<string, any>)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    cleanObj[k] = sanitizeUntrustedObject(v);
+  }
+  return cleanObj as T;
 }
 
 function sanitizeUserProfile(user: UserProfile): UserProfile {
@@ -154,25 +294,41 @@ export function getPresetWeights(focus: FocusOption = 'v_taper'): Record<MuscleG
 
 /**
  * Converte pesos proporcionais em número inteiro exato de séries somando totalBudget
+ * Preserva estritamente músculos excluídos (com 0 séries)
  */
 export function scaleWeightsToBudget(
   weights: Record<MuscleGroup, number>,
   totalBudget: number
 ): Record<MuscleGroup, number> {
-  const sumWeights = Object.values(weights).reduce((acc, w) => acc + w, 0);
   const result = {} as Record<MuscleGroup, number>;
+  const activeMuscles = ALL_MUSCLE_GROUPS.filter((m) => (weights[m] || 0) > 0);
+  
+  // Se todos os músculos estiverem zerados ou não houver ativos
+  if (activeMuscles.length === 0) {
+    ALL_MUSCLE_GROUPS.forEach((m) => {
+      result[m] = 0;
+    });
+    return result;
+  }
+
+  const sumWeights = activeMuscles.reduce((acc, m) => acc + (weights[m] || 0), 0);
   let currentSum = 0;
 
   ALL_MUSCLE_GROUPS.forEach((m) => {
-    const val = Math.max(2, Math.round(((weights[m] || 8) / sumWeights) * totalBudget));
-    result[m] = val;
-    currentSum += val;
+    const raw = weights[m] || 0;
+    if (raw <= 0) {
+      result[m] = 0;
+    } else {
+      const val = Math.max(1, Math.round((raw / (sumWeights || 1)) * totalBudget));
+      result[m] = val;
+      currentSum += val;
+    }
   });
 
   const diff = totalBudget - currentSum;
-  if (diff !== 0) {
-    const topMuscle = ALL_MUSCLE_GROUPS.reduce((a, b) => (weights[a] >= weights[b] ? a : b));
-    result[topMuscle] = Math.max(2, result[topMuscle] + diff);
+  if (diff !== 0 && activeMuscles.length > 0) {
+    const topMuscle = activeMuscles.reduce((a, b) => ((weights[a] || 0) >= (weights[b] || 0) ? a : b));
+    result[topMuscle] = Math.max(1, result[topMuscle] + diff);
   }
 
   return result;
@@ -224,7 +380,7 @@ export const authStorage = {
     const users = safeStorage.get<UserProfile[]>(USERS_KEY, []);
     let upgraded = false;
     const normalized = users.map((u) => {
-      if (u.password && !u.password.startsWith(HASH_PREFIX)) {
+      if (u.password && !isHashedPassword(u.password)) {
         upgraded = true;
         return { ...u, password: hashPassword(u.password) };
       }
@@ -250,7 +406,7 @@ export const authStorage = {
   saveUsers(users: UserProfile[]): void {
     const secured = users.map((u) => ({
       ...u,
-      password: u.password && !u.password.startsWith(HASH_PREFIX) ? hashPassword(u.password) : u.password,
+      password: u.password && !isHashedPassword(u.password) ? hashPassword(u.password) : u.password,
     }));
     safeStorage.set(USERS_KEY, secured);
   },
@@ -276,11 +432,20 @@ export const authStorage = {
   },
 
   verifyUserPassword(userId: string, passwordAttempt: string): boolean {
+    const rate = checkRateLimit(`uid:${userId}`);
+    if (rate.blocked) return false;
+
     const users = this._getRawUsers();
     const user = users.find((u) => u.id === userId);
     if (!user) return false;
     if (user.isVisitor && !user.password) return true;
-    return verifyPasswordHash(passwordAttempt, user.password);
+    const isValid = verifyPasswordHash(passwordAttempt, user.password);
+    if (!isValid) {
+      recordFailedAttempt(`uid:${userId}`);
+      return false;
+    }
+    clearFailedAttempts(`uid:${userId}`);
+    return true;
   },
 
   createGuestUser(): UserProfile {
@@ -330,8 +495,8 @@ export const authStorage = {
       return { error: 'Preencha nome, usuário e senha para criar sua conta.' };
     }
 
-    if (data.password.length < 4) {
-      return { error: 'A senha deve ter pelo menos 4 caracteres para sua segurança.' };
+    if (data.password.length < 6) {
+      return { error: 'A senha deve ter pelo menos 6 caracteres para sua segurança.' };
     }
 
     if (users.some((u) => u.id !== userId && u.username.toLowerCase() === cleanUsername)) {
@@ -343,8 +508,8 @@ export const authStorage = {
 
     users[idx] = {
       ...users[idx],
-      name: data.name.trim(),
-      username: cleanUsername,
+      name: data.name.trim().slice(0, 80),
+      username: cleanUsername.slice(0, 40),
       password: hashPassword(data.password),
       isVisitor: false,
     };
@@ -362,8 +527,8 @@ export const authStorage = {
       return { error: 'Preencha todos os campos obrigatórios.' };
     }
 
-    if (data.password.length < 4) {
-      return { error: 'A senha deve ter pelo menos 4 caracteres para proteger seus dados.' };
+    if (data.password.length < 6) {
+      return { error: 'A senha deve ter pelo menos 6 caracteres para proteger seus dados.' };
     }
 
     if (users.some((u) => u.username.toLowerCase() === cleanUsername)) {
@@ -374,10 +539,10 @@ export const authStorage = {
     const focus = data.focus || 'v_taper';
     const newUser: UserProfile = {
       ...data,
-      name: data.name.trim(),
-      username: cleanUsername,
+      name: data.name.trim().slice(0, 80),
+      username: cleanUsername.slice(0, 40),
       password: hashPassword(data.password),
-      id: 'user_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      id: `user_${Date.now()}_${generateSecureRandomHex(6)}`,
       weeklyBudget: budget,
       muscleBudgets: createDefaultBudgets(budget, focus),
       createdAt: new Date().toISOString(),
@@ -391,14 +556,36 @@ export const authStorage = {
   },
 
   login(username: string, password: string): { user?: UserProfile; error?: string } {
-    const users = this._getRawUsers();
     const cleanUsername = username.trim().toLowerCase();
-    const found = users.find(
+    if (!cleanUsername || !password) {
+      return { error: 'Informe seu usuário e senha.' };
+    }
+
+    const rate = checkRateLimit(`user:${cleanUsername}`);
+    if (rate.blocked) {
+      return {
+        error: `Muitas tentativas incorretas. Aguarde ${rate.remainingSec}s antes de tentar novamente.`,
+      };
+    }
+
+    const users = this._getRawUsers();
+    const foundIdx = users.findIndex(
       (u) => u.username.toLowerCase() === cleanUsername && verifyPasswordHash(password, u.password)
     );
-    if (!found) {
+    if (foundIdx === -1) {
+      recordFailedAttempt(`user:${cleanUsername}`);
       return { error: 'Usuário ou senha incorretos.' };
     }
+
+    clearFailedAttempts(`user:${cleanUsername}`);
+    const found = users[foundIdx];
+
+    // Transparently upgrade v1 hash to v2 (10,000 rounds + CSPRNG salt) upon login
+    if (found.password && !found.password.startsWith(HASH_PREFIX_V2)) {
+      users[foundIdx] = { ...found, password: hashPassword(password) };
+      this.saveUsers(users);
+    }
+
     this.setActiveUserId(found.id);
     setPrivacyShieldState(true);
     return { user: sanitizeUserProfile(found) };
@@ -410,6 +597,8 @@ export const authStorage = {
     if (!found) {
       return { error: 'Perfil vinculado à biometria não foi encontrado neste aparelho.' };
     }
+    clearFailedAttempts(`user:${found.username.toLowerCase()}`);
+    clearFailedAttempts(`uid:${found.id}`);
     this.setActiveUserId(found.id);
     setPrivacyShieldState(true);
     return { user: sanitizeUserProfile(found) };
@@ -452,6 +641,20 @@ export const authStorage = {
     ];
     keysToRemove.forEach((k) => safeStorage.remove(k));
 
+    // Remove credenciais biométricas vinculadas ao usuário excluído
+    const bioCreds = safeStorage.get<any[]>('mtp_webauthn_credentials_v1', []);
+    if (Array.isArray(bioCreds) && bioCreds.length > 0) {
+      safeStorage.set(
+        'mtp_webauthn_credentials_v1',
+        bioCreds.filter((c) => c && c.userId !== userId)
+      );
+    }
+    const bioLockMap = safeStorage.get<Record<string, boolean>>('mtp_webauthn_app_lock_v1', {});
+    if (bioLockMap && typeof bioLockMap === 'object' && userId in bioLockMap) {
+      delete bioLockMap[userId];
+      safeStorage.set('mtp_webauthn_app_lock_v1', bioLockMap);
+    }
+
     // Security fix: NEVER auto-login into another user's profile after deletion
     if (this.getActiveUserId() === userId) {
       this.setActiveUserId(null);
@@ -479,6 +682,7 @@ export const authStorage = {
         | 'muscleBudgets'
         | 'muscleTargetRir'
         | 'nutritionPlan'
+        | 'periodizationStrategy'
       >
     >
   ): UserProfile | null {
@@ -486,21 +690,33 @@ export const authStorage = {
     const idx = users.findIndex((u) => u.id === userId);
     if (idx === -1) return null;
 
-    users[idx] = { ...users[idx], ...updates };
+    const cleanUpdates = sanitizeUntrustedObject(updates);
+    users[idx] = { ...users[idx], ...cleanUpdates };
     this.saveUsers(users);
     return sanitizeUserProfile(users[idx]);
   },
 
   changePassword(userId: string, oldPass: string, newPass: string): { success: boolean; error?: string } {
+    const rate = checkRateLimit(`uid:${userId}`);
+    if (rate.blocked) {
+      return {
+        success: false,
+        error: `Muitas tentativas incorretas. Aguarde ${rate.remainingSec}s antes de tentar novamente.`,
+      };
+    }
+
     const users = this._getRawUsers();
     const idx = users.findIndex((u) => u.id === userId);
     if (idx === -1) return { success: false, error: 'Usuário não encontrado.' };
 
     if (!verifyPasswordHash(oldPass, users[idx].password)) {
+      recordFailedAttempt(`uid:${userId}`);
       return { success: false, error: 'A senha atual está incorreta.' };
     }
-    if (!newPass || newPass.length < 4) {
-      return { success: false, error: 'A nova senha deve ter pelo menos 4 caracteres.' };
+    clearFailedAttempts(`uid:${userId}`);
+
+    if (!newPass || newPass.length < 6) {
+      return { success: false, error: 'A nova senha deve ter pelo menos 6 caracteres.' };
     }
 
     users[idx].password = hashPassword(newPass);
@@ -510,25 +726,62 @@ export const authStorage = {
 
   importBackupFile(backupData: any): { user?: UserProfile; error?: string } {
     try {
-      if (!backupData || !backupData.user || !backupData.user.username) {
+      const sanitizedBackup = sanitizeUntrustedObject(backupData);
+      if (
+        !sanitizedBackup ||
+        typeof sanitizedBackup !== 'object' ||
+        !sanitizedBackup.user ||
+        typeof sanitizedBackup.user.username !== 'string' ||
+        !sanitizedBackup.user.username.trim()
+      ) {
         return { error: 'Arquivo JSON inválido ou não contém um perfil do MeuTreino Pro.' };
       }
 
+      const rawUser = sanitizedBackup.user;
+      const cleanUsername = String(rawUser.username).trim().toLowerCase().slice(0, 40);
+      const cleanName = String(rawUser.name || cleanUsername).trim().slice(0, 80);
+      const safeId = sanitizeSafeId(rawUser.id);
+
       const importedUser: UserProfile = {
-        ...backupData.user,
-        password: backupData.user.password ? hashPassword(backupData.user.password) : '',
+        ...rawUser,
+        id: safeId,
+        name: cleanName,
+        username: cleanUsername,
+        password: rawUser.password ? hashPassword(String(rawUser.password)) : '',
       };
+
       const users = this._getRawUsers();
+      const activeUserId = this.getActiveUserId();
       const existingIdx = users.findIndex(
-        (u) => u.id === importedUser.id || u.username.toLowerCase() === importedUser.username.toLowerCase()
+        (u) => u.id === importedUser.id || u.username.toLowerCase() === cleanUsername
       );
 
       if (existingIdx >= 0) {
-        // Preserve existing hashed password if backup stripped password
-        const preservedPassword = importedUser.password || users[existingIdx].password;
-        users[existingIdx] = { ...importedUser, id: users[existingIdx].id, password: preservedPassword };
-        importedUser.id = users[existingIdx].id;
+        const existingUser = users[existingIdx];
+        const isAlreadyAuthenticatedAsOwner = activeUserId === existingUser.id;
+        const hasValidBackupPassword =
+          Boolean(rawUser.password) &&
+          (verifyPasswordHash(String(rawUser.password), existingUser.password) ||
+            constantTimeEqual(String(rawUser.password), existingUser.password));
+
+        // Previne Account Takeover: se a conta já existe no aparelho e possui senha,
+        // um arquivo de backup sem autenticação na tela de login não pode sobrescrever nem logar na conta existente.
+        if (!isAlreadyAuthenticatedAsOwner && existingUser.password && !hasValidBackupPassword) {
+          return {
+            error:
+              'Já existe uma conta protegida por senha com este usuário neste dispositivo. Faça login com sua senha antes de restaurar o backup.',
+          };
+        }
+
+        const preservedPassword = existingUser.password || importedUser.password;
+        users[existingIdx] = {
+          ...importedUser,
+          id: existingUser.id,
+          password: preservedPassword,
+        };
+        importedUser.id = existingUser.id;
       } else {
+        // Se um novo perfil é importado sem senha, cria como conta protegida ou exige configuração
         users.push(importedUser);
       }
 
@@ -537,22 +790,30 @@ export const authStorage = {
       this.setActiveUserId(uid);
       setPrivacyShieldState(true);
 
-      if (backupData.settings) {
-        if (backupData.settings.split) safeStorage.set(`alex_u_${uid}_split`, backupData.settings.split);
-        if (backupData.settings.strategy) safeStorage.set(`alex_u_${uid}_strategy`, backupData.settings.strategy);
-        if (backupData.settings.level) safeStorage.set(`alex_u_${uid}_level`, backupData.settings.level);
-        if (backupData.settings.equip) safeStorage.set(`alex_u_${uid}_equip`, backupData.settings.equip);
-        if (backupData.settings.weeklyBudget) safeStorage.set(`alex_u_${uid}_weekly_budget`, backupData.settings.weeklyBudget);
+      if (sanitizedBackup.settings && typeof sanitizedBackup.settings === 'object') {
+        if (sanitizedBackup.settings.split) safeStorage.set(`alex_u_${uid}_split`, sanitizedBackup.settings.split);
+        if (sanitizedBackup.settings.strategy) safeStorage.set(`alex_u_${uid}_strategy`, sanitizedBackup.settings.strategy);
+        if (sanitizedBackup.settings.level) safeStorage.set(`alex_u_${uid}_level`, sanitizedBackup.settings.level);
+        if (sanitizedBackup.settings.equip) safeStorage.set(`alex_u_${uid}_equip`, sanitizedBackup.settings.equip);
+        if (sanitizedBackup.settings.weeklyBudget) safeStorage.set(`alex_u_${uid}_weekly_budget`, sanitizedBackup.settings.weeklyBudget);
       }
 
-      if (backupData.routines) safeStorage.set(`alex_u_${uid}_routines`, backupData.routines);
-      if (backupData.measurements) safeStorage.set(`alex_u_${uid}_measurements`, backupData.measurements);
-      if (backupData.workoutItems) safeStorage.set(`alex_u_${uid}_workout`, backupData.workoutItems);
-      if (backupData.currentLogs) safeStorage.set(`alex_u_${uid}_current_logs`, backupData.currentLogs);
-      if (backupData.historyLogs) safeStorage.set(`alex_u_${uid}_history_logs`, backupData.historyLogs);
-      if (backupData.sessions) safeStorage.set(`alex_u_${uid}_sessions`, backupData.sessions);
-      if (backupData.weeklyVolume) safeStorage.set(`alex_u_${uid}_weekly_volume`, backupData.weeklyVolume);
-      if (backupData.workoutNotes !== undefined) safeStorage.set(`alex_u_${uid}_workout_notes`, backupData.workoutNotes);
+      if (Array.isArray(sanitizedBackup.routines)) safeStorage.set(`alex_u_${uid}_routines`, sanitizedBackup.routines);
+      if (Array.isArray(sanitizedBackup.measurements)) safeStorage.set(`alex_u_${uid}_measurements`, sanitizedBackup.measurements);
+      if (Array.isArray(sanitizedBackup.workoutItems)) safeStorage.set(`alex_u_${uid}_workout`, sanitizedBackup.workoutItems);
+      if (sanitizedBackup.currentLogs && typeof sanitizedBackup.currentLogs === 'object') {
+        safeStorage.set(`alex_u_${uid}_current_logs`, sanitizedBackup.currentLogs);
+      }
+      if (sanitizedBackup.historyLogs && typeof sanitizedBackup.historyLogs === 'object') {
+        safeStorage.set(`alex_u_${uid}_history_logs`, sanitizedBackup.historyLogs);
+      }
+      if (Array.isArray(sanitizedBackup.sessions)) safeStorage.set(`alex_u_${uid}_sessions`, sanitizedBackup.sessions);
+      if (sanitizedBackup.weeklyVolume && typeof sanitizedBackup.weeklyVolume === 'object') {
+        safeStorage.set(`alex_u_${uid}_weekly_volume`, sanitizedBackup.weeklyVolume);
+      }
+      if (typeof sanitizedBackup.workoutNotes === 'string') {
+        safeStorage.set(`alex_u_${uid}_workout_notes`, sanitizedBackup.workoutNotes);
+      }
 
       return { user: sanitizeUserProfile(importedUser) };
     } catch {

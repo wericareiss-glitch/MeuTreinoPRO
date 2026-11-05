@@ -69,6 +69,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
   const [split, setSplit] = useState<SplitOption>(() => editingRoutine?.split || 'upper_lower');
   const [items, setItems] = useState<WorkoutItem[]>(() => editingRoutine?.items || []);
   const [swappingIdx, setSwappingIdx] = useState<number | null>(null);
+  const [holdingIdx, setHoldingIdx] = useState<number | null>(null);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -125,17 +126,48 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
     soundManager.vibrate(20);
   };
 
-  // Pointer Hold & Drag on Handle (Mobile Touch + Desktop Mouse)
-  const handlePointerDownItemHandle = (startIdx: number, e: React.PointerEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDraggingIdx(startIdx);
-    setDropTargetIdx(startIdx);
-    soundManager.vibrate(15);
+  // Pointer Hold & Drag on Handle (Mobile Touch + Desktop Mouse) com tempo maior de pressão longa (600ms)
+  const HOLD_TO_DRAG_DELAY_MS = 600;
+  const HOLD_MOVE_TOLERANCE_PX = 10;
 
+  const handlePointerDownItemHandle = (startIdx: number, e: React.PointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dragUnlocked = false;
     let latestTarget = startIdx;
 
+    setHoldingIdx(startIdx);
+
+    const holdTimer = window.setTimeout(() => {
+      dragUnlocked = true;
+      setHoldingIdx(null);
+      setDraggingIdx(startIdx);
+      setDropTargetIdx(startIdx);
+      soundManager.vibrate([20, 35, 25]);
+    }, HOLD_TO_DRAG_DELAY_MS);
+
+    const cleanupListeners = () => {
+      window.clearTimeout(holdTimer);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+
     const handlePointerMove = (moveEvt: PointerEvent) => {
+      if (!dragUnlocked) {
+        const dist = Math.hypot(moveEvt.clientX - startX, moveEvt.clientY - startY);
+        if (dist > HOLD_MOVE_TOLERANCE_PX) {
+          cleanupListeners();
+          setHoldingIdx(null);
+        }
+        return;
+      }
+
+      if (moveEvt.cancelable) {
+        moveEvt.preventDefault();
+      }
+
       const elUnder = document.elementFromPoint(moveEvt.clientX, moveEvt.clientY);
       const rowEl = elUnder?.closest('[data-manual-ex-index]') as HTMLElement | null;
       if (rowEl) {
@@ -149,17 +181,16 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
     };
 
     const handlePointerUp = () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointercancel', handlePointerUp);
-      if (latestTarget !== startIdx) {
+      cleanupListeners();
+      setHoldingIdx(null);
+      if (dragUnlocked && latestTarget !== startIdx) {
         handleReorderItems(startIdx, latestTarget);
       }
       setDraggingIdx(null);
       setDropTargetIdx(null);
     };
 
-    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
     window.addEventListener('pointerup', handlePointerUp);
     window.addEventListener('pointercancel', handlePointerUp);
   };
@@ -425,6 +456,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
               <div className="space-y-2">
                 {items.map((item, idx) => {
                   const isSwappingThis = swappingIdx === idx;
+                  const isHoldingThis = holdingIdx === idx;
                   const isDraggingThis = draggingIdx === idx;
                   const isDropTargetThis = dropTargetIdx === idx && draggingIdx !== idx;
 
@@ -432,7 +464,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                     <div
                       key={item.id}
                       data-manual-ex-index={idx}
-                      draggable
+                      draggable={isDraggingThis}
                       onDragStart={(e) => {
                         setDraggingIdx(idx);
                         e.dataTransfer.effectAllowed = 'move';
@@ -450,10 +482,12 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                         if (!isNaN(fromIdx) && fromIdx !== idx) {
                           handleReorderItems(fromIdx, idx);
                         }
+                        setHoldingIdx(null);
                         setDraggingIdx(null);
                         setDropTargetIdx(null);
                       }}
                       onDragEnd={() => {
+                        setHoldingIdx(null);
                         setDraggingIdx(null);
                         setDropTargetIdx(null);
                       }}
@@ -471,8 +505,14 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                           <button
                             type="button"
                             onPointerDown={(e) => handlePointerDownItemHandle(idx, e)}
-                            className="drag-handle-touch p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-emerald-400 border border-slate-800 cursor-grab active:cursor-grabbing flex items-center gap-0.5 shrink-0"
-                            title="Segurar e arrastar para mover este exercício"
+                            className={`drag-handle-touch p-1.5 rounded-lg border cursor-grab active:cursor-grabbing flex items-center gap-0.5 shrink-0 transition-all ${
+                              isDraggingThis
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400 ring-2 ring-emerald-500/30 scale-105'
+                                : isHoldingThis
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-400/70 ring-2 ring-amber-400/30 animate-pulse'
+                                : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-emerald-400 border-slate-800'
+                            }`}
+                            title="Mantenha pressionado por 0,6s e arraste para mover este exercício"
                           >
                             <GripVertical className="w-3.5 h-3.5" />
                             <span className="font-mono font-bold text-[11px] text-slate-300">

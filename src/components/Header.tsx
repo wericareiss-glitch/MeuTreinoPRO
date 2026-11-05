@@ -17,16 +17,10 @@ import {
   MoreVertical, 
   X, 
   Menu,
-  Flame, 
-  Heart, 
-  Apple,
   Sliders,
   ChevronRight,
-  MessageSquare,
   Sparkles,
-  Calendar,
-  Check,
-  Copy
+  Calendar
 } from 'lucide-react';
 import { UserProfile } from '../types/workout';
 import { TabType } from '../types/navigation';
@@ -34,7 +28,7 @@ import { useI18n } from '../utils/i18n';
 import { PWAInstallButton } from './PWAInstallButton';
 import { ThemeToggle } from './ThemeToggle';
 import { PrivacyShieldControl } from './PrivacyShieldControl';
-import { usePrivacyMode, getProtectedCreatorKey, getMaskedCreatorKey, maskDisplayName } from '../utils/privacy';
+import { usePrivacyMode, maskDisplayName } from '../utils/privacy';
 
 interface HeaderProps {
   user: UserProfile | null;
@@ -45,10 +39,6 @@ interface HeaderProps {
   onOpenHistory: () => void;
   onOpenAnalytics?: () => void;
   onOpenMeasurements?: () => void;
-  onOpenDeloadAssistant?: () => void;
-  isDeloadActive?: boolean;
-  onOpenNutrition?: () => void;
-  onOpenDonation?: () => void;
   onShare: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
@@ -66,10 +56,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHistory,
   onOpenAnalytics,
   onOpenMeasurements,
-  onOpenDeloadAssistant,
-  isDeloadActive = false,
-  onOpenNutrition,
-  onOpenDonation,
   onShare,
   isMuted,
   onToggleMute,
@@ -81,7 +67,6 @@ export const Header: React.FC<HeaderProps> = ({
   const { isPrivacyHidden } = usePrivacyMode();
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [pixCopied, setPixCopied] = useState(false);
 
   const desktopMenuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -135,14 +120,6 @@ export const Header: React.FC<HeaderProps> = ({
     setMobileMenuOpen(false);
   };
 
-  const handleCopyPix = () => {
-    navigator.clipboard.writeText(getProtectedCreatorKey());
-    setPixCopied(true);
-    setTimeout(() => setPixCopied(false), 2500);
-    if (onOpenDonation) {
-      onOpenDonation();
-    }
-  };
 
   return (
     <header className="sticky top-0 z-50 bg-[#0d1424]/95 backdrop-blur-md border-b border-[#1f2d47]">
@@ -259,18 +236,6 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Controles Exclusivos do Desktop */}
           <div className="hidden md:flex items-center gap-2">
-            {/* Botão de Doação PIX */}
-            {onOpenDonation && (
-              <button
-                type="button"
-                onClick={onOpenDonation}
-                className="flex items-center gap-1.5 py-1.5 px-2.5 sm:px-3 rounded-xl text-xs font-bold bg-gradient-to-r from-rose-500/20 via-pink-500/20 to-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
-                title="Apoiar o projeto com PIX"
-              >
-                <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
-                <span>Apoiar PIX</span>
-              </button>
-            )}
 
             {/* Atalho do Perfil */}
             {user && (
@@ -386,53 +351,6 @@ export const Header: React.FC<HeaderProps> = ({
                     )}
                   </div>
 
-                  {/* Nutrição & Recuperação */}
-                  <div className="pt-1.5 border-t border-slate-800 space-y-1">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">
-                      Nutrição & Fisiologia
-                    </span>
-
-                    {onOpenNutrition && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToolsMenuOpen(false);
-                          onOpenNutrition();
-                        }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-emerald-300 hover:bg-emerald-950/40 transition-colors text-left cursor-pointer"
-                      >
-                        <Apple className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <div className="flex-1">
-                          <span className="block font-bold">Calculadora de TMB & Macros</span>
-                          <span className="block text-[10px] text-slate-400">Cutting -10%, manutenção ou bulking</span>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                      </button>
-                    )}
-
-                    {onOpenDeloadAssistant && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToolsMenuOpen(false);
-                          onOpenDeloadAssistant();
-                        }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-amber-300 hover:bg-amber-950/40 transition-colors text-left cursor-pointer"
-                      >
-                        <Flame className="w-4 h-4 text-amber-400 shrink-0" />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold">Assistente de Deload</span>
-                            {isDeloadActive && (
-                              <span className="text-[9px] font-bold bg-amber-500 text-slate-950 px-1 rounded">ATIVO</span>
-                            )}
-                          </div>
-                          <span className="block text-[10px] text-slate-400">Fadiga neuromuscular acumulada</span>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                      </button>
-                    )}
-                  </div>
 
                   {/* Preferências */}
                   <div className="pt-1.5 border-t border-slate-800 space-y-1">
@@ -621,25 +539,6 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 ) : null}
 
-                {/* Cardio */}
-                <button
-                  type="button"
-                  onClick={() => handleMobileNavigate('cardio')}
-                  className={`p-3 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer min-h-[48px] ${
-                    activeTab === 'cardio'
-                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-md shadow-emerald-500/25'
-                      : 'bg-[#121c33] text-slate-200 border-slate-750 hover:bg-[#16233f]'
-                  }`}
-                >
-                  <Flame className={`w-5 h-5 shrink-0 ${activeTab === 'cardio' ? 'text-slate-950' : 'text-orange-400'}`} />
-                  <div>
-                    <span className="block text-xs font-bold">Cardio</span>
-                    <span className={`block text-[10px] ${activeTab === 'cardio' ? 'text-slate-900/80' : 'text-slate-400'}`}>
-                      Cronômetro & logs
-                    </span>
-                  </div>
-                </button>
-
                 {/* Perfil */}
                 <button
                   type="button"
@@ -658,33 +557,13 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   </div>
                 </button>
-
-                {/* Sugestões & Bugs */}
-                <button
-                  type="button"
-                  onClick={() => handleMobileNavigate('feedback')}
-                  className={`col-span-2 p-3 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer min-h-[48px] ${
-                    activeTab === 'feedback'
-                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-md shadow-emerald-500/25'
-                      : 'bg-[#121c33] text-slate-200 border-slate-750 hover:bg-[#16233f]'
-                  }`}
-                >
-                  <MessageSquare className={`w-5 h-5 shrink-0 ${activeTab === 'feedback' ? 'text-slate-950' : 'text-sky-400'}`} />
-                  <div className="flex-1">
-                    <span className="block text-xs font-bold">Central de Sugestões & Bugs</span>
-                    <span className={`block text-[10px] ${activeTab === 'feedback' ? 'text-slate-900/80' : 'text-slate-400'}`}>
-                      Envie ideias de melhorias diretamente para a equipe
-                    </span>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-500" />
-                </button>
               </div>
             </div>
 
-            {/* 2. SEÇÃO DE FERRAMENTAS & MÉTRICAS CIENTÍFICAS */}
+            {/* 2. SEÇÃO DE FERRAMENTAS & HISTÓRICO */}
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2 px-1">
-                Ferramentas & Análise Científica
+                Ferramentas & Histórico
               </span>
               <div className="space-y-1.5">
                 {onOpenAnalytics && (
@@ -727,51 +606,6 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 )}
 
-                {onOpenNutrition && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      onOpenNutrition();
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-[#121c33] hover:bg-[#16233f] border border-slate-750 text-left transition-colors cursor-pointer min-h-[48px]"
-                  >
-                    <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 shrink-0">
-                      <Apple className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1">
-                      <span className="block text-xs font-bold text-white">Calculadora de TMB & Macros</span>
-                      <span className="block text-[10px] text-slate-400">Cutting -10%, gordura máx 20%</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
-                  </button>
-                )}
-
-                {onOpenDeloadAssistant && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      onOpenDeloadAssistant();
-                    }}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-[#121c33] hover:bg-[#16233f] border border-slate-750 text-left transition-colors cursor-pointer min-h-[48px]"
-                  >
-                    <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400 shrink-0">
-                      <Flame className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="block text-xs font-bold text-white">Assistente de Deload</span>
-                        {isDeloadActive && (
-                          <span className="text-[9px] font-bold bg-amber-500 text-slate-950 px-1 rounded">ATIVO</span>
-                        )}
-                      </div>
-                      <span className="block text-[10px] text-slate-400">Monitoramento de fadiga central</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
-                  </button>
-                )}
-
                 {onOpenHistory && (
                   <button
                     type="button"
@@ -791,44 +625,6 @@ export const Header: React.FC<HeaderProps> = ({
                     <ChevronRight className="w-4 h-4 text-slate-600" />
                   </button>
                 )}
-              </div>
-            </div>
-
-            {/* 3. APOIO AO CRIADOR (PIX) */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-950/40 via-[#161226] to-[#121c33] border border-rose-500/30 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
-                  <Heart className="w-4 h-4 fill-rose-400 text-rose-400" />
-                  <span>Apoie o Projeto MeuTreino Pro</span>
-                </div>
-                <span className="text-[10px] font-mono text-rose-400 font-bold bg-rose-500/15 px-2 py-0.5 rounded-full border border-rose-500/30">
-                  PIX
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                Gostou do aplicativo? Qualquer contribuição voluntária ajuda a manter a plataforma rápida, sem anúncios e com atualizações contínuas!
-              </p>
-              <div className="flex items-center gap-2 pt-1">
-                <div className="flex-1 font-mono text-[11px] font-bold text-slate-300 bg-slate-900/90 px-3 py-2 rounded-xl border border-slate-750 truncate select-none">
-                  {getMaskedCreatorKey()}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCopyPix}
-                  className="px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-md shadow-rose-500/25 active:scale-95 transition-all cursor-pointer"
-                >
-                  {pixCopied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      <span>Copiado!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copiar PIX</span>
-                    </>
-                  )}
-                </button>
               </div>
             </div>
 

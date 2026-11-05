@@ -18,10 +18,13 @@ import {
   Hash,
   Upload,
   Fingerprint,
-  ScanFace
+  ScanFace,
+  Cloud
 } from 'lucide-react';
 import { UserProfile, GenderOption, LevelOption, FocusOption, SplitOption } from '../types/workout';
-import { authStorage, calculateDefaultBudget } from '../utils/auth';
+import { authStorage, calculateDefaultBudget, createDefaultBudgets } from '../utils/auth';
+import { safeStorage } from '../utils/storage';
+import { loginWithGoogle, fetchUserDataFromFirebase, syncUserProfileToCloud } from '../services/firebase';
 import {
   checkBiometricAvailability,
   getStoredBiometricCredentials,
@@ -49,6 +52,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   const [enableBiometricOnLogin, setEnableBiometricOnLogin] = useState(false);
   const [enableBiometricOnRegister, setEnableBiometricOnRegister] = useState(false);
   const [isBiometricLoading, setIsBiometricLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const [biometricAvailability, setBiometricAvailability] = useState<BiometricAvailability>({
     isWebAuthnSupported: false,
@@ -106,6 +110,84 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setIsGoogleLoading(true);
+    const res = await loginWithGoogle();
+    setIsGoogleLoading(false);
+
+    if (res.error || !res.user) {
+      setError(res.error || 'Falha ao autenticar com o Google.');
+      return;
+    }
+
+    const gUser = res.user;
+    const allUsers = authStorage.getUsers();
+    let existing = allUsers.find(
+      (u) => u.id === gUser.uid || (u.email && u.email.toLowerCase() === gUser.email?.toLowerCase())
+    );
+
+    if (existing) {
+      authStorage.setActiveUserId(existing.id);
+      markBiometricSessionUnlocked(existing.id, true);
+      await syncUserProfileToCloud(existing);
+      onSuccess(existing);
+      return;
+    }
+
+    // Tenta carregar dados do Firestore caso o usuário já tenha treinos no banco online
+    const remoteData = await fetchUserDataFromFirebase(gUser.uid);
+    if (remoteData?.profile) {
+      const rawUsers = (authStorage as any)._getRawUsers();
+      rawUsers.push(remoteData.profile);
+      authStorage.saveUsers(rawUsers);
+      authStorage.setActiveUserId(remoteData.profile.id);
+      markBiometricSessionUnlocked(remoteData.profile.id, true);
+
+      if (remoteData.routines && remoteData.routines.length > 0) {
+        safeStorage.set(`alex_u_${remoteData.profile.id}_routines`, remoteData.routines);
+      }
+      if (remoteData.sessions && remoteData.sessions.length > 0) {
+        safeStorage.set(`alex_u_${remoteData.profile.id}_sessions`, remoteData.sessions);
+      }
+      if (remoteData.measurements && remoteData.measurements.length > 0) {
+        safeStorage.set(`alex_u_${remoteData.profile.id}_measurements`, remoteData.measurements);
+      }
+
+      onSuccess(remoteData.profile);
+      return;
+    }
+
+    // Cria novo perfil vinculado à conta Google do usuário
+    const budget = calculateDefaultBudget('intermediate', 'male');
+    const newUser: UserProfile = {
+      id: gUser.uid,
+      name: gUser.displayName || 'Atleta',
+      username: (gUser.email?.split('@')[0] || `user_${Date.now()}`).toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30),
+      email: gUser.email || '',
+      password: '',
+      weightKg: 75,
+      heightM: 1.75,
+      gender: 'male',
+      level: 'intermediate',
+      focus: 'balanced',
+      frequency: 4,
+      preferredSplit: 'upper_lower',
+      exercisesPerMuscle: 1,
+      weeklyBudget: budget,
+      muscleBudgets: createDefaultBudgets(budget, 'balanced'),
+      createdAt: new Date().toISOString(),
+    };
+
+    const rawUsers = (authStorage as any)._getRawUsers();
+    rawUsers.push(newUser);
+    authStorage.saveUsers(rawUsers);
+    authStorage.setActiveUserId(newUser.id);
+    markBiometricSessionUnlocked(newUser.id, true);
+    await syncUserProfileToCloud(newUser);
+    onSuccess(newUser);
   };
 
   const handleBiometricQuickLogin = async (targetUserId?: string) => {
@@ -202,15 +284,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
           </p>
         </div>
 
+        {/* Google One-Click Login & Online Cloud Storage Banner */}
+        <div className="mb-4 space-y-2">
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={isGoogleLoading}
+            className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-lg active:scale-[0.98] disabled:opacity-60"
+          >
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+            </svg>
+            <span>{isGoogleLoading ? 'Conectando ao Google...' : 'Entrar com Conta Google (Salvar na Nuvem)'}</span>
+          </button>
+          <div className="flex items-center justify-center gap-1.5 text-[11px] text-emerald-400 font-medium">
+            <Cloud className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+            <span>Banco de dados online conectado · Salva logins e treinos</span>
+          </div>
+        </div>
+
         {/* Quick Guest Exploration Button */}
         <div className="mb-4">
           <button
             type="button"
             onClick={handleQuickGuest}
-            className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-sky-500/15 hover:from-emerald-500/25 hover:to-teal-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-[0.98]"
+            className="w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-sky-500/15 hover:from-emerald-500/25 hover:to-teal-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-[0.98]"
           >
             <Zap className="w-4 h-4 text-emerald-400 fill-emerald-400" />
-            <span>Entrar rapidamente como visitante</span>
+            <span>Continuar como visitante (offline)</span>
           </button>
         </div>
 

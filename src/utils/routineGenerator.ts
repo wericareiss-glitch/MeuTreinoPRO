@@ -14,6 +14,7 @@ import {
   UserProfile,
   FocusOption,
   Exercise,
+  PeriodizationStrategy,
 } from '../types/workout';
 import { EXERCISE_DATABASE, MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { calculateDefaultBudget, getPresetWeights } from './auth';
@@ -22,6 +23,8 @@ interface RoutineGeneratorParams {
   user: UserProfile;
   split?: SplitOption;
   strategy?: StrategyOption;
+  periodizationStrategy?: PeriodizationStrategy;
+  customMuscleBudgets?: Record<MuscleGroup, number>;
   manualWeeklySets?: number;
   level?: LevelOption;
   equip?: EquipmentRequirement;
@@ -105,6 +108,8 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
   const requestedSplit: SplitOption = params.split || user.preferredSplit || (
     focus === 'glutes' 
       ? 'lower' 
+      : frequency === 1
+      ? 'fullbody'
       : frequency === 3 || frequency === 6
       ? 'ppl' 
       : frequency === 5
@@ -138,7 +143,7 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       'calves',
       'abs',
     ];
-    const daysCount = Math.min(Math.max(2, frequency), 6);
+    const daysCount = Math.min(Math.max(1, frequency), 6);
     dayPlans = Array.from({ length: daysCount }).map((_, idx) => ({
       letter: letters[idx],
       name: `Treino ${letters[idx]}`,
@@ -206,7 +211,11 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
     }
   } else {
     // Upper / Lower (Padrão)
-    if (frequency === 2) {
+    if (frequency <= 1) {
+      dayPlans = [
+        { letter: 'A', name: 'Treino A', subtitle: 'Full Body · Corpo Inteiro', split: 'fullbody', muscleGroups: ['chest', 'back', 'quadriceps', 'hamstrings', 'shoulders', 'biceps', 'triceps', 'abs'] },
+      ];
+    } else if (frequency === 2) {
       dayPlans = [
         { letter: 'A', name: 'Treino A', subtitle: 'Upper · Superiores', split: 'upper', muscleGroups: ['chest', 'back', 'shoulders', 'biceps', 'triceps'] },
         { letter: 'B', name: 'Treino B', subtitle: 'Lower · Inferiores & Core', split: 'lower', muscleGroups: ['quadriceps', 'hamstrings', 'glutes', 'calves', 'abs'] },
@@ -228,9 +237,67 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
   }
 
   // =========================================================================
-  // ALOCAÇÃO ADAPTATIVA E RIGOROSA DE SÉRIES (RESPEITA 100% O LIMITE SEMANAL)
-  // Se o orçamento for menor que a quantidade de exercícios, prioriza pelo FOCO!
+  // PERIODIZAÇÃO & REPETIÇÕES ALVO (FORÇA 3-5 | HIPERTROFIA 8-12 | METABÓLICO 15+)
   // =========================================================================
+  const targetPeriodization: PeriodizationStrategy =
+    params.periodizationStrategy ||
+    (params.strategy as PeriodizationStrategy) ||
+    'hypertrophy';
+
+  let repRange = '8 a 12';
+  let rir = level === 'beginner' ? 'RIR 2' : level === 'intermediate' ? 'RIR 1-2' : 'RIR 0-1';
+
+  if (targetPeriodization === 'strength') {
+    repRange = '3 a 5';
+    rir = 'RIR 1-2';
+  } else if (targetPeriodization === 'metabolic') {
+    repRange = '15 a 20';
+    rir = 'RIR 0-1';
+  }
+
+  // =========================================================================
+  // GESTÃO ESTRITA DAS METAS DE SÉRIES SEMANAIS (SUPORTE A EXCLUSÃO DE MÚSCULOS)
+  // Músculos com 0 séries são 100% excluídos de todas as sessões e divisões
+  // =========================================================================
+  const customBudgets = params.customMuscleBudgets || user.muscleBudgets;
+  const hasCustomBudgets = Boolean(
+    customBudgets && Object.keys(customBudgets).length > 0
+  );
+
+  // Filtra planos diários: remove qualquer músculo excluído (cota = 0)
+  if (hasCustomBudgets && customBudgets) {
+    dayPlans = dayPlans
+      .map((plan) => ({
+        ...plan,
+        muscleGroups: plan.muscleGroups.filter((m) => (customBudgets[m] ?? 0) > 0),
+      }))
+      .filter((plan) => plan.muscleGroups.length > 0);
+  }
+
+  // Previne falha caso todos os músculos tenham sido excluídos
+  if (dayPlans.length === 0) {
+    const fallbackMuscles = FOCUS_PRIORITIES[focus]?.slice(0, 4) || ['chest', 'back', 'quadriceps', 'glutes'];
+    dayPlans = [
+      {
+        letter: 'A',
+        name: 'Treino A',
+        subtitle: 'Corpo Inteiro (Reative músculos nas metas)',
+        split: 'fullbody',
+        muscleGroups: fallbackMuscles,
+      },
+    ];
+  }
+
+  // Re-indexa letras e nomes em ordem estrita (A, B, C, D...) mesmo se dias intermediários foram removidos
+  dayPlans = dayPlans.map((plan, idx) => {
+    const l = letters[idx] || String.fromCharCode(65 + idx);
+    return {
+      ...plan,
+      letter: l,
+      name: `Treino ${l}`,
+    };
+  });
+
   const allTrainedMuscles = Array.from(new Set(dayPlans.flatMap((p) => p.muscleGroups)));
   const priorityList = FOCUS_PRIORITIES[focus] || FOCUS_PRIORITIES.balanced;
   // Ordena os músculos participantes de acordo com a prioridade do FOCO do usuário
@@ -243,8 +310,13 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
     muscleBudgets[m] = 0;
   });
 
-  // Se o totalWeeklyBudget for menor que o número de músculos, distribui 1 a 1 para os de maior prioridade
-  if (totalWeeklyBudget <= sortedMuscles.length) {
+  if (hasCustomBudgets && customBudgets) {
+    // Usa diretamente a meta de séries configurada pelo atleta para cada músculo ativo
+    sortedMuscles.forEach((m) => {
+      muscleBudgets[m] = Math.max(0, customBudgets[m] || 0);
+    });
+  } else if (totalWeeklyBudget <= sortedMuscles.length) {
+    // Se o totalWeeklyBudget for menor que o número de músculos, distribui 1 a 1 para os de maior prioridade
     for (let i = 0; i < totalWeeklyBudget; i++) {
       const targetM = sortedMuscles[i % sortedMuscles.length];
       muscleBudgets[targetM] = (muscleBudgets[targetM] || 0) + 1;
@@ -289,8 +361,11 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
   // =========================================================================
   // Mantém controle de séries já alocadas por músculo para garantir soma exata
   const allocatedSoFar: Record<MuscleGroup, number> = {} as Record<MuscleGroup, number>;
+  // Rastreia exercícios já selecionados por músculo nesta semana para garantir variedade biomecânica entre os dias
+  const usedExerciseIdsByMuscle: Record<MuscleGroup, Set<string>> = {} as Record<MuscleGroup, Set<string>>;
   sortedMuscles.forEach((m) => {
     allocatedSoFar[m] = 0;
+    usedExerciseIdsByMuscle[m] = new Set<string>();
   });
 
   const routines: GeneratedWorkoutRoutine[] = dayPlans.map((plan, planIdx) => {
@@ -298,7 +373,7 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
 
     plan.muscleGroups.forEach((mKey) => {
       const totalMuscleBudget = muscleBudgets[mKey] || 0;
-      if (totalMuscleBudget <= 0) return; // Músculo não recebeu cota neste orçamento reduzido
+      if (totalMuscleBudget <= 0) return; // Músculo excluído ou sem séries
 
       // Calcula quantas sessões desse músculo ainda restam daqui para frente de forma correta
       const futureOccurrences = dayPlans.slice(planIdx).filter((p) => p.muscleGroups.includes(mKey)).length;
@@ -323,27 +398,33 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       if (pool.length === 0) pool = muscleList;
       if (pool.length === 0) return;
 
-      // Seleção Inteligente Baseada na Curva de Resistência (Alongamento vs. Encurtamento)
-      // Alterna o perfil entre os treinos da semana para o grupamento:
-      // Dias ímpares priorizam Alongamento (hipertrofia mediada por estiramento)
-      // Dias pares priorizam Encurtamento / Tensão Contínua (pico concêntrico e oclusão)
+      // Seleção Inteligente com Variedade Biomecânica:
+      // 1. Prioriza exercícios que ainda não foram feitos nesta semana para esse músculo
+      const usedIds = usedExerciseIdsByMuscle[mKey] || new Set<string>();
+      const unusedPool = pool.filter((e) => !usedIds.has(e.id));
+      const candidatePool = unusedPool.length > 0 ? unusedPool : pool;
+
+      // 2. Alterna a curva de resistência:
+      // Dias pares da rotina priorizam Alongamento (estiramento sob carga)
+      // Dias ímpares priorizam Encurtamento / Tensão Contínua
       const prefersLengthened = planIdx % 2 === 0;
       let chosen: Exercise | null = null;
       if (prefersLengthened) {
-        chosen = pool.find((e) => e.profile.toLowerCase().includes('alongamento')) || null;
+        chosen = candidatePool.find((e) => e.profile.toLowerCase().includes('alongamento')) || null;
       } else {
-        chosen = pool.find((e) => 
+        chosen = candidatePool.find((e) => 
           e.profile.toLowerCase().includes('encurtamento') || 
           e.profile.toLowerCase().includes('contínua')
         ) || null;
       }
       if (!chosen) {
-        const exIndex = planIdx % pool.length;
-        chosen = pool[exIndex] || pool[0];
+        chosen = candidatePool[0] || pool[0];
       }
 
-      const repRange = '8 a 10';
-      const rir = level === 'beginner' ? 'RIR 2' : level === 'intermediate' ? 'RIR 1-2' : 'RIR 0-1';
+      if (chosen) {
+        usedIds.add(chosen.id);
+        usedExerciseIdsByMuscle[mKey] = usedIds;
+      }
 
       // Descanso inteligente por categoria do exercício:
       // Multiarticulares/Compostos pesados exigem 90s; Isoladores e acessórios 60s (ou padrão configurado)
@@ -378,6 +459,7 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       name: plan.name,
       subtitle: plan.subtitle,
       split: plan.split,
+      strategy: targetPeriodization,
       muscleGroups: plan.muscleGroups,
       items: sortedItems,
       totalSets,
