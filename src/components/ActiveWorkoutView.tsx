@@ -62,7 +62,6 @@ interface WorkoutItemRowProps {
   logs: WorkoutLogs;
   history: WorkoutLogs;
   sessions: WorkoutSessionSummary[];
-  targetMuscleRir?: number;
   isBisetFirst: boolean;
   isSecondInBiset: boolean;
   nextExerciseName?: string;
@@ -95,7 +94,6 @@ function areWorkoutItemRowEqual(prev: WorkoutItemRowProps, next: WorkoutItemRowP
   if (
     prev.index !== next.index ||
     prev.totalItems !== next.totalItems ||
-    prev.targetMuscleRir !== next.targetMuscleRir ||
     prev.isBisetFirst !== next.isBisetFirst ||
     prev.isSecondInBiset !== next.isSecondInBiset ||
     prev.nextExerciseName !== next.nextExerciseName ||
@@ -143,7 +141,6 @@ const MemoizedWorkoutItemRow: React.FC<WorkoutItemRowProps> = React.memo(
     logs,
     history,
     sessions,
-    targetMuscleRir,
     isBisetFirst,
     isSecondInBiset,
     nextExerciseName,
@@ -192,7 +189,6 @@ const MemoizedWorkoutItemRow: React.FC<WorkoutItemRowProps> = React.memo(
           onAddSet={onAddSet}
           onRemoveSet={onRemoveSet}
           onOpenAnalytics={onOpenAnalytics}
-          targetMuscleRir={targetMuscleRir}
           isBisetWithNext={isBisetFirst}
           isSecondInBiset={isSecondInBiset}
           nextExerciseName={nextExerciseName}
@@ -235,7 +231,6 @@ interface ActiveWorkoutViewProps {
   startedAt: number;
   workoutNotes: string;
   onUpdateWorkoutNotes: (notes: string) => void;
-  muscleTargetRir?: Partial<Record<MuscleGroup, number>>;
   periodizationStrategy?: PeriodizationStrategy;
   userFocus?: FocusOption;
   onSelectPeriodizationStrategy?: (phase: PeriodizationStrategy) => void;
@@ -268,7 +263,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   startedAt,
   workoutNotes,
   onUpdateWorkoutNotes,
-  muscleTargetRir,
   periodizationStrategy,
   userFocus,
   onSelectPeriodizationStrategy,
@@ -304,6 +298,8 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
+  const [displayModeDropdownOpen, setDisplayModeDropdownOpen] = useState(false);
+  const displayModeDropdownRef = useRef<HTMLDivElement>(null);
 
   const handleChangeDisplayMode = React.useCallback((mode: ActiveWorkoutDisplayMode) => {
     setDisplayMode(mode);
@@ -528,17 +524,21 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (toolsMenuRef.current && !toolsMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(target)) {
         setShowToolsMenu(false);
       }
+      if (displayModeDropdownRef.current && !displayModeDropdownRef.current.contains(target)) {
+        setDisplayModeDropdownOpen(false);
+      }
     };
-    if (showToolsMenu) {
+    if (showToolsMenu || displayModeDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showToolsMenu]);
+  }, [showToolsMenu, displayModeDropdownOpen]);
 
   // Debounced auto-save para as anotações do treino
   const [localNotes, setLocalNotes] = useState(workoutNotes);
@@ -748,7 +748,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   };
 
   return (
-    <div className="space-y-4 landscape:space-y-3 animate-fadeIn pb-28 landscape:pb-20 max-w-4xl landscape:max-w-7xl mx-auto">
+    <div className="space-y-4 landscape:space-y-3 animate-fadeIn pb-16 landscape:pb-14 max-w-4xl landscape:max-w-7xl mx-auto">
 
       {/* 1. Header do Treino Ativo (Compacto & Adaptado para Paisagem em Smartphones/Tablets) */}
       <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-3.5 sm:p-4 landscape:p-3 shadow-xl">
@@ -840,84 +840,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
           />
         </div>
 
-        {/* Índice de Navegação Rápida por Exercício */}
-        {workoutItems.length > 1 && (
-          <div className="mt-2.5 p-2.5 rounded-xl bg-[#0b1220] border border-slate-800/90 flex flex-col justify-center">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                Navegação Rápida ({workoutItems.length} exercícios):
-              </span>
-              <div className="flex items-center gap-1.5">
-                {nextIncompleteExerciseIndex !== -1 && completedSets > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => scrollToExercise(nextIncompleteExerciseIndex)}
-                    className="px-2 py-0.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[10px] font-bold cursor-pointer active:scale-95"
-                  >
-                    Ir p/ Próximo (#{nextIncompleteExerciseIndex + 1}) ➔
-                  </button>
-                )}
-                {exerciseCompletionStats.some((st) => st.isComplete) &&
-                  !exerciseCompletionStats.every((st) => st.isComplete) && (
-                    <button
-                      type="button"
-                      onClick={() => setHideCompletedExercises((prev) => !prev)}
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer active:scale-95 ${
-                        hideCompletedExercises
-                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {hideCompletedExercises ? 'Mostrar Todos' : 'Ocultar Concluídos'}
-                    </button>
-                  )}
-              </div>
-            </div>
-
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                {workoutItems.map((it, idx) => {
-                  const st = exerciseCompletionStats[idx];
-                  const isNextTarget = idx === nextIncompleteExerciseIndex;
-                  return (
-                    <button
-                      key={it.id}
-                      type="button"
-                      onClick={() => {
-                        if (hideCompletedExercises && st?.isComplete) {
-                          setHideCompletedExercises(false);
-                          setTimeout(() => scrollToExercise(idx), 60);
-                        } else {
-                          scrollToExercise(idx);
-                        }
-                      }}
-                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border flex items-center gap-1.5 shrink-0 transition-all cursor-pointer active:scale-95 ${
-                        st?.isComplete
-                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                          : isNextTarget
-                          ? 'bg-sky-500/20 text-white border-sky-400/60 ring-1 ring-sky-400/30'
-                          : 'bg-[#080d19] text-slate-300 border-slate-800 hover:border-slate-700'
-                      }`}
-                    >
-                      <span className="font-mono font-black text-[10px] px-1.5 py-0.2 rounded bg-slate-900 text-sky-400">
-                        #{idx + 1}
-                      </span>
-                      <span className="max-w-[115px] sm:max-w-[150px] truncate">
-                        {it.exercise.name}
-                      </span>
-                      <span
-                        className={`text-[10px] font-mono font-extrabold ${
-                          st?.isComplete ? 'text-emerald-400' : 'text-slate-400'
-                        }`}
-                      >
-                        {st?.isComplete ? '✓' : `${st?.doneCount || 0}/${it.sets}`}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
         {/* Alertas de Recordes Batidos e Aquecimento Articular (Lado a Lado em Paisagem quando ambos visíveis) */}
         {(beatenSetsCount > 0 || completedSets === 0) && (
           <div className="mt-2.5 grid grid-cols-1 landscape:grid-cols-2 gap-2">
@@ -994,53 +916,100 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-1 bg-[#060a12] p-1 rounded-xl border border-slate-800 shrink-0">
+          {/* Dropdown de Modo de Visualização */}
+          <div className="relative shrink-0" ref={displayModeDropdownRef}>
             <button
               type="button"
-              onClick={() => handleChangeDisplayMode('padrao')}
-              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                displayMode === 'padrao'
-                  ? 'bg-slate-800 text-white border border-slate-600 shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Exibir lista completa com todos os exercícios expandidos"
+              onClick={() => setDisplayModeDropdownOpen((prev) => !prev)}
+              className="h-9 px-3 rounded-xl bg-[#060a12] hover:bg-slate-800 border border-slate-700/80 text-white font-bold text-xs flex items-center justify-between gap-2.5 transition-all cursor-pointer shadow-sm active:scale-95 min-w-[140px]"
+              aria-expanded={displayModeDropdownOpen}
+              title="Trocar modo de visualização"
             >
-              <Layers className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-              <span>Padrão</span>
+              <div className="flex items-center gap-2">
+                {displayMode === 'padrao' && <Layers className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
+                {displayMode === 'compacto' && <Minimize2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
+                {displayMode === 'foco' && <Maximize2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                <span className="font-extrabold">
+                  {displayMode === 'padrao' && 'Padrão'}
+                  {displayMode === 'compacto' && 'Compacto'}
+                  {displayMode === 'foco' && 'Modo Foco'}
+                </span>
+              </div>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${displayModeDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            <button
-              type="button"
-              onClick={() => handleChangeDisplayMode('compacto')}
-              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                displayMode === 'compacto'
-                  ? 'bg-sky-500 text-slate-950 font-black shadow'
-                  : 'text-slate-400 hover:text-sky-300'
-              }`}
-              title="Manter apenas o exercício atual expandido e recolher automaticamente os não iniciados"
-            >
-              <Minimize2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Compacto</span>
-            </button>
+            {displayModeDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-60 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-1.5 z-40 animate-fadeIn space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleChangeDisplayMode('padrao');
+                    setDisplayModeDropdownOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
+                    displayMode === 'padrao'
+                      ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                      : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-sky-400 shrink-0" />
+                    <div>
+                      <span className="block text-xs font-bold">Padrão</span>
+                      <span className="block text-[10px] text-slate-400">Todos os exercícios abertos</span>
+                    </div>
+                  </div>
+                  {displayMode === 'padrao' && <Check className="w-4 h-4 text-sky-400 shrink-0 stroke-[2.5]" />}
+                </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (nextIncompleteExerciseIndex !== -1) {
-                  setFocusedExerciseIdx(nextIncompleteExerciseIndex);
-                }
-                handleChangeDisplayMode('foco');
-              }}
-              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                displayMode === 'foco'
-                  ? 'bg-emerald-500 text-slate-950 font-black shadow'
-                  : 'text-slate-400 hover:text-emerald-300'
-              }`}
-              title="Modo Foco 1-Mão: exibe apenas o exercício atual em destaque estilo carrossel"
-            >
-              <Maximize2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Modo Foco</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleChangeDisplayMode('compacto');
+                    setDisplayModeDropdownOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
+                    displayMode === 'compacto'
+                      ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                      : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Minimize2 className="w-4 h-4 text-sky-400 shrink-0" />
+                    <div>
+                      <span className="block text-xs font-bold">Compacto</span>
+                      <span className="block text-[10px] text-slate-400">Apenas o atual aberto</span>
+                    </div>
+                  </div>
+                  {displayMode === 'compacto' && <Check className="w-4 h-4 text-sky-400 shrink-0 stroke-[2.5]" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (nextIncompleteExerciseIndex !== -1) {
+                      setFocusedExerciseIdx(nextIncompleteExerciseIndex);
+                    }
+                    handleChangeDisplayMode('foco');
+                    setDisplayModeDropdownOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
+                    displayMode === 'foco'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Maximize2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <span className="block text-xs font-bold">Modo Foco</span>
+                      <span className="block text-[10px] text-slate-400">1 exercício por vez</span>
+                    </div>
+                  </div>
+                  {displayMode === 'foco' && <Check className="w-4 h-4 text-emerald-400 shrink-0 stroke-[2.5]" />}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1213,7 +1182,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
               logs={logs}
               history={history}
               sessions={sessions}
-              targetMuscleRir={muscleTargetRir?.[item.muscleKey as MuscleGroup]}
               isBisetFirst={isBisetFirst}
               isSecondInBiset={isSecondInBiset}
               nextExerciseName={nextItem?.exercise.name}

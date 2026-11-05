@@ -22,8 +22,6 @@ import {
   Lock
 } from 'lucide-react';
 import { BodyMeasurement, UserProfile } from '../types/workout';
-import { PrivacyShieldControl } from './PrivacyShieldControl';
-import { usePrivacyMode, maskSensitiveValue } from '../utils/privacy';
 
 interface BodyMeasurementsModalProps {
   isOpen: boolean;
@@ -42,7 +40,6 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
   onSaveMeasurement,
   onDeleteMeasurement,
 }) => {
-  const { isPrivacyHidden } = usePrivacyMode();
   const [activeSubTab, setActiveSubTab] = useState<'new' | 'history' | 'compare'>('new');
 
   // New entry form state
@@ -172,7 +169,6 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <PrivacyShieldControl user={user} variant="compact" />
             <button
               type="button"
               onClick={onClose}
@@ -441,9 +437,9 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                             {new Date(m.date).toLocaleDateString('pt-BR')}
                           </span>
                           <span className="text-xs font-black text-teal-400 font-mono bg-teal-500/10 px-2 py-0.5 rounded border border-teal-500/20">
-                            {maskSensitiveValue(m.weightKg, 'kg', isPrivacyHidden)}
+                            {m.weightKg} kg
                           </span>
-                          {!isPrivacyHidden && weightDiff !== 0 && (
+                          {weightDiff !== 0 && (
                             <span className={`text-[10px] font-bold flex items-center gap-0.5 ${weightDiff > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                               {weightDiff > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                               {weightDiff > 0 ? `+${weightDiff}` : weightDiff} kg
@@ -453,29 +449,29 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
 
                         {/* Badges de medidas */}
                         <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono text-slate-300 pt-1">
-                          {m.waistCm && <span>Cintura: <strong className="text-white">{isPrivacyHidden ? '••••' : `${m.waistCm}cm`}</strong></span>}
-                          {m.armsCm && <span>Braço: <strong className="text-white">{isPrivacyHidden ? '••••' : `${m.armsCm}cm`}</strong></span>}
-                          {m.chestCm && <span>Tórax: <strong className="text-white">{isPrivacyHidden ? '••••' : `${m.chestCm}cm`}</strong></span>}
-                          {m.thighsCm && <span>Coxa: <strong className="text-white">{isPrivacyHidden ? '••••' : `${m.thighsCm}cm`}</strong></span>}
+                          {m.waistCm && <span>Cintura: <strong className="text-white">{m.waistCm}cm</strong></span>}
+                          {m.armsCm && <span>Braço: <strong className="text-white">{m.armsCm}cm</strong></span>}
+                          {m.chestCm && <span>Tórax: <strong className="text-white">{m.chestCm}cm</strong></span>}
+                          {m.thighsCm && <span>Coxa: <strong className="text-white">{m.thighsCm}cm</strong></span>}
                         </div>
 
                         {m.notes && (
                           <p className="text-[11px] text-slate-400 italic pt-0.5">
-                            {isPrivacyHidden ? '🔒 Notas pessoais ocultas' : `“${m.notes}”`}
+                            “{m.notes}”
                           </p>
                         )}
                       </div>
 
-                      {/* Miniaturas de fotos (Protegidas com Blur no Modo Privacidade) */}
+                      {/* Miniaturas de fotos */}
                       <div className="flex items-center gap-2 shrink-0">
                         {m.photoFront && (
-                          <img src={m.photoFront} alt="Frente" className={`w-10 h-12 object-cover rounded-lg border border-slate-700 ${isPrivacyHidden ? 'blur-md select-none pointer-events-none' : ''}`} />
+                          <img src={m.photoFront} alt="Frente" className="w-10 h-12 object-cover rounded-lg border border-slate-700" />
                         )}
                         {m.photoBack && (
-                          <img src={m.photoBack} alt="Costas" className={`w-10 h-12 object-cover rounded-lg border border-slate-700 ${isPrivacyHidden ? 'blur-md select-none pointer-events-none' : ''}`} />
+                          <img src={m.photoBack} alt="Costas" className="w-10 h-12 object-cover rounded-lg border border-slate-700" />
                         )}
                         {m.photoSide && (
-                          <img src={m.photoSide} alt="Perfil" className={`w-10 h-12 object-cover rounded-lg border border-slate-700 ${isPrivacyHidden ? 'blur-md select-none pointer-events-none' : ''}`} />
+                          <img src={m.photoSide} alt="Perfil" className="w-10 h-12 object-cover rounded-lg border border-slate-700" />
                         )}
 
                         <button
@@ -509,7 +505,7 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                   >
                     {measurements.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {new Date(m.date).toLocaleDateString('pt-BR')} ({isPrivacyHidden ? '•••• kg' : `${m.weightKg} kg`})
+                        {new Date(m.date).toLocaleDateString('pt-BR')} ({m.weightKg} kg)
                       </option>
                     ))}
                   </select>
@@ -526,7 +522,7 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                   >
                     {measurements.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {new Date(m.date).toLocaleDateString('pt-BR')} ({isPrivacyHidden ? '•••• kg' : `${m.weightKg} kg`})
+                        {new Date(m.date).toLocaleDateString('pt-BR')} ({m.weightKg} kg)
                       </option>
                     ))}
                   </select>
@@ -540,28 +536,28 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                     <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3 text-center">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block">Peso</span>
                       <strong className={`text-base font-black font-mono block mt-0.5 ${itemB.weightKg <= itemA.weightKg ? 'text-teal-400' : 'text-amber-400'}`}>
-                        {isPrivacyHidden ? '••••' : formatDelta(itemB.weightKg, itemA.weightKg, 'kg')}
+                        {formatDelta(itemB.weightKg, itemA.weightKg, 'kg')}
                       </strong>
                     </div>
 
                     <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3 text-center">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block">Cintura</span>
                       <strong className="text-base font-black font-mono text-teal-400 block mt-0.5">
-                        {isPrivacyHidden ? '••••' : formatDelta(itemB.waistCm, itemA.waistCm, 'cm')}
+                        {formatDelta(itemB.waistCm, itemA.waistCm, 'cm')}
                       </strong>
                     </div>
 
                     <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3 text-center">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block">Braço</span>
                       <strong className="text-base font-black font-mono text-sky-400 block mt-0.5">
-                        {isPrivacyHidden ? '••••' : formatDelta(itemB.armsCm, itemA.armsCm, 'cm')}
+                        {formatDelta(itemB.armsCm, itemA.armsCm, 'cm')}
                       </strong>
                     </div>
 
                     <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3 text-center">
                       <span className="text-[10px] text-slate-400 uppercase font-bold block">Coxa</span>
                       <strong className="text-base font-black font-mono text-emerald-400 block mt-0.5">
-                        {isPrivacyHidden ? '••••' : formatDelta(itemB.thighsCm, itemA.thighsCm, 'cm')}
+                        {formatDelta(itemB.thighsCm, itemA.thighsCm, 'cm')}
                       </strong>
                     </div>
                   </div>
@@ -574,13 +570,7 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                       </span>
                       {itemA.photoFront ? (
                         <div className="relative">
-                          <img src={itemA.photoFront} alt="Antes" className={`w-full max-h-72 object-cover rounded-xl mx-auto border border-slate-700 ${isPrivacyHidden ? 'blur-xl select-none pointer-events-none' : ''}`} />
-                          {isPrivacyHidden && (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-emerald-300 bg-slate-950/60 rounded-xl">
-                              <Lock className="w-5 h-5" />
-                              <span className="text-[10px] font-bold">Foto Protegida</span>
-                            </div>
-                          )}
+                          <img src={itemA.photoFront} alt="Antes" className="w-full max-h-72 object-cover rounded-xl mx-auto border border-slate-700" />
                         </div>
                       ) : (
                         <div className="h-44 bg-slate-900 rounded-xl flex items-center justify-center text-xs text-slate-600">
@@ -595,13 +585,7 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
                       </span>
                       {itemB.photoFront ? (
                         <div className="relative">
-                          <img src={itemB.photoFront} alt="Depois" className={`w-full max-h-72 object-cover rounded-xl mx-auto border border-slate-700 ${isPrivacyHidden ? 'blur-xl select-none pointer-events-none' : ''}`} />
-                          {isPrivacyHidden && (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-emerald-300 bg-slate-950/60 rounded-xl">
-                              <Lock className="w-5 h-5" />
-                              <span className="text-[10px] font-bold">Foto Protegida</span>
-                            </div>
-                          )}
+                          <img src={itemB.photoFront} alt="Depois" className="w-full max-h-72 object-cover rounded-xl mx-auto border border-slate-700" />
                         </div>
                       ) : (
                         <div className="h-44 bg-slate-900 rounded-xl flex items-center justify-center text-xs text-slate-600">

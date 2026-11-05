@@ -5,7 +5,6 @@
 
 import { UserProfile, MuscleGroup, GenderOption, LevelOption, FocusOption } from '../types/workout';
 import { safeStorage } from './storage';
-import { setPrivacyShieldState } from './privacy';
 
 const USERS_KEY = 'alex_all_users';
 const ACTIVE_USER_KEY = 'alex_active_user_id';
@@ -453,7 +452,6 @@ export const authStorage = {
     const existingGuest = users.find((u) => u.username === 'visitante');
     if (existingGuest) {
       this.setActiveUserId(existingGuest.id);
-      setPrivacyShieldState(true);
       return sanitizeUserProfile(existingGuest);
     }
 
@@ -465,7 +463,7 @@ export const authStorage = {
       password: '',
       isVisitor: true,
       weightKg: 75,
-      heightM: 1.75,
+      heightM: 175,
       gender: 'male',
       level: 'intermediate',
       focus: 'balanced',
@@ -480,7 +478,6 @@ export const authStorage = {
     users.push(newGuest);
     this.saveUsers(users);
     this.setActiveUserId(newGuest.id);
-    setPrivacyShieldState(true);
     return sanitizeUserProfile(newGuest);
   },
 
@@ -515,7 +512,6 @@ export const authStorage = {
     };
 
     this.saveUsers(users);
-    setPrivacyShieldState(true);
     return { user: sanitizeUserProfile(users[idx]) };
   },
 
@@ -551,7 +547,6 @@ export const authStorage = {
     users.push(newUser);
     this.saveUsers(users);
     this.setActiveUserId(newUser.id);
-    setPrivacyShieldState(true);
     return { user: sanitizeUserProfile(newUser) };
   },
 
@@ -587,7 +582,6 @@ export const authStorage = {
     }
 
     this.setActiveUserId(found.id);
-    setPrivacyShieldState(true);
     return { user: sanitizeUserProfile(found) };
   },
 
@@ -600,13 +594,11 @@ export const authStorage = {
     clearFailedAttempts(`user:${found.username.toLowerCase()}`);
     clearFailedAttempts(`uid:${found.id}`);
     this.setActiveUserId(found.id);
-    setPrivacyShieldState(true);
     return { user: sanitizeUserProfile(found) };
   },
 
   logout(): void {
     this.setActiveUserId(null);
-    setPrivacyShieldState(true);
   },
 
   deleteUser(userId: string): void {
@@ -659,7 +651,6 @@ export const authStorage = {
     if (this.getActiveUserId() === userId) {
       this.setActiveUserId(null);
     }
-    setPrivacyShieldState(true);
   },
 
   updateProfile(
@@ -680,7 +671,6 @@ export const authStorage = {
         | 'exercisesPerMuscle'
         | 'weeklyBudget'
         | 'muscleBudgets'
-        | 'muscleTargetRir'
         | 'nutritionPlan'
         | 'periodizationStrategy'
       >
@@ -788,7 +778,6 @@ export const authStorage = {
       this.saveUsers(users);
       const uid = importedUser.id;
       this.setActiveUserId(uid);
-      setPrivacyShieldState(true);
 
       if (sanitizedBackup.settings && typeof sanitizedBackup.settings === 'object') {
         if (sanitizedBackup.settings.split) safeStorage.set(`alex_u_${uid}_split`, sanitizedBackup.settings.split);

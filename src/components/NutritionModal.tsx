@@ -54,14 +54,14 @@ export const NutritionModal: React.FC<NutritionModalProps> = ({
     : null;
 
   const defaultWeight = latestMeasurement?.weightKg || user.weightKg || 75;
-  const defaultHeight = user.heightM || 1.75;
+  const defaultHeightCm = user.heightM > 3 ? Math.round(user.heightM) : Math.round((user.heightM || 1.75) * 100);
 
   // Modo de preenchimento: 'auto' (perfil) ou 'manual' (livre)
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
 
   // Dados corporais
   const [weightInput, setWeightInput] = useState<string>(defaultWeight.toString());
-  const [heightInput, setHeightInput] = useState<string>(defaultHeight.toString());
+  const [heightInput, setHeightInput] = useState<string>(defaultHeightCm.toString());
   const [ageInput, setAgeInput] = useState<number>(user.age || 26);
   const [genderInput, setGenderInput] = useState<'male' | 'female'>((user.gender === 'female' ? 'female' : 'male'));
   const [bodyFatInput, setBodyFatInput] = useState<string>(() => {
@@ -89,7 +89,7 @@ export const NutritionModal: React.FC<NutritionModalProps> = ({
 
   // Valores numéricos processados
   const weightKg = parseFloat(weightInput) || defaultWeight;
-  const heightM = parseFloat(heightInput) || defaultHeight;
+  const heightM = parseFloat(heightInput) || defaultHeightCm;
   const age = ageInput || 26;
   const bodyFatPercent = bodyFatInput ? parseFloat(bodyFatInput) : undefined;
 
@@ -180,7 +180,7 @@ export const NutritionModal: React.FC<NutritionModalProps> = ({
 
   const handleResetToProfile = () => {
     setWeightInput(defaultWeight.toString());
-    setHeightInput(defaultHeight.toString());
+    setHeightInput(defaultHeightCm.toString());
     setAgeInput(user.age || 26);
     setGenderInput((user.gender === 'female' ? 'female' : 'male'));
     setManualMacrosOverride(false);
@@ -317,10 +317,13 @@ export const NutritionModal: React.FC<NutritionModalProps> = ({
               </div>
 
               <div>
-                <label className="text-[10px] text-slate-400 font-semibold block mb-1">Altura (m)</label>
+                <label className="text-[10px] text-slate-400 font-semibold block mb-1">Altura (cm)</label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="1"
+                  min="100"
+                  max="250"
+                  placeholder="Ex: 175"
                   value={heightInput}
                   disabled={inputMode === 'auto'}
                   onChange={(e) => setHeightInput(e.target.value)}

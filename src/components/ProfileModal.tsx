@@ -9,7 +9,6 @@ import {
   User, 
   Scale, 
   Ruler, 
-  Lock, 
   LogOut, 
   Sliders, 
   Save, 
@@ -24,15 +23,13 @@ import {
 import { UserProfile, GenderOption, LevelOption, FocusOption } from '../types/workout';
 import { authStorage, calculateDefaultBudget, getPresetWeights, scaleWeightsToBudget } from '../utils/auth';
 import { ThemeToggle } from './ThemeToggle';
-import { PrivacyShieldControl } from './PrivacyShieldControl';
 import { BiometricSettingsCard } from './BiometricSettingsCard';
-import { usePrivacyMode, maskUsername, maskDisplayName, maskSensitiveValue } from '../utils/privacy';
 
 interface ProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: UserProfile;
-  onUpdateUser: (updated: UserProfile) => void;
+  onUpdateUser: (updatedUser: UserProfile) => void;
   onLogout: () => void;
   onOpenVolumeBudget: () => void;
 }
@@ -47,32 +44,31 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 }) => {
   const [name, setName] = useState(user.name);
   const [weightKg, setWeightKg] = useState(user.weightKg);
-  const [heightM, setHeightM] = useState(user.heightM);
+  const initialHeightCm = user.heightM > 3 ? Math.round(user.heightM) : Math.round((user.heightM || 1.75) * 100);
+  const [heightCm, setHeightCm] = useState<number>(initialHeightCm);
   const [gender, setGender] = useState<GenderOption>(user.gender || 'male');
   const [level, setLevel] = useState<LevelOption>(user.level || 'beginner');
   const [focus, setFocus] = useState<FocusOption>(user.focus || 'v_taper');
   const [frequency, setFrequency] = useState<number>(user.frequency || 4);
 
-  // Change password state
   const [showPassChange, setShowPassChange] = useState(false);
   const [oldPass, setOldPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [passMsg, setPassMsg] = useState<{ text: string; error: boolean } | null>(null);
-
-  const { isPrivacyHidden } = usePrivacyMode();
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   if (!isOpen) return null;
 
   // IMC (BMI) calculation
-  const imc = heightM > 0 ? (weightKg / (heightM * heightM)).toFixed(1) : '0';
+  const heightMeters = heightCm > 0 ? (heightCm > 3 ? heightCm / 100 : heightCm) : 0;
+  const imc = heightMeters > 0 ? (weightKg / (heightMeters * heightMeters)).toFixed(1) : '0';
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     const updated = authStorage.updateProfile(user.id, {
       name: name.trim(),
       weightKg,
-      heightM,
+      heightM: heightCm,
       gender,
       level,
       focus,
@@ -136,252 +132,129 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 Perfil do Atleta
               </h3>
               <p className="text-xs text-slate-400 font-mono">
-                {maskUsername(user.username, isPrivacyHidden)}
+                @{user.username}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <PrivacyShieldControl user={user} variant="compact" />
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Profile Info Form */}
         <form onSubmit={handleSaveProfile} className="space-y-4">
-          {isPrivacyHidden ? (
-            <div className="p-3.5 rounded-2xl bg-[#0b1220] border border-emerald-500/30 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>Dados Pessoais Ocultos</span>
-                </span>
-                <PrivacyShieldControl user={user} variant="inline" />
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-xs font-mono">
-                <div className="p-2 rounded-xl bg-[#101828] border border-slate-800">
-                  <span className="text-[10px] text-slate-400 block">Nome</span>
-                  <span className="text-white font-bold">{maskDisplayName(name, true)}</span>
-                </div>
-                <div className="p-2 rounded-xl bg-[#101828] border border-slate-800">
-                  <span className="text-[10px] text-slate-400 block">Peso</span>
-                  <span className="text-emerald-400 font-bold">{maskSensitiveValue(weightKg, 'kg', true)}</span>
-                </div>
-                <div className="p-2 rounded-xl bg-[#101828] border border-slate-800">
-                  <span className="text-[10px] text-slate-400 block">Estatura</span>
-                  <span className="text-sky-400 font-bold">{maskSensitiveValue(heightM, 'm', true)}</span>
-                </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-300 block mb-1">
+              Nome / Apelido
+            </label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
+                <Scale className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Peso Corporal</span>
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="number"
+                  step="0.5"
+                  value={weightKg}
+                  onChange={(e) => setWeightKg(parseFloat(e.target.value) || 0)}
+                  className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
+                />
+                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">kg</span>
               </div>
             </div>
-          ) : (
-            <>
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Nome / Apelido
-                </label>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
+                <Ruler className="w-3.5 h-3.5 text-sky-400" />
+                <span>Estatura</span>
+              </label>
+              <div className="relative flex items-center">
                 <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
+                  type="number"
+                  step="1"
+                  min="100"
+                  max="250"
+                  placeholder="Ex: 175"
+                  value={heightCm}
+                  onChange={(e) => setHeightCm(parseInt(e.target.value, 10) || 0)}
+                  className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-3 pr-9 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
                 />
+                <span className="absolute right-2.5 text-xs text-slate-500 font-mono">cm</span>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
-                    <Scale className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Peso Corporal</span>
-                  </label>
-                  <div className="relative flex items-center">
-                    <input
-                      type="number"
-                      step="0.5"
-                      value={weightKg}
-                      onChange={(e) => setWeightKg(parseFloat(e.target.value) || 0)}
-                      className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
-                    />
-                    <span className="absolute right-2.5 text-xs text-slate-500 font-mono">kg</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1 flex items-center gap-1">
-                    <Ruler className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Estatura</span>
-                  </label>
-                  <div className="relative flex items-center">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={heightM}
-                      onChange={(e) => setHeightM(parseFloat(e.target.value) || 0)}
-                      className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
-                    />
-                    <span className="absolute right-2.5 text-xs text-slate-500 font-mono">m</span>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* 1. SELEÇÃO DE SEXO */}
-          <div className="bg-[#0b1220] p-3 rounded-2xl border border-slate-800">
-            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2">
-              <span>Sexo Biológico</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setGender('male')}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  gender === 'male'
-                    ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-md'
-                    : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                <span className="text-base">👨</span>
-                <span>Masculino</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setGender('female')}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  gender === 'female'
-                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-md'
-                    : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                <span className="text-base">👩</span>
-                <span>Feminino</span>
-              </button>
             </div>
           </div>
 
-          {/* 2. SELEÇÃO DE NÍVEL DE TREINO */}
+          {/* 1. SELEÇÃO DE SEXO (Dropdown) */}
           <div className="bg-[#0b1220] p-3 rounded-2xl border border-slate-800">
-            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+            <label htmlFor="modal-gender-select" className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2">
+              Sexo Biológico
+            </label>
+            <select
+              id="modal-gender-select"
+              value={gender}
+              onChange={(e) => setGender(e.target.value as GenderOption)}
+              className="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
+            >
+              <option value="male" className="bg-[#0f172a] text-white">👨 Masculino</option>
+              <option value="female" className="bg-[#0f172a] text-white">👩 Feminino</option>
+            </select>
+          </div>
+
+          {/* 2. SELEÇÃO DE NÍVEL DE TREINO (Dropdown) */}
+          <div className="bg-[#0b1220] p-3 rounded-2xl border border-slate-800">
+            <label htmlFor="modal-level-select" className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
               <Award className="w-3.5 h-3.5 text-amber-400" />
               <span>Nível de Experiência</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setLevel('beginner')}
-                className={`py-3 px-2 rounded-xl border text-center transition-all cursor-pointer ${
-                  level === 'beginner'
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-md font-black'
-                    : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white font-bold'
-                }`}
-              >
-                <span className="block text-xs">Iniciante</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setLevel('intermediate')}
-                className={`py-3 px-2 rounded-xl border text-center transition-all cursor-pointer ${
-                  level === 'intermediate'
-                    ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-md font-black'
-                    : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white font-bold'
-                }`}
-              >
-                <span className="block text-xs">Intermediário</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setLevel('advanced')}
-                className={`py-3 px-2 rounded-xl border text-center transition-all cursor-pointer ${
-                  level === 'advanced'
-                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 shadow-md font-black'
-                    : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white font-bold'
-                }`}
-              >
-                <span className="block text-xs">Avançado</span>
-              </button>
-            </div>
+            <select
+              id="modal-level-select"
+              value={level}
+              onChange={(e) => setLevel(e.target.value as LevelOption)}
+              className="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
+            >
+              <option value="beginner" className="bg-[#0f172a] text-white">Iniciante</option>
+              <option value="intermediate" className="bg-[#0f172a] text-white">Intermediário</option>
+              <option value="advanced" className="bg-[#0f172a] text-white">Avançado</option>
+            </select>
           </div>
 
-          {/* 3. SELEÇÃO DE FOCO DO TREINO */}
+          {/* 3. SELEÇÃO DE FOCO DO TREINO (Dropdown) */}
           <div className="bg-[#0b1220] p-3 rounded-2xl border border-slate-800">
-            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
+            <label htmlFor="modal-focus-select" className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
               <Target className="w-3.5 h-3.5 text-rose-400" />
               <span>Foco Principal</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setFocus('glutes')}
-                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                  focus === 'glutes'
-                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-md'
-                    : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-1 text-xs font-bold">
-                  <span>🍑</span>
-                  <span>Glúteos & Pernas</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFocus('strength')}
-                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                  focus === 'strength'
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-md'
-                    : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-1 text-xs font-bold">
-                  <span>🏋️</span>
-                  <span>Força & Cargas</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFocus('v_taper')}
-                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                  focus === 'v_taper'
-                    ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-md'
-                    : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-1 text-xs font-bold">
-                  <span>🔱</span>
-                  <span>Shape em V</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFocus('balanced')}
-                className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
-                  focus === 'balanced'
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-md'
-                    : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-1 text-xs font-bold">
-                  <span>⚖️</span>
-                  <span>Equilíbrio Total</span>
-                </div>
-              </button>
-            </div>
+            <select
+              id="modal-focus-select"
+              value={focus}
+              onChange={(e) => setFocus(e.target.value as FocusOption)}
+              className="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
+            >
+              <option value="balanced" className="bg-[#0f172a] text-white">⚖️ Equilíbrio Total (Desenvolvimento Completo)</option>
+              <option value="glutes" className="bg-[#0f172a] text-white">🍑 Glúteos & Membros Inferiores</option>
+              <option value="v_taper" className="bg-[#0f172a] text-white">🔱 Shape em V (Dorsais e Ombros)</option>
+              <option value="strength" className="bg-[#0f172a] text-white">🏋️ Força & Progressão de Cargas</option>
+            </select>
           </div>
 
-          {/* 4. SELEÇÃO DE FREQUÊNCIA SEMANAL */}
+          {/* 4. SELEÇÃO DE FREQUÊNCIA SEMANAL (Dropdown) */}
           <div className="bg-[#0b1220] p-3 rounded-2xl border border-slate-800">
-            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2 flex items-center justify-between">
+            <label htmlFor="modal-frequency-select" className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-sky-400" />
                 <span>Frequência Semanal</span>
@@ -390,30 +263,25 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 {frequency}x por semana
               </span>
             </label>
-            <div className="grid grid-cols-5 gap-1.5">
-              {[2, 3, 4, 5, 6].map((freq) => (
-                <button
-                  key={freq}
-                  type="button"
-                  onClick={() => setFrequency(freq)}
-                  className={`py-2 px-1 rounded-xl border text-center transition-all cursor-pointer ${
-                    frequency === freq
-                      ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-md font-black'
-                      : 'bg-[#0f172a] text-slate-400 border-slate-800 hover:text-white'
-                  }`}
-                >
-                  <span className="block text-xs font-bold">{freq}x</span>
-                  <span className="text-[9px] block text-slate-500 font-normal">dias</span>
-                </button>
-              ))}
-            </div>
+            <select
+              id="modal-frequency-select"
+              value={frequency}
+              onChange={(e) => setFrequency(Number(e.target.value))}
+              className="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
+            >
+              <option value={2} className="bg-[#0f172a] text-white">2 dias por semana (Treino A/B)</option>
+              <option value={3} className="bg-[#0f172a] text-white">3 dias por semana (Treino Full Body ou ABC)</option>
+              <option value={4} className="bg-[#0f172a] text-white">4 dias por semana (Upper / Lower)</option>
+              <option value={5} className="bg-[#0f172a] text-white">5 dias por semana (Push / Pull / Legs + Upper/Lower)</option>
+              <option value={6} className="bg-[#0f172a] text-white">6 dias por semana (PPL 2x Alta Frequência)</option>
+            </select>
           </div>
 
           {/* IMC Pill */}
           <div className="bg-[#0b1220] p-2.5 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
             <span className="text-slate-400">Índice de Massa Corporal (IMC):</span>
             <span className="font-mono font-black text-emerald-400">
-              {isPrivacyHidden ? '••••' : imc} <span className="text-[10px] text-slate-500 font-normal">kg/m²</span>
+              {imc} <span className="text-[10px] text-slate-500 font-normal">kg/m²</span>
             </span>
           </div>
 
@@ -464,7 +332,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               onClose();
               onOpenVolumeBudget();
             }}
-            className="w-full py-2.5 px-3 rounded-xl text-xs font-bold bg-[#131d31] hover:bg-[#192742] text-amber-300 border border-amber-500/30 flex items-center justify-between transition-colors"
+            className="w-full py-2.5 px-3 rounded-xl text-xs font-bold bg-[#131d31] hover:bg-[#192742] text-amber-300 border border-amber-500/30 flex items-center justify-between transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2">
               <Sliders className="w-4 h-4 text-amber-400" />
@@ -484,7 +352,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             <button
               type="button"
               onClick={() => setShowPassChange(true)}
-              className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors py-1"
+              className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors py-1 cursor-pointer"
             >
               <KeyRound className="w-3.5 h-3.5 text-purple-400" />
               <span>Alterar senha de acesso</span>
@@ -496,7 +364,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowPassChange(false)}
-                  className="text-slate-500 hover:text-white text-[11px]"
+                  className="text-slate-500 hover:text-white text-[11px] cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -529,7 +397,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               />
               <button
                 type="submit"
-                className="w-full py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-colors"
+                className="w-full py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 Atualizar Senha
               </button>
@@ -542,7 +410,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <button
             type="button"
             onClick={onLogout}
-            className="w-full py-2.5 rounded-xl font-bold text-xs bg-rose-950/20 hover:bg-rose-950/40 text-rose-400 border border-rose-900/40 flex items-center justify-center gap-1.5 transition-colors"
+            className="w-full py-2.5 rounded-xl font-bold text-xs bg-rose-950/20 hover:bg-rose-950/40 text-rose-400 border border-rose-900/40 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span>Desconectar / Trocar de Perfil</span>

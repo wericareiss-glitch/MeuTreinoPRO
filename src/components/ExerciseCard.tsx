@@ -66,7 +66,6 @@ interface ExerciseCardProps {
   onMoveUp?: (index: number) => void;
   onMoveDown?: (index: number) => void;
   onDeleteExercise?: (index: number) => void;
-  targetMuscleRir?: number;
   isBisetWithNext?: boolean;
   isSecondInBiset?: boolean;
   nextExerciseName?: string;
@@ -120,7 +119,6 @@ export function areExerciseCardPropsEqual(
     prev.index !== next.index ||
     prev.canMoveUp !== next.canMoveUp ||
     prev.canMoveDown !== next.canMoveDown ||
-    prev.targetMuscleRir !== next.targetMuscleRir ||
     prev.isBisetWithNext !== next.isBisetWithNext ||
     prev.isSecondInBiset !== next.isSecondInBiset ||
     prev.nextExerciseName !== next.nextExerciseName ||
@@ -188,7 +186,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   onMoveUp,
   onMoveDown,
   onDeleteExercise,
-  targetMuscleRir,
   isBisetWithNext = false,
   isSecondInBiset = false,
   nextExerciseName,
@@ -727,6 +724,18 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/20 shrink-0">
               {muscleName}
             </span>
+
+            {isBisetWithNext && (
+              <span className="text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 px-1.5 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                <Link2 className="w-2.5 h-2.5" /> Bi-set
+              </span>
+            )}
+            {isSecondInBiset && (
+              <span className="text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 px-1.5 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                <Link2 className="w-2.5 h-2.5" /> 2º Bi-set
+              </span>
+            )}
+
             <h3 className="text-sm sm:text-base font-bold text-white tracking-tight truncate max-w-full">
               {ex.name}
             </h3>
@@ -754,18 +763,15 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
               )}
             </button>
 
-            {/* Badge de RIR Alvo configurado no perfil com Smart Tooltip */}
-            {targetMuscleRir !== undefined && (
-              <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
-                <Target className="w-3 h-3 text-amber-400" />
-                <SmartTermTooltip term="RIR" align="left">
-                  <span>RIR Alvo: {targetMuscleRir}</span>
-                </SmartTermTooltip>
-              </div>
+            {autoSaveStatus === 'saving' && (
+              <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                <span>salvando</span>
+              </span>
             )}
           </div>
 
-          {/* Menu de 3 Pontos para Ações do Exercício */}
+          {/* Menu de 3 Pontos para Todas as Ações do Exercício */}
           <div className="relative shrink-0" ref={menuRef}>
             <button
               type="button"
@@ -777,9 +783,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
               <MoreVertical className="w-4 h-4" />
             </button>
 
-            {/* Dropdown Menu de 3 Pontos */}
+            {/* Dropdown Menu de 3 Pontos com Todas as Ferramentas */}
             {showMenu && (
-              <div className="absolute right-0 top-9 w-56 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-1.5 z-40 animate-fadeIn space-y-1">
+              <div className="absolute right-0 top-9 w-64 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-1.5 z-40 animate-fadeIn space-y-1">
+                {/* 1. Trocar Exercício */}
                 <button
                   type="button"
                   onClick={() => {
@@ -792,6 +799,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   <span>Trocar Exercício</span>
                 </button>
 
+                {/* 2. Aparelho Ocupado? */}
                 <button
                   type="button"
                   onClick={() => {
@@ -807,6 +815,35 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   </div>
                 </button>
 
+                {/* 3. Descanso Automático (Smart Rest) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleToggleSmartRest();
+                    soundManager.vibrate(20);
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors text-left cursor-pointer ${
+                    isSmartRestEnabled
+                      ? 'bg-emerald-500/15 text-emerald-300'
+                      : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  }`}
+                  title="Adiciona +30s de descanso quando a série for RPE 9 ou 10"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Zap className={`w-3.5 h-3.5 shrink-0 ${isSmartRestEnabled ? 'text-emerald-400 fill-emerald-400' : 'text-slate-500'}`} />
+                    <div>
+                      <span className="block font-bold">Descanso Automático</span>
+                      <span className="block text-[10px] text-slate-400">+30s em RPE 9 ou 10</span>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    isSmartRestEnabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {isSmartRestEnabled ? 'Ativo' : 'Inativo'}
+                  </span>
+                </button>
+
+                {/* 4. Aquecimento Inteligente */}
                 <button
                   type="button"
                   onClick={() => {
@@ -816,9 +853,84 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-orange-300 hover:bg-orange-950/40 transition-colors text-left cursor-pointer"
                 >
                   <Flame className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                  <span>Aquecimento Inteligente</span>
+                  <div>
+                    <span className="block font-bold">Aquecer</span>
+                    <span className="block text-[10px] text-slate-400">Calcular pirâmide de aquecimento</span>
+                  </div>
                 </button>
 
+                {/* 5. Dica de Execução & Biomecânica */}
+                {(ex.cue || ex.bio) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      setShowExecutionTip((prev) => !prev);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors text-left cursor-pointer ${
+                      showExecutionTip
+                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                        : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      <div>
+                        <span className="block font-bold">Dica de Execução</span>
+                        <span className="block text-[10px] text-slate-400">Instruções e biomecânica</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                      {showExecutionTip ? 'Visível' : 'Ver'}
+                    </span>
+                  </button>
+                )}
+
+                {/* 6. Ditar Série por Voz */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMenu(false);
+                    handleToggleVoiceInput();
+                  }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors text-left cursor-pointer ${
+                    listeningLogKey
+                      ? 'bg-rose-500 text-white font-bold'
+                      : 'text-teal-300 hover:bg-teal-950/40'
+                  }`}
+                >
+                  {listeningLogKey ? <MicOff className="w-3.5 h-3.5 shrink-0" /> : <Mic className="w-3.5 h-3.5 text-teal-400 shrink-0" />}
+                  <span>{listeningLogKey ? 'Parar Ditado por Voz' : 'Ditar Série por Voz'}</span>
+                </button>
+
+                {/* 7. Agrupar Bi-set com o Próximo Exercício */}
+                {canMoveDown && onToggleBisetWithNext && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      onToggleBisetWithNext(index);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors text-left cursor-pointer ${
+                      isBisetWithNext
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                        : 'text-purple-300 hover:bg-purple-950/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Link2 className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                      <div>
+                        <span className="block font-bold">Agrupar Bi-set</span>
+                        <span className="block text-[10px] text-slate-400">Com o próximo exercício</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                      {isBisetWithNext ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </button>
+                )}
+
+                {/* 8. Gráficos & Histórico */}
                 {onOpenAnalytics && (
                   <button
                     type="button"
@@ -833,15 +945,14 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   </button>
                 )}
 
+                {/* 9. Ordem: Subir / Descer */}
                 <div className="pt-1 border-t border-slate-800 flex items-center justify-between px-2 py-1">
                   <span className="text-[11px] text-slate-400 font-medium">Ordem:</span>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       disabled={!canMoveUp}
-                      onClick={() => {
-                        onMoveUp?.(index);
-                      }}
+                      onClick={() => onMoveUp?.(index)}
                       className={`px-2 py-1 rounded text-xs flex items-center gap-1 font-semibold ${
                         canMoveUp 
                           ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer' 
@@ -855,9 +966,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                     <button
                       type="button"
                       disabled={!canMoveDown}
-                      onClick={() => {
-                        onMoveDown?.(index);
-                      }}
+                      onClick={() => onMoveDown?.(index)}
                       className={`px-2 py-1 rounded text-xs flex items-center gap-1 font-semibold ${
                         canMoveDown 
                           ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer' 
@@ -871,6 +980,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   </div>
                 </div>
 
+                {/* 10. Remover do Treino */}
                 {onDeleteExercise && (
                   <div className="pt-1 border-t border-slate-800">
                     {isDeleting ? (
@@ -914,152 +1024,34 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           </div>
         </div>
 
-        {/* Sub-header com Ações Rápidas Deslizáveis no Mobile (1-Toque sem precisar abrir menu) */}
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 flex-1">
-            {/* Atalho Rápido 1-Toque: Trocar Exercício / Aparelho Ocupado */}
-            <button
-              type="button"
-              onClick={() => onOpenSwap(index)}
-              className="h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border-sky-500/30 shrink-0 active:scale-95"
-              title="Trocar exercício ou substituir aparelho ocupado"
-            >
-              <RefreshCw className="w-3 h-3 text-sky-400" />
-              <span>Trocar</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleToggleSmartRest}
-              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 active:scale-95 ${
-                isSmartRestEnabled
-                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                  : 'bg-slate-800 text-slate-400 border-slate-700'
-              }`}
-              title="Descanso Automático: adiciona +30s de descanso quando a série exigir esforço máximo (RPE 9 ou 10)"
-            >
-              <Zap className={`w-3 h-3 ${isSmartRestEnabled ? 'fill-emerald-400 text-emerald-400' : 'text-slate-500'}`} />
-              <span>Descanso Auto {isSmartRestEnabled ? 'Ativo' : 'Inativo'}</span>
-            </button>
-
-
-            {/* Botão de Aquecimento Rápido */}
-            <button
-              type="button"
-              onClick={() => onOpenWarmup(ex.name, firstSetWeight)}
-              className="h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border bg-orange-500/10 hover:bg-orange-500/20 text-orange-300 border-orange-500/30 shrink-0 active:scale-95"
-              title="Calcular séries de aquecimento para este exercício"
-            >
-              <Flame className="w-3 h-3 text-orange-400" />
-              <span>Aquecer</span>
-            </button>
-
-            {/* Botão de Dica de Execução & Biomecânica */}
-            {(ex.cue || ex.bio) && (
-              <button
-                type="button"
-                onClick={() => setShowExecutionTip((prev) => !prev)}
-                className={`h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 active:scale-95 ${
-                  showExecutionTip
-                    ? 'bg-sky-500 text-slate-950 border-sky-400 font-black shadow-sm'
-                    : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border-sky-500/30'
-                }`}
-                title="Ver dica de execução e análise biomecânica deste exercício"
-              >
-                <HelpCircle className="w-3 h-3" />
-                <span>Dica & Biomecânica</span>
-              </button>
-            )}
-
-            {/* Botão de Preenchimento por Voz (Web Speech API) */}
-            <button
-              type="button"
-              onClick={() => handleToggleVoiceInput()}
-              className={`h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 active:scale-95 ${
-                listeningLogKey
-                  ? 'bg-rose-500 text-white border-rose-400 font-black animate-pulse shadow-md shadow-rose-500/30'
-                  : 'bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 border-teal-500/30'
-              }`}
-              title="Ditar carga, repetições e RPE por voz (ex: '80 quilos 10 repetições RPE 8')"
-            >
-              {listeningLogKey ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3 text-teal-400" />}
-              <span>{listeningLogKey ? 'Ouvindo...' : 'Ditar Série'}</span>
-            </button>
-
-            {/* Botão de Agrupar Bi-set / Super-série com o próximo exercício */}
-            {canMoveDown && onToggleBisetWithNext && (
-              <button
-                type="button"
-                onClick={() => onToggleBisetWithNext(index)}
-                className={`h-7 px-2.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 active:scale-95 ${
-                  isBisetWithNext
-                    ? 'bg-purple-500 text-white border-purple-400 font-black shadow-sm'
-                    : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border-purple-500/30'
-                }`}
-                title="Agrupar este exercício em Bi-set / Super-série com o próximo exercício (alterna o cronômetro apenas após o 2º exercício)"
-              >
-                {isBisetWithNext ? <Unlink className="w-3 h-3" /> : <Link2 className="w-3 h-3" />}
-                <span>{isBisetWithNext ? 'Bi-set Ativo' : 'Bi-set'}</span>
-              </button>
-            )}
-
-            {isSecondInBiset && (
-              <span className="h-7 px-2.5 rounded-lg text-[11px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/40 inline-flex items-center gap-1 shrink-0">
-                <Link2 className="w-3 h-3" />
-                <span>2º Ex. Bi-set {prevExerciseName ? `(c/ ${prevExerciseName})` : ''}</span>
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {autoSaveStatus === 'saving' && (
-              <span className="flex items-center gap-1 text-[11px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                <span>Salvando...</span>
-              </span>
-            )}
-            {autoSaveStatus === 'saved' && (
-              <span className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                <Check className="w-3 h-3 stroke-[2.5]" />
-                <span>Salvo</span>
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Barra Compacta de Dica de Execução & Biomecânica (100% Alinhada com a Tela Mobile) */}
-        {ex.cue && !isCardCollapsed && (
-          <div className="w-full rounded-xl bg-slate-900/90 border border-slate-800/90 px-3 py-2 text-left transition-all">
+        {/* Dica de Execução & Biomecânica (Ativada pelo menu de 3 pontos para foco e atenção total) */}
+        {showExecutionTip && (ex.cue || ex.bio) && !isCardCollapsed && (
+          <div className="w-full rounded-2xl bg-[#0c1426] border border-sky-500/30 p-3 text-left transition-all animate-fadeIn shadow-md">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-start gap-2 min-w-0 flex-1">
-                <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
-                <p className="text-[11px] text-slate-200 leading-snug break-words flex-1">
-                  <strong className="text-sky-300 font-extrabold">Dica de Execução:</strong>{' '}
-                  {ex.cue}
-                </p>
-              </div>
-              {ex.bio && (
-                <button
-                  type="button"
-                  onClick={() => setShowExecutionTip((prev) => !prev)}
-                  className="text-[10px] font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/25 px-2 py-0.5 rounded-lg shrink-0 cursor-pointer flex items-center gap-0.5"
-                >
-                  <span>{showExecutionTip ? 'Ocultar Bio' : 'Biomecânica'}</span>
-                  {showExecutionTip ? (
-                    <ChevronUp className="w-3 h-3" />
-                  ) : (
-                    <ChevronDown className="w-3 h-3" />
+              <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                <Sparkles className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                <div className="space-y-1.5 flex-1 text-xs">
+                  {ex.cue && (
+                    <p className="text-slate-200 leading-relaxed">
+                      <strong className="text-sky-300 font-bold">Dica de Execução:</strong> {ex.cue}
+                    </p>
                   )}
-                </button>
-              )}
-            </div>
-
-            {showExecutionTip && ex.bio && (
-              <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-300 leading-relaxed break-words animate-fadeIn">
-                <strong className="text-emerald-400 font-extrabold">🔬 Análise Biomecânica:</strong>{' '}
-                {ex.bio}
+                  {ex.bio && (
+                    <p className="text-slate-300 leading-relaxed pt-1.5 border-t border-slate-800">
+                      <strong className="text-emerald-400 font-bold">🔬 Biomecânica:</strong> {ex.bio}
+                    </p>
+                  )}
+                </div>
               </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setShowExecutionTip(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                title="Fechar dica"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1197,11 +1189,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
         {/* CARD ÚNICO UNIFICADO COM TODAS AS SÉRIES DO EXERCÍCIO */}
         <div className="bg-[#080d19] border border-slate-800/90 rounded-2xl overflow-hidden shadow-xl">
           {/* Cabeçalho Único da Tabela de Séries */}
-          <div className="grid grid-cols-12 gap-1.5 px-3 py-2.5 bg-[#0c1426] border-b border-slate-800 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-400 items-center text-center">
+          <div className="grid grid-cols-12 gap-1 px-2.5 sm:px-3 py-2 bg-[#0c1426] border-b border-slate-800 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-400 items-center text-center">
             <div className="col-span-1">#</div>
-            <div className="col-span-2">Tipo</div>
+            <div className="col-span-1">Tipo</div>
             <div className="hidden sm:block sm:col-span-2 text-slate-500">Anterior</div>
-            <div className="col-span-4 sm:col-span-3">Carga (kg)</div>
+            <div className="col-span-5 sm:col-span-4">Carga (kg)</div>
             <div className="col-span-3 sm:col-span-2">Reps</div>
             <div className="col-span-2 sm:col-span-2">Status</div>
           </div>
@@ -1379,7 +1371,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                 key={logKey}
                 className="p-2 sm:p-2.5 bg-emerald-950/15 transition-colors"
               >
-                <div className="grid grid-cols-12 gap-1.5 items-center">
+                <div className="grid grid-cols-12 gap-1 items-center">
                   {/* 1. # Série */}
                   <div className="col-span-1 flex items-center justify-center">
                     <span className="w-6 h-6 rounded-md font-mono font-black text-xs flex items-center justify-center bg-emerald-500 text-slate-950 shadow-sm">
@@ -1388,8 +1380,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   </div>
 
                   {/* 2. Tipo */}
-                  <div className="col-span-2 flex items-center justify-center">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-black border ${setTypeMeta.badgeClass}`}>
+                  <div className="col-span-1 flex items-center justify-center">
+                    <span className={`px-1 py-0.5 rounded text-[9px] sm:text-[10px] font-black border ${setTypeMeta.badgeClass}`}>
                       {currentSetType}
                     </span>
                   </div>
@@ -1400,7 +1392,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   </div>
 
                   {/* 4. Carga */}
-                  <div className="col-span-4 sm:col-span-3 text-center">
+                  <div className="col-span-5 sm:col-span-4 text-center">
                     <span className="font-mono font-black text-emerald-300 text-sm sm:text-base">
                       {currWeightVal || '0'} kg
                     </span>
@@ -1418,7 +1410,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                     <button
                       type="button"
                       onClick={() => setExpandedSets((prev) => ({ ...prev, [logKey]: true }))}
-                      className="w-7 h-8 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center border border-slate-800 transition-colors cursor-pointer"
+                      className="w-7 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center border border-slate-700 transition-colors cursor-pointer"
                       title="Editar carga ou reps"
                     >
                       <Pencil className="w-3.5 h-3.5 text-sky-400" />
@@ -1427,7 +1419,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                     <button
                       type="button"
                       onClick={() => onToggleSet(logKey, isBisetWithNext ? 0 : item.rest)}
-                      className="w-9 h-8 sm:w-10 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center font-black transition-all cursor-pointer shadow-sm active:scale-95"
+                      className="w-8 h-8 sm:w-9 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center font-black transition-all cursor-pointer shadow-sm active:scale-95"
                       title="Série concluída (toque para refazer)"
                     >
                       <Check className="w-4 h-4 stroke-[3]" />
@@ -1502,25 +1494,25 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   };
 
                   return (
-                    <div className="grid grid-cols-12 gap-1.5 items-center">
+                    <div className="grid grid-cols-12 gap-1 items-center">
                       {/* 1. # Série */}
                       <div className="col-span-1 flex items-center justify-center">
                         <span className={`w-6 h-6 rounded-md font-mono font-black text-xs flex items-center justify-center ${
                           setLog.done
                             ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                            : 'bg-slate-900 text-slate-400 border border-slate-800'
+                            : 'bg-slate-900 text-slate-300 border border-slate-700'
                         }`}>
                           {setNum}
                         </span>
                       </div>
 
                       {/* 2. Tipo */}
-                      <div className="col-span-2 flex items-center justify-center">
+                      <div className="col-span-1 flex items-center justify-center">
                         <button
                           type="button"
                           onClick={cycleSetType}
                           title={`${setTypeMeta.label}: ${setTypeMeta.description}. Toque para alternar.`}
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-black border transition-all cursor-pointer ${setTypeMeta.badgeClass}`}
+                          className={`px-1 py-0.5 rounded text-[9px] sm:text-[10px] font-black border transition-all cursor-pointer ${setTypeMeta.badgeClass}`}
                         >
                           {currentSetType}
                         </button>
@@ -1549,15 +1541,16 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                         )}
                       </div>
 
-                      {/* 4. Carga (kg) */}
-                      <div className="col-span-4 sm:col-span-3 flex items-center justify-center gap-0.5">
+                      {/* 4. Carga (kg) - Stepper de Alto Contraste com botões - e + bem visíveis */}
+                      <div className="col-span-5 sm:col-span-4 flex items-center justify-center gap-0.5 sm:gap-1">
                         <button
                           type="button"
                           onClick={() => adjustWeightByStep(-2.5)}
-                          className="w-6 h-8 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 font-mono font-black text-xs flex items-center justify-center cursor-pointer shrink-0 border border-slate-800"
+                          className="w-7 h-8 sm:w-8 sm:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-400 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer shrink-0 transition-all active:scale-90 touch-manipulation font-black shadow-xs"
                           title="-2.5 kg"
+                          aria-label="Diminuir 2.5 kg"
                         >
-                          -
+                          <Minus className="w-3.5 h-3.5 stroke-[3]" />
                         </button>
                         <input
                           type="number"
@@ -1566,27 +1559,29 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                           value={currWeightVal}
                           placeholder={smartFallbackWeight || '0'}
                           onChange={(e) => handleInputChange(logKey, 'weight', e.target.value)}
-                          className="w-14 sm:w-16 h-8 bg-slate-900 border border-slate-800 rounded text-center font-mono font-bold text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                          className="w-12 sm:w-16 h-8 bg-slate-900 border border-slate-700/80 rounded-lg text-center font-mono font-bold text-xs sm:text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 shadow-inner"
                         />
                         <button
                           type="button"
                           onClick={() => adjustWeightByStep(2.5)}
-                          className="w-6 h-8 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 font-mono font-black text-xs flex items-center justify-center cursor-pointer shrink-0 border border-slate-800"
+                          className="w-7 h-8 sm:w-8 sm:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-400 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer shrink-0 transition-all active:scale-90 touch-manipulation font-black shadow-xs"
                           title="+2.5 kg"
+                          aria-label="Aumentar 2.5 kg"
                         >
-                          +
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
                         </button>
                       </div>
 
-                      {/* 5. Reps */}
-                      <div className="col-span-3 sm:col-span-2 flex items-center justify-center gap-0.5">
+                      {/* 5. Reps - Stepper de Alto Contraste com botões - e + bem visíveis */}
+                      <div className="col-span-3 sm:col-span-2 flex items-center justify-center gap-0.5 sm:gap-1">
                         <button
                           type="button"
                           onClick={() => adjustRepsByStep(-1)}
-                          className="w-6 h-8 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 font-mono font-black text-xs flex items-center justify-center cursor-pointer shrink-0 border border-slate-800"
+                          className="w-6 h-8 sm:w-7 sm:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-emerald-500/20 text-emerald-400 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer shrink-0 transition-all active:scale-90 touch-manipulation font-black shadow-xs"
                           title="-1 rep"
+                          aria-label="Diminuir 1 repetição"
                         >
-                          -
+                          <Minus className="w-3.5 h-3.5 stroke-[3]" />
                         </button>
                         <input
                           type="number"
@@ -1595,33 +1590,21 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                           value={currRepsVal}
                           placeholder={smartFallbackReps}
                           onChange={(e) => handleInputChange(logKey, 'reps', e.target.value)}
-                          className="w-10 sm:w-12 h-8 bg-slate-900 border border-slate-800 rounded text-center font-mono font-bold text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                          className="w-9 sm:w-12 h-8 bg-slate-900 border border-slate-700/80 rounded-lg text-center font-mono font-bold text-xs sm:text-sm text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 shadow-inner"
                         />
                         <button
                           type="button"
                           onClick={() => adjustRepsByStep(1)}
-                          className="w-6 h-8 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 font-mono font-black text-xs flex items-center justify-center cursor-pointer shrink-0 border border-slate-800"
+                          className="w-6 h-8 sm:w-7 sm:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-emerald-500/20 text-emerald-400 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer shrink-0 transition-all active:scale-90 touch-manipulation font-black shadow-xs"
                           title="+1 rep"
+                          aria-label="Aumentar 1 repetição"
                         >
-                          +
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
                         </button>
                       </div>
 
-                      {/* 6. Concluir / Voz */}
-                      <div className="col-span-2 sm:col-span-2 flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleVoiceInput(logKey)}
-                          className={`w-7 h-8 rounded-lg flex items-center justify-center text-xs transition-colors cursor-pointer shrink-0 ${
-                            listeningLogKey === logKey
-                              ? 'bg-rose-500 text-white animate-pulse'
-                              : 'bg-slate-900 hover:bg-slate-800 text-teal-400 border border-slate-800'
-                          }`}
-                          title="Ditar por voz"
-                        >
-                          {listeningLogKey === logKey ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-                        </button>
-
+                      {/* 6. Concluir Série */}
+                      <div className="col-span-2 sm:col-span-2 flex items-center justify-center">
                         <button
                           type="button"
                           onClick={() => {
@@ -1695,10 +1678,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                             onToggleSet(logKey, isBisetWithNext ? 0 : item.rest);
                             setExpandedSets((prev) => ({ ...prev, [logKey]: false }));
                           }}
-                          className={`w-9 h-8 sm:w-10 rounded-lg flex items-center justify-center font-black text-xs transition-all cursor-pointer active:scale-95 shadow-sm ${
+                          className={`w-10 sm:w-11 h-8 rounded-xl flex items-center justify-center font-black text-xs transition-all cursor-pointer active:scale-90 shadow-sm ${
                             setLog.done
                               ? 'bg-emerald-500 text-slate-950 font-black ring-1 ring-emerald-400'
-                              : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-emerald-300 border border-slate-700'
+                              : 'bg-slate-800 hover:bg-emerald-500 text-slate-300 hover:text-slate-950 border border-slate-700 hover:border-emerald-400'
                           }`}
                           title={setLog.done ? 'Série concluída' : 'Concluir série'}
                         >
@@ -1815,9 +1798,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           <button
             type="button"
             onClick={() => onAddSet(index)}
-            className="h-9 px-3 rounded-lg text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer touch-manipulation"
+            className="h-9 px-3 rounded-xl text-xs font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer touch-manipulation shadow-sm"
           >
-            <Plus className="w-3.5 h-3.5 text-emerald-400" />
+            <Plus className="w-4 h-4 text-emerald-400 stroke-[2.5]" />
             <span>Adicionar Série</span>
           </button>
 
@@ -1825,10 +1808,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             <button
               type="button"
               onClick={() => onRemoveSet(index)}
-              className="h-9 w-9 rounded-lg flex items-center justify-center text-rose-400 hover:text-rose-300 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/40 transition-colors cursor-pointer touch-manipulation"
-              title="Remover série"
+              className="h-9 px-3 rounded-xl text-xs font-bold text-rose-300 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer touch-manipulation shadow-sm"
+              title="Remover última série"
             >
-              <Trash2 className="w-4 h-4" />
+              <Minus className="w-4 h-4 text-rose-400 stroke-[2.5]" />
+              <span>Remover Série</span>
             </button>
           )}
 
@@ -1843,7 +1827,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                   }
                 }
               }}
-              className="h-9 px-3 rounded-lg text-xs font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 flex items-center gap-1.5 cursor-pointer touch-manipulation"
+              className="h-9 px-3 rounded-xl text-xs font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 flex items-center gap-1.5 cursor-pointer touch-manipulation shadow-sm active:scale-95"
               title="Aplicar carga recomendada de sobrecarga progressiva"
             >
               <Zap className="w-3.5 h-3.5 fill-emerald-400" />
@@ -1852,27 +1836,29 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           )}
         </div>
 
-        {/* Ajuste Rápido de Descanso */}
-        <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+        {/* Ajuste Rápido de Descanso com botões - e + bem visíveis */}
+        <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 shadow-sm">
           <Clock className="w-4 h-4 text-sky-400 shrink-0" />
           <button
             type="button"
             onClick={() => handleAdjustRest(-15)}
-            className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center cursor-pointer font-bold text-sm touch-manipulation"
-            title="-15s"
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-300 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation shadow-xs"
+            title="-15s descanso"
+            aria-label="Diminuir 15 segundos de descanso"
           >
-            -
+            <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
           </button>
-          <span className="text-white font-mono font-bold text-sm min-w-[36px] text-center">
+          <span className="text-white font-mono font-black text-xs sm:text-sm min-w-[36px] text-center">
             {item.rest}s
           </span>
           <button
             type="button"
             onClick={() => handleAdjustRest(15)}
-            className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center cursor-pointer font-bold text-sm touch-manipulation"
-            title="+15s"
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-300 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation shadow-xs"
+            title="+15s descanso"
+            aria-label="Aumentar 15 segundos de descanso"
           >
-            +
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           </button>
         </div>
       </div>

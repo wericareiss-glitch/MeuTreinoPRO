@@ -191,7 +191,9 @@ export async function verifyAndMergeDatabase(
   options?: { force?: boolean; silent?: boolean }
 ): Promise<IntegrityReport> {
   const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-  const currentUid = auth.currentUser?.uid || userId;
+  const localUser = authStorage.getActiveUser() || authStorage.getUsers().find((u) => u.id === userId);
+  const currentUid = auth.currentUser?.uid || null;
+  const isGuest = !userId || userId.startsWith('user_guest_') || userId.startsWith('alex_guest_') || localUser?.isVisitor || !currentUid;
   const nowIso = new Date().toISOString();
 
   const report: IntegrityReport = {
@@ -200,7 +202,9 @@ export async function verifyAndMergeDatabase(
     firestoreConnected: false,
     userAuthId: currentUid,
     status: 'healthy',
-    summaryMessage: 'Verificando integridade das chaves e dados no Firebase...',
+    summaryMessage: isGuest
+      ? 'Modo visitante/local ativo. Dados mantidos com segurança no dispositivo.'
+      : 'Verificando integridade das chaves e dados no Firebase...',
     discrepanciesResolved: 0,
     hasLocalUpdates: false,
     details: {
@@ -217,6 +221,15 @@ export async function verifyAndMergeDatabase(
     return report;
   }
 
+  // Se o usuário não está autenticado no Firebase Auth ou é um perfil visitante/local:
+  if (isGuest || !currentUid) {
+    report.status = 'healthy';
+    report.summaryMessage = 'Modo visitante/local ativo. Dados mantidos com segurança no armazenamento local.';
+    safeStorage.set(`firebase_last_integrity_check_${userId}`, nowIso);
+    safeStorage.set(`firebase_last_integrity_report_${userId}`, report);
+    return report;
+  }
+
   // 1. Testa conectividade com o Firestore
   try {
     const isConnected = await testConnection();
@@ -229,7 +242,6 @@ export async function verifyAndMergeDatabase(
     // ========================================================
     // A. CARREGAR AS CHAVES LOCAIS DO SAFESTORAGE
     // ========================================================
-    const localUser = authStorage.getActiveUser() || authStorage.getUsers().find((u) => u.id === userId);
     const localSessions = safeStorage.get<WorkoutSessionSummary[]>(`alex_u_${userId}_sessions`, []);
     const localRoutines = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${userId}_routines`, []);
     const localMeasurements = safeStorage.get<BodyMeasurement[]>(`alex_u_${userId}_measurements`, []);
@@ -608,7 +620,14 @@ export function setupIntegrityAutoSync(
   userId: string,
   onMergeComplete?: (report: IntegrityReport) => void
 ): () => void {
+  if (!userId || userId.startsWith('user_guest_') || userId.startsWith('alex_guest_') || !auth.currentUser) {
+    return () => {};
+  }
+
   const triggerAutoSync = async (force = false) => {
+    if (!auth.currentUser || userId.startsWith('user_guest_') || userId.startsWith('alex_guest_')) {
+      return;
+    }
     const now = Date.now();
     if (!force && now - lastAutoSyncTimestamp < AUTO_SYNC_THROTTLE_MS) {
       return;

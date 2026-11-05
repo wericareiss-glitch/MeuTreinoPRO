@@ -95,6 +95,11 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const workoutProgressPct =
     activeSetsCount > 0 ? Math.min(100, Math.round((completedSetsCount / activeSetsCount) * 100)) : 0;
 
+  // Na aba treino ativo, todos os menus e abas de navegação ficam ocultos para foco total
+  if (activeTab === 'treino_ativo') {
+    return null;
+  }
+
   return (
     <>
       {/* Desktop / Tablet Subheader Tab Switcher */}
@@ -148,7 +153,6 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
               <span className="font-medium text-slate-300">
                 {activeTab === 'inicio' && t.historySectionSubtitle}
                 {activeTab === 'treino' && 'Selecione um treino para iniciar'}
-                {activeTab === 'treino_ativo' && `Sessão em andamento · ${completedSetsCount}/${activeSetsCount} séries`}
                 {activeTab === 'perfil' && 'Personalizar treinos e metas'}
               </span>
             </span>

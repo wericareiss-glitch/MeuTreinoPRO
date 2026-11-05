@@ -77,7 +77,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   const [regPassword, setRegPassword] = useState('');
   const [regPasswordConfirm, setRegPasswordConfirm] = useState('');
   const [regWeight, setRegWeight] = useState(72);
-  const [regHeight, setRegHeight] = useState(1.72);
+  const [regHeight, setRegHeight] = useState(175);
 
   const [regGender, setRegGender] = useState<GenderOption>('male');
   const [regLevel, setRegLevel] = useState<LevelOption>('beginner');
@@ -169,7 +169,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
       email: gUser.email || '',
       password: '',
       weightKg: 75,
-      heightM: 1.75,
+      heightM: 175,
       gender: 'male',
       level: 'intermediate',
       focus: 'balanced',

@@ -288,7 +288,6 @@ export interface UserProfile {
   exercisesPerMuscle?: 1 | 2; // 1 = 1 exercício por músculo, 2 = Base + Complementar
   weeklyBudget: number; // e.g. 80, 96, 120, 144, 160, 192 sets
   muscleBudgets: Record<MuscleGroup, number>; // sets allocated per muscle group
-  muscleTargetRir?: Partial<Record<MuscleGroup, number>>; // RIR alvo customizado por músculo (0 a 4)
   nutritionPlan?: NutritionPlan;
   isVisitor?: boolean; // Se o atleta entrou como visitante
   createdAt: string;

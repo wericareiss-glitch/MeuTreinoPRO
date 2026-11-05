@@ -17,7 +17,8 @@ export interface MacroResult {
  */
 export function calculateTargetMacros(user: UserProfile): MacroResult {
   const weight = user.weightKg || 75;
-  const heightCm = (user.heightM || 1.75) * 100;
+  const rawHeight = user.heightM || 175;
+  const heightCm = rawHeight > 3 ? rawHeight : Math.round(rawHeight * 100);
   const age = 27; // Idade padrão associada ao perfil base
 
   // TMB (Taxa Metabólica Basal) - Equação de Mifflin-St Jeor

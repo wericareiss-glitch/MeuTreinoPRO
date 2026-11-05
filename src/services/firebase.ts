@@ -167,12 +167,22 @@ export async function logoutFirebase(): Promise<void> {
 // SINCRONIZAÇÃO EM NUVEM (FIRESTORE)
 // ==========================================
 
+export function isFirebaseCloudSyncAvailable(userId?: string): boolean {
+  if (!auth.currentUser) return false;
+  if (userId && (userId.startsWith('user_guest_') || userId.startsWith('alex_guest_'))) {
+    return false;
+  }
+  return true;
+}
+
 export async function syncUserProfileToCloud(profile: UserProfile): Promise<boolean> {
-  if (!profile.id) return false;
-  const currentUid = auth.currentUser?.uid || profile.id;
+  if (!auth.currentUser || !profile.id || profile.isVisitor || profile.id.startsWith('user_guest_')) {
+    return false;
+  }
+  const currentUid = auth.currentUser.uid;
   const path = `users/${currentUid}`;
   try {
-    const sanitized = { ...profile };
+    const sanitized = { ...profile, id: currentUid, userId: currentUid };
     delete (sanitized as any).password;
     await setDoc(doc(db, 'users', currentUid), {
       ...sanitized,
@@ -188,7 +198,10 @@ export async function syncUserProfileToCloud(profile: UserProfile): Promise<bool
 }
 
 export async function syncRoutineToCloud(userId: string, routine: GeneratedWorkoutRoutine): Promise<boolean> {
-  const currentUid = auth.currentUser?.uid || userId;
+  if (!auth.currentUser || userId.startsWith('user_guest_')) {
+    return false;
+  }
+  const currentUid = auth.currentUser.uid;
   const path = `users/${currentUid}/routines/${routine.id}`;
   try {
     await setDoc(doc(db, 'users', currentUid, 'routines', routine.id), {
@@ -204,7 +217,10 @@ export async function syncRoutineToCloud(userId: string, routine: GeneratedWorko
 }
 
 export async function syncRoutinesToCloud(userId: string, routines: GeneratedWorkoutRoutine[]): Promise<boolean> {
-  const currentUid = auth.currentUser?.uid || userId;
+  if (!auth.currentUser || userId.startsWith('user_guest_')) {
+    return false;
+  }
+  const currentUid = auth.currentUser.uid;
   try {
     for (const routine of routines) {
       await syncRoutineToCloud(currentUid, routine);
@@ -217,7 +233,10 @@ export async function syncRoutinesToCloud(userId: string, routines: GeneratedWor
 }
 
 export async function syncSessionToCloud(userId: string, session: WorkoutSessionSummary): Promise<boolean> {
-  const currentUid = auth.currentUser?.uid || userId;
+  if (!auth.currentUser || userId.startsWith('user_guest_')) {
+    return false;
+  }
+  const currentUid = auth.currentUser.uid;
   const path = `users/${currentUid}/sessions/${session.id}`;
   try {
     await setDoc(doc(db, 'users', currentUid, 'sessions', session.id), {
@@ -233,7 +252,10 @@ export async function syncSessionToCloud(userId: string, session: WorkoutSession
 }
 
 export async function syncMeasurementToCloud(userId: string, measurement: BodyMeasurement): Promise<boolean> {
-  const currentUid = auth.currentUser?.uid || userId;
+  if (!auth.currentUser || userId.startsWith('user_guest_')) {
+    return false;
+  }
+  const currentUid = auth.currentUser.uid;
   const path = `users/${currentUid}/measurements/${measurement.id}`;
   try {
     await setDoc(doc(db, 'users', currentUid, 'measurements', measurement.id), {
@@ -252,8 +274,11 @@ export async function syncMeasurementToCloud(userId: string, measurement: BodyMe
  * Envia todos os dados locais do atleta para o Firestore de uma só vez
  */
 export async function syncAllToFirebase(userId: string, userProfile: UserProfile): Promise<boolean> {
+  if (!auth.currentUser || userProfile.isVisitor || userId.startsWith('user_guest_')) {
+    return false;
+  }
+  const currentUid = auth.currentUser.uid;
   try {
-    const currentUid = auth.currentUser?.uid || userId;
     await syncUserProfileToCloud({ ...userProfile, id: currentUid });
 
     const routines = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${userId}_routines`, []);
@@ -288,7 +313,10 @@ export async function fetchUserDataFromFirebase(userId: string): Promise<{
   sessions?: WorkoutSessionSummary[];
   measurements?: BodyMeasurement[];
 } | null> {
-  const currentUid = auth.currentUser?.uid || userId;
+  if (!auth.currentUser || userId.startsWith('user_guest_')) {
+    return null;
+  }
+  const currentUid = auth.currentUser.uid;
   try {
     // 1. Perfil
     const userDocRef = doc(db, 'users', currentUid);

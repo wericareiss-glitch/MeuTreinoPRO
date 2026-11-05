@@ -50,8 +50,9 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
 
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
+  const isCloudConnected = Boolean(auth.currentUser && !user.isVisitor && !user.id.startsWith('user_guest_'));
   // Email ou ID da conta autenticada
-  const activeEmail = auth.currentUser?.email || user.email;
+  const activeEmail = auth.currentUser?.email || (user.isVisitor ? 'Atleta Visitante (Local)' : user.email || user.name);
   const isOnline = navigator.onLine;
 
   const formatLastSync = (isoString: string | null) => {
@@ -67,6 +68,13 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
   // 1. Verificação de integridade e merge automático com Firestore
   const handleVerifyAndMerge = async () => {
     if (isVerifyingIntegrity || !isOnline) return;
+    if (!auth.currentUser || user.isVisitor || user.id.startsWith('user_guest_')) {
+      setFeedback({
+        type: 'info',
+        message: 'Modo visitante / local ativo. Seus dados estão salvos com segurança no aparelho. Conecte sua conta Google para sincronizar com a nuvem.'
+      });
+      return;
+    }
     setIsVerifyingIntegrity(true);
     setFeedback({ type: 'info', message: 'Comparando dados do safeStorage local com o Firestore...' });
     soundManager.vibrate(20);
@@ -109,6 +117,13 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
   // 2. Envio manual direto de todos os dados locais
   const handleSyncNow = async () => {
     if (isSyncing || !isOnline) return;
+    if (!auth.currentUser || user.isVisitor || user.id.startsWith('user_guest_')) {
+      setFeedback({
+        type: 'info',
+        message: 'Conecte sua conta Google no perfil ou tela de login para enviar dados à nuvem Firebase.'
+      });
+      return;
+    }
     setIsSyncing(true);
     setFeedback(null);
     try {
@@ -133,6 +148,13 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
   // 3. Download completo da nuvem
   const handleRestoreFromCloud = async () => {
     if (isRestoring || !isOnline) return;
+    if (!auth.currentUser || user.isVisitor || user.id.startsWith('user_guest_')) {
+      setFeedback({
+        type: 'info',
+        message: 'Conecte sua conta Google para restaurar treinos salvos na nuvem Firebase.'
+      });
+      return;
+    }
     setIsRestoring(true);
     setFeedback(null);
     try {
@@ -179,10 +201,17 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
               <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
                 Integridade & Nuvem Firebase
               </h3>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                <Database className="w-3 h-3" />
-                Firestore Ativo
-              </span>
+              {isCloudConnected ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  <Database className="w-3 h-3" />
+                  Firestore Conectado
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                  <Database className="w-3 h-3" />
+                  Armazenamento Local
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
               Auditoria de integridade entre safeStorage local e nuvem com merge multi-dispositivo

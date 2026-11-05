@@ -56,12 +56,14 @@ import {
   stageWorkoutDataForBackgroundSync
 } from './services/supabaseSync';
 import {
+  auth,
   syncSessionToCloud,
   syncRoutinesToCloud,
   syncUserProfileToCloud,
   syncMeasurementToCloud,
   syncAllToFirebase
 } from './services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { setupIntegrityAutoSync } from './services/dataIntegritySync';
 
 import { Header } from './components/Header';
@@ -178,12 +180,22 @@ export default function App() {
     };
   }, [currentUser?.id, currentUser?.name]);
 
-  // Sincronização automática com Firebase Firestore quando o usuário está autenticado
+  // Sincronização automática com Firebase Firestore quando o usuário está autenticado no Firebase Auth
   useEffect(() => {
-    if (currentUser?.id && !currentUser.isVisitor) {
+    if (currentUser?.id && !currentUser.isVisitor && !currentUser.id.startsWith('user_guest_') && auth.currentUser) {
       syncAllToFirebase(currentUser.id, currentUser).catch(() => {});
     }
   }, [currentUser?.id]);
+
+  // Listener para sincronizar assim que a sessão do Firebase Auth for restabelecida
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser && currentUser && !currentUser.isVisitor && !currentUser.id.startsWith('user_guest_')) {
+        syncAllToFirebase(currentUser.id, currentUser).catch(() => {});
+      }
+    });
+    return () => unsubscribe();
+  }, [currentUser]);
 
   // Helper for per-user storage key isolation
   const userKey = (key: string) => currentUser ? `alex_u_${currentUser.id}_${key}` : `alex_guest_${key}`;
@@ -394,8 +406,11 @@ export default function App() {
     };
     window.addEventListener('meutreino:remote-sync-applied', handleRemoteSync);
 
-    // Registra auto-sincronismo e verificação de integridade no ciclo de vida do PWA (online / foco da aba)
-    const cleanupAutoSync = setupIntegrityAutoSync(uid);
+    // Registra auto-sincronismo e verificação de integridade no ciclo de vida do PWA apenas para contas autenticadas na nuvem
+    const cleanupAutoSync =
+      currentUser && !currentUser.isVisitor && !uid.startsWith('user_guest_') && auth.currentUser
+        ? setupIntegrityAutoSync(uid)
+        : () => {};
 
     // Escuta hidratação assíncrona do IndexedDB (para históricos/rotinas maiores que o localStorage)
     const handleIdbHydrated = () => {
@@ -1410,15 +1425,17 @@ export default function App() {
         hasActiveWorkout={!!activeRoutineId}
       />
 
-      {/* Responsive Navigation Tabs (Subheader on Desktop, Dock on Mobile) */}
-      <NavigationTabs
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        activeSetsCount={totalSetsInWorkout}
-        completedSetsCount={totalCompletedSetsInWorkout}
-        sessionsCount={sessions.length}
-        hasActiveWorkout={!!activeRoutineId}
-      />
+      {/* Responsive Navigation Tabs (Subheader on Desktop, Dock on Mobile - Oculto durante o treino ativo para foco total) */}
+      {activeTab !== 'treino_ativo' && (
+        <NavigationTabs
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          activeSetsCount={totalSetsInWorkout}
+          completedSetsCount={totalCompletedSetsInWorkout}
+          sessionsCount={sessions.length}
+          hasActiveWorkout={!!activeRoutineId}
+        />
+      )}
 
       {/* Main Container - Renders the selected Tab View */}
       <main className="max-w-6xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
@@ -1552,7 +1569,6 @@ export default function App() {
               }
               onAddSet={handleAddSet}
               onRemoveSet={handleRemoveSet}
-              muscleTargetRir={currentUser?.muscleTargetRir}
               periodizationStrategy={periodizationStrategy}
               userFocus={currentUser?.focus}
               onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
