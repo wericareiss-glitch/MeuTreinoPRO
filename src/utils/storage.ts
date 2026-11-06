@@ -5,55 +5,26 @@
 
 import { WorkoutLogs } from '../types/workout';
 
-const ENC_PREFIX_V1 = '__mtp_sec_v1__:';
-const ENC_PREFIX_V2 = '__mtp_sec_v2__:';
-const CIPHER_KEY = 'MTP_PRO_2026_PRIVATE_VAULT_KEY_#9812';
-const DEVICE_SALT_STORAGE_KEY = '__mtp_device_vault_salt_v2__';
+// Legacy prefixes kept strictly for migrating older sessions without data loss
+const LEGACY_PREFIX_V1 = '__mtp_sec_v1__:';
+const LEGACY_PREFIX_V2 = '__mtp_sec_v2__:';
+const LEGACY_CIPHER_KEY = 'MTP_PRO_2026_PRIVATE_VAULT_KEY_#9812';
+const LEGACY_SALT_KEY = '__mtp_device_vault_salt_v2__';
 
 const sharedEncoder = new TextEncoder();
 const sharedDecoder = new TextDecoder();
-const CIPHER_KEY_BYTES = sharedEncoder.encode(CIPHER_KEY);
-const CHUNK_SIZE = 0x8000; // 32KB chunks for fast String.fromCharCode conversion
+const LEGACY_KEY_BYTES = sharedEncoder.encode(LEGACY_CIPHER_KEY);
 
-let cachedDeviceKeyBytes: Uint8Array | null = null;
-
-function getSecureRandomBytes(length: number): Uint8Array {
-  const bytes = new Uint8Array(length);
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < length; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-  }
-  return bytes;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  let hex = '';
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i].toString(16).padStart(2, '0');
-  }
-  return hex;
-}
-
-function getDeviceKeyBytes(): Uint8Array {
-  if (cachedDeviceKeyBytes) return cachedDeviceKeyBytes;
+function getLegacyDeviceKeyBytes(): Uint8Array {
   try {
     if (typeof localStorage !== 'undefined') {
-      let saltHex = localStorage.getItem(DEVICE_SALT_STORAGE_KEY);
-      if (!saltHex || saltHex.length < 32) {
-        saltHex = bytesToHex(getSecureRandomBytes(16));
-        try {
-          localStorage.setItem(DEVICE_SALT_STORAGE_KEY, saltHex);
-        } catch {}
+      const saltHex = localStorage.getItem(LEGACY_SALT_KEY);
+      if (saltHex && saltHex.length >= 32) {
+        return sharedEncoder.encode(`${LEGACY_CIPHER_KEY}::${saltHex}`);
       }
-      cachedDeviceKeyBytes = sharedEncoder.encode(`${CIPHER_KEY}::${saltHex}`);
-      return cachedDeviceKeyBytes;
     }
   } catch {}
-  cachedDeviceKeyBytes = CIPHER_KEY_BYTES;
-  return cachedDeviceKeyBytes;
+  return LEGACY_KEY_BYTES;
 }
 
 /**
@@ -68,34 +39,14 @@ export function safeJsonParse<T>(rawJson: string): T {
   }) as T;
 }
 
-function encodePayload(rawJson: string): string {
-  try {
-    const utf8Bytes = sharedEncoder.encode(rawJson);
-    const keyBytes = getDeviceKeyBytes();
-    const keyLen = keyBytes.length;
-    const nonceBytes = getSecureRandomBytes(8);
-    const nonceHex = bytesToHex(nonceBytes);
-    const len = utf8Bytes.length;
-    const out = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      const nonceByte = nonceBytes[i & 7] ^ ((i * 53) & 0xff);
-      out[i] = utf8Bytes[i] ^ keyBytes[i % keyLen] ^ nonceByte;
-    }
-    const chunks: string[] = [];
-    for (let i = 0; i < len; i += CHUNK_SIZE) {
-      const sub = out.subarray(i, Math.min(i + CHUNK_SIZE, len));
-      chunks.push(String.fromCharCode.apply(null, sub as unknown as number[]));
-    }
-    return `${ENC_PREFIX_V2}${nonceHex}:${btoa(chunks.join(''))}`;
-  } catch {
-    return rawJson;
-  }
-}
-
-function decodePayload(stored: string): string {
-  if (stored.startsWith(ENC_PREFIX_V2)) {
+/**
+ * Decodes legacy XOR-obfuscated records from older versions if present.
+ * Standard records are saved as clean JSON without client-side fake encryption.
+ */
+export function decodeLegacyIfEncrypted(stored: string): string {
+  if (stored.startsWith(LEGACY_PREFIX_V2)) {
     try {
-      const payload = stored.slice(ENC_PREFIX_V2.length);
+      const payload = stored.slice(LEGACY_PREFIX_V2.length);
       const sepIdx = payload.indexOf(':');
       if (sepIdx !== 16) return stored;
       const nonceHex = payload.slice(0, 16);
@@ -105,7 +56,7 @@ function decodePayload(stored: string): string {
         nonceBytes[j] = parseInt(nonceHex.slice(j * 2, j * 2 + 2), 16) || 0;
       }
       const binary = atob(b64);
-      const keyBytes = getDeviceKeyBytes();
+      const keyBytes = getLegacyDeviceKeyBytes();
       const keyLen = keyBytes.length;
       const len = binary.length;
       const out = new Uint8Array(len);
@@ -118,26 +69,28 @@ function decodePayload(stored: string): string {
       return stored;
     }
   }
-  if (!stored.startsWith(ENC_PREFIX_V1)) {
-    return stored;
-  }
-  try {
-    const b64 = stored.slice(ENC_PREFIX_V1.length);
-    const binary = atob(b64);
-    const keyLen = CIPHER_KEY_BYTES.length;
-    const len = binary.length;
-    const out = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      out[i] = binary.charCodeAt(i) ^ CIPHER_KEY_BYTES[i % keyLen] ^ ((i * 31) & 0xff);
+
+  if (stored.startsWith(LEGACY_PREFIX_V1)) {
+    try {
+      const b64 = stored.slice(LEGACY_PREFIX_V1.length);
+      const binary = atob(b64);
+      const keyLen = LEGACY_KEY_BYTES.length;
+      const len = binary.length;
+      const out = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        out[i] = binary.charCodeAt(i) ^ LEGACY_KEY_BYTES[i % keyLen] ^ ((i * 31) & 0xff);
+      }
+      return sharedDecoder.decode(out);
+    } catch {
+      return stored;
     }
-    return sharedDecoder.decode(out);
-  } catch {
-    return stored;
   }
+
+  return stored;
 }
 
-function isEncryptedPayload(raw: string): boolean {
-  return raw.startsWith(ENC_PREFIX_V2) || raw.startsWith(ENC_PREFIX_V1);
+function isLegacyEncrypted(raw: string): boolean {
+  return raw.startsWith(LEGACY_PREFIX_V2) || raw.startsWith(LEGACY_PREFIX_V1);
 }
 
 // ============================================================================
@@ -260,14 +213,13 @@ function flushPendingWrites(): void {
   for (const [key, value] of entries) {
     try {
       const json = JSON.stringify(value);
-      const encoded = encodePayload(json);
-      // Primary persistence in IndexedDB (unbounded capacity)
-      idbSet(key, encoded).catch(() => {});
+      // Armazenamento primário no IndexedDB (capacidade ilimitada offline)
+      idbSet(key, json).catch(() => {});
       try {
-        localStorage.setItem(key, encoded);
+        localStorage.setItem(key, json);
       } catch {
-        // QuotaExceededError: migrate heavy keys out of localStorage into IndexedDB
-        freeLocalStorageQuotaForKey(key, encoded);
+        // QuotaExceededError no localStorage: migra chaves pesadas para o IndexedDB
+        freeLocalStorageQuotaForKey(key, json);
       }
     } catch (e) {
       console.warn(`Failed to save storage key "${key}":`, e);
@@ -276,26 +228,35 @@ function flushPendingWrites(): void {
 }
 
 /**
- * Migrates all existing localStorage keys into IndexedDB on first run
- * and hydrates memoryCache from IndexedDB on startup.
+ * Migra dados legados e hidrata o cache em memória a partir do IndexedDB.
  */
 async function migrateAndHydrateIndexedDB(): Promise<void> {
   const db = await openVaultDB();
   if (!db) return;
 
   try {
-    // 1. Migrate any existing localStorage keys into IndexedDB if not migrated yet
+    // 1. Limpa salt legado do storage se ainda existir
+    try {
+      localStorage.removeItem(LEGACY_SALT_KEY);
+    } catch {}
+
+    // 2. Migra chaves existentes do localStorage para o IndexedDB
     const alreadyMigrated = localStorage.getItem(IDB_MIGRATION_FLAG);
     if (!alreadyMigrated) {
       const txWrite = db.transaction(IDB_STORE, 'readwrite');
       const storeWrite = txWrite.objectStore(IDB_STORE);
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (!k || k === IDB_MIGRATION_FLAG || k === DEVICE_SALT_STORAGE_KEY) continue;
+        if (!k || k === IDB_MIGRATION_FLAG || k === LEGACY_SALT_KEY) continue;
         const raw = localStorage.getItem(k);
         if (raw) {
-          const encoded = isEncryptedPayload(raw) ? raw : encodePayload(raw);
-          storeWrite.put(encoded, k);
+          const cleanJson = isLegacyEncrypted(raw) ? decodeLegacyIfEncrypted(raw) : raw;
+          storeWrite.put(cleanJson, k);
+          if (cleanJson !== raw) {
+            try {
+              localStorage.setItem(k, cleanJson);
+            } catch {}
+          }
         }
       }
       try {
@@ -305,7 +266,7 @@ async function migrateAndHydrateIndexedDB(): Promise<void> {
       }
     }
 
-    // 2. Hydrate memoryCache from IndexedDB (ensuring records larger than localStorage are loaded)
+    // 3. Hidrata memoryCache a partir do IndexedDB
     const txRead = db.transaction(IDB_STORE, 'readonly');
     const storeRead = txRead.objectStore(IDB_STORE);
     const getAllKeysReq = storeRead.getAllKeys();
@@ -325,13 +286,12 @@ async function migrateAndHydrateIndexedDB(): Promise<void> {
           const rawVal = getReq.result;
           if (typeof rawVal === 'string') {
             try {
-              const decoded = isEncryptedPayload(rawVal) ? decodePayload(rawVal) : rawVal;
+              const decoded = isLegacyEncrypted(rawVal) ? decodeLegacyIfEncrypted(rawVal) : rawVal;
               const parsed = safeJsonParse<any>(decoded);
               if (!memoryCache.has(keyStr)) {
                 memoryCache.set(keyStr, parsed);
                 hydratedNewData = true;
               } else if (isHeavyStorageKey(keyStr)) {
-                // If IndexedDB has a fuller array/object than what was in localStorage, prefer IndexedDB
                 const currentMem = memoryCache.get(keyStr);
                 if (Array.isArray(parsed) && Array.isArray(currentMem) && parsed.length > currentMem.length) {
                   memoryCache.set(keyStr, parsed);
@@ -349,7 +309,7 @@ async function migrateAndHydrateIndexedDB(): Promise<void> {
                 }
               }
             } catch {
-              // Ignore malformed legacy entry
+              // Ignore malformed entry
             }
           }
           pendingCount--;
@@ -390,32 +350,34 @@ export function getIndexedDBStatus(): {
 }
 
 /**
- * Safe storage wrapper backed by IndexedDB + synchronous in-memory cache
- * with automatic payload encryption and QuotaExceededError protection.
+ * Ponto unificado e seguro de persistência local apoiado por IndexedDB + cache síncrono em memória.
+ * Dados sensíveis de autenticação e permissões são validados no servidor (Firebase / Google Auth).
  */
 export const safeStorage = {
   get<T>(key: string, defaultValue: T): T {
     if (memoryCache.has(key)) {
       return memoryCache.get(key) as T;
     }
+    if (typeof localStorage === 'undefined') {
+      return defaultValue;
+    }
     try {
       const raw = localStorage.getItem(key);
       if (!raw) return defaultValue;
-      const isEncrypted = isEncryptedPayload(raw);
-      const isV2 = raw.startsWith(ENC_PREFIX_V2);
-      const decoded = isEncrypted ? decodePayload(raw) : raw;
+      const isEncrypted = isLegacyEncrypted(raw);
+      const decoded = isEncrypted ? decodeLegacyIfEncrypted(raw) : raw;
       const parsed = safeJsonParse<T>(decoded);
       memoryCache.set(key, parsed);
-      // Transparently upgrade legacy plaintext or v1 entries to v2 encrypted format & mirror to IndexedDB
-      const encoded = isV2 ? raw : encodePayload(decoded);
-      if (!isV2) {
+
+      // Se estava no formato legado com ofuscação, converte imediatamente para JSON limpo
+      if (isEncrypted) {
         try {
-          localStorage.setItem(key, encoded);
+          localStorage.setItem(key, decoded);
         } catch {
-          // Ignore quota errors on transparent upgrade
+          // Ignore quota errors on upgrade
         }
       }
-      idbSet(key, encoded).catch(() => {});
+      idbSet(key, decoded).catch(() => {});
       return parsed;
     } catch (e) {
       console.warn(`Failed to read storage key "${key}":`, e);
@@ -445,7 +407,9 @@ export const safeStorage = {
     pendingDiskWrites.delete(key);
     idbRemove(key).catch(() => {});
     try {
-      localStorage.removeItem(key);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(key);
+      }
     } catch (e) {
       console.warn(`Failed to remove storage key "${key}":`, e);
     }

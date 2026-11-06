@@ -94,17 +94,17 @@ export const BodyMeasurementsModal: React.FC<BodyMeasurementsModalProps> = ({
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 700;
+        const MAX_WIDTH = 320;
         const scaleSize = MAX_WIDTH / Math.max(img.width, img.height);
         const width = img.width > MAX_WIDTH ? img.width * scaleSize : img.width;
         const height = img.width > MAX_WIDTH ? img.height * scaleSize : img.height;
 
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = Math.round(width);
+        canvas.height = Math.round(height);
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.75);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.55);
           if (slot === 'front') setPhotoFront(compressed);
           if (slot === 'back') setPhotoBack(compressed);
           if (slot === 'side') setPhotoSide(compressed);

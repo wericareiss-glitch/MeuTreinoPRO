@@ -18,7 +18,8 @@ import {
   Award,
   Target,
   Sparkles,
-  Calendar
+  Calendar,
+  Lock
 } from 'lucide-react';
 import { UserProfile, GenderOption, LevelOption, FocusOption } from '../types/workout';
 import { authStorage, calculateDefaultBudget, getPresetWeights, scaleWeightsToBudget } from '../utils/auth';
@@ -51,10 +52,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [focus, setFocus] = useState<FocusOption>(user.focus || 'v_taper');
   const [frequency, setFrequency] = useState<number>(user.frequency || 4);
 
-  const [showPassChange, setShowPassChange] = useState(false);
-  const [oldPass, setOldPass] = useState('');
-  const [newPass, setNewPass] = useState('');
-  const [passMsg, setPassMsg] = useState<{ text: string; error: boolean } | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   if (!isOpen) return null;
@@ -98,23 +95,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       onUpdateUser(updated);
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2000);
-    }
-  };
-
-  const handleChangePassword = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPassMsg(null);
-    const res = authStorage.changePassword(user.id, oldPass, newPass);
-    if (!res.success) {
-      setPassMsg({ text: res.error || 'Erro ao alterar senha.', error: true });
-    } else {
-      setPassMsg({ text: 'Senha alterada com sucesso!', error: false });
-      setOldPass('');
-      setNewPass('');
-      setTimeout(() => {
-        setPassMsg(null);
-        setShowPassChange(false);
-      }, 2000);
     }
   };
 
@@ -346,63 +326,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <BiometricSettingsCard user={user} variant="compact" onLockAppNow={onClose} />
         </div>
 
-        {/* Change Password Collapsible */}
-        <div className="mt-3">
-          {!showPassChange ? (
-            <button
-              type="button"
-              onClick={() => setShowPassChange(true)}
-              className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors py-1 cursor-pointer"
-            >
-              <KeyRound className="w-3.5 h-3.5 text-purple-400" />
-              <span>Alterar senha de acesso</span>
-            </button>
-          ) : (
-            <form onSubmit={handleChangePassword} className="space-y-2.5 p-3 rounded-xl bg-[#0b1220] border border-slate-800 mt-2">
-              <div className="text-xs font-bold text-slate-300 mb-1 flex items-center justify-between">
-                <span>Alterar Senha</span>
-                <button
-                  type="button"
-                  onClick={() => setShowPassChange(false)}
-                  className="text-slate-500 hover:text-white text-[11px] cursor-pointer"
-                >
-                  Cancelar
-                </button>
-              </div>
-
-              {passMsg && (
-                <div className={`p-2 rounded-lg text-[11px] flex items-center gap-1.5 ${
-                  passMsg.error ? 'bg-rose-950/40 text-rose-300' : 'bg-emerald-950/40 text-emerald-300'
-                }`}>
-                  {passMsg.error ? <AlertCircle className="w-3 h-3" /> : <Check className="w-3 h-3" />}
-                  <span>{passMsg.text}</span>
-                </div>
-              )}
-
-              <input
-                type="password"
-                required
-                value={oldPass}
-                onChange={(e) => setOldPass(e.target.value)}
-                placeholder="Senha atual"
-                className="w-full bg-[#101828] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
-              />
-              <input
-                type="password"
-                required
-                value={newPass}
-                onChange={(e) => setNewPass(e.target.value)}
-                placeholder="Nova senha"
-                className="w-full bg-[#101828] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
-              />
-              <button
-                type="submit"
-                className="w-full py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
-              >
-                Atualizar Senha
-              </button>
-            </form>
-          )}
+        {/* Security Info */}
+        <div className="mt-3 p-3 rounded-xl bg-[#0b1220] border border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
+          <Lock className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>
+            {user.isVisitor
+              ? 'Sessão anônima offline. Conecte com o Google para backup.'
+              : 'Autenticação de plataforma (Google / Firebase Auth) ativa.'}
+          </span>
         </div>
 
         {/* Logout / Switch Profile */}

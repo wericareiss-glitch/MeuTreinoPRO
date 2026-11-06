@@ -32,11 +32,13 @@ import {
   WorkoutSessionSummary, 
   MuscleGroup 
 } from '../types/workout';
-import { VolumeDashboard } from './VolumeDashboard';
 import { TopLoadProgressComponent } from './TopLoadProgressComponent';
 import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { useI18n } from '../utils/i18n';
 
+const VolumeDashboard = React.lazy(() =>
+  import('./VolumeDashboard').then((m) => ({ default: m.VolumeDashboard }))
+);
 const HomeAnalyticsDashboard = React.lazy(() =>
   import('./HomeAnalyticsDashboard').then((m) => ({ default: m.HomeAnalyticsDashboard }))
 );
@@ -837,15 +839,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </React.Suspense>
 
       {/* Weekly Volume Tracking & Periodization Dashboard */}
-      <VolumeDashboard
-        completedSetsByMuscle={completedSetsByMuscle}
-        activeWorkoutMuscles={activeWorkoutMuscles}
-        muscleBudgets={user?.muscleBudgets}
-        totalWeeklyBudget={user?.weeklyBudget}
-        workoutNotes={workoutNotes}
-        onUpdateWorkoutNotes={onUpdateWorkoutNotes}
-        onOpenVolumeBudget={onOpenVolumeBudget}
-      />
+      <React.Suspense fallback={<div className="h-48 bg-[#0b1324] border border-slate-800 rounded-3xl animate-pulse" />}>
+        <VolumeDashboard
+          completedSetsByMuscle={completedSetsByMuscle}
+          activeWorkoutMuscles={activeWorkoutMuscles}
+          muscleBudgets={user?.muscleBudgets}
+          totalWeeklyBudget={user?.weeklyBudget}
+          workoutNotes={workoutNotes}
+          onUpdateWorkoutNotes={onUpdateWorkoutNotes}
+          onOpenVolumeBudget={onOpenVolumeBudget}
+        />
+      </React.Suspense>
 
       {/* Summarized Workout History Section */}
       <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl">

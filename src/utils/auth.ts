@@ -66,7 +66,7 @@ function constantTimeEqual(a: string, b: string): boolean {
 }
 
 function computeSaltedDigestV1(password: string, salt: string): string {
-  const input = `${salt}::MTP_PEPPER_2026::${password}`;
+  const input = `${salt}::${password}`;
   let h1 = 0xdeadbeef ^ input.length;
   let h2 = 0x41c6ce57 ^ input.length;
   for (let round = 0; round < 64; round++) {
@@ -85,10 +85,10 @@ function computeSaltedDigestV1(password: string, salt: string): string {
 }
 
 /**
- * Key stretching V2 com 10.000 iterações e 4 registradores de estado de 32 bits (128-bit digest)
+ * Key stretching V2 com 10.000 iterações com CSPRNG salt para credenciais locais
  */
 function computeSaltedDigestV2(password: string, salt: string): string {
-  const input = `${salt}::MTP_PEPPER_V2_2026::${password}`;
+  const input = `${salt}::${password}`;
   let s0 = 0x6a09e667 ^ input.length;
   let s1 = 0xbb67ae85 ^ input.length;
   let s2 = 0x3c6ef372 ^ input.length;
@@ -130,7 +130,7 @@ export function hashPassword(plainPassword: string, existingSalt?: string): stri
 }
 
 export function verifyPasswordHash(inputPassword: string, storedPassword: string): boolean {
-  if (!storedPassword) return inputPassword === '';
+  if (!storedPassword || !inputPassword) return false;
   if (storedPassword.startsWith(HASH_PREFIX_V2)) {
     const parts = storedPassword.split('$');
     const salt = parts[1] || '';
@@ -145,8 +145,7 @@ export function verifyPasswordHash(inputPassword: string, storedPassword: string
     const actual = computeSaltedDigestV1(inputPassword, salt);
     return constantTimeEqual(actual, expected);
   }
-  // Legacy fallback for pre-existing plaintext passwords
-  return constantTimeEqual(storedPassword, inputPassword);
+  return false;
 }
 
 function checkRateLimit(identifier: string): { blocked: boolean; remainingSec: number } {
@@ -436,8 +435,7 @@ export const authStorage = {
 
     const users = this._getRawUsers();
     const user = users.find((u) => u.id === userId);
-    if (!user) return false;
-    if (user.isVisitor && !user.password) return true;
+    if (!user || user.isVisitor || !user.password) return false;
     const isValid = verifyPasswordHash(passwordAttempt, user.password);
     if (!isValid) {
       recordFailedAttempt(`uid:${userId}`);
@@ -519,11 +517,11 @@ export const authStorage = {
     const users = this._getRawUsers();
     const cleanUsername = data.username.trim().toLowerCase();
 
-    if (!cleanUsername || !data.password || !data.name.trim()) {
-      return { error: 'Preencha todos os campos obrigatórios.' };
+    if (!cleanUsername || !data.name.trim()) {
+      return { error: 'Preencha seu nome e nome de usuário.' };
     }
 
-    if (data.password.length < 6) {
+    if (data.password && data.password.length < 6) {
       return { error: 'A senha deve ter pelo menos 6 caracteres para proteger seus dados.' };
     }
 
@@ -537,7 +535,7 @@ export const authStorage = {
       ...data,
       name: data.name.trim().slice(0, 80),
       username: cleanUsername.slice(0, 40),
-      password: hashPassword(data.password),
+      password: data.password ? hashPassword(data.password) : '',
       id: `user_${Date.now()}_${generateSecureRandomHex(6)}`,
       weeklyBudget: budget,
       muscleBudgets: createDefaultBudgets(budget, focus),
@@ -809,4 +807,109 @@ export const authStorage = {
       return { error: 'Falha ao processar o arquivo de backup.' };
     }
   },
+
+  migrateUserData(oldUserId: string, newUserId: string): void {
+    if (!oldUserId || !newUserId || oldUserId === newUserId) return;
+    const suffixes = [
+      '_split',
+      '_strategy',
+      '_ex_per_muscle',
+      '_weekly_budget',
+      '_level',
+      '_equip',
+      '_routines',
+      '_active_routine_id',
+      '_active_routine_started_at',
+      '_workout',
+      '_workout_items',
+      '_current_logs',
+      '_history_logs',
+      '_sessions',
+      '_weekly_volume',
+      '_workout_notes',
+      '_measurements',
+      '_has_init_routines',
+    ];
+    suffixes.forEach((suffix) => {
+      const oldVal = safeStorage.get(`alex_u_${oldUserId}${suffix}`, null);
+      if (oldVal !== null) {
+        safeStorage.set(`alex_u_${newUserId}${suffix}`, oldVal);
+        safeStorage.remove(`alex_u_${oldUserId}${suffix}`);
+      }
+    });
+
+    const singleKeys = [
+      'mtp_reminder_',
+      'mtp_feedback_history_',
+      'mtp_cardio_active_',
+      'mtp_cardio_logs_',
+      'mtp_water_tracker_',
+      'mtp_deload_',
+    ];
+    singleKeys.forEach((prefix) => {
+      const oldVal = safeStorage.get(`${prefix}${oldUserId}`, null);
+      if (oldVal !== null) {
+        safeStorage.set(`${prefix}${newUserId}`, oldVal);
+        safeStorage.remove(`${prefix}${oldUserId}`);
+      }
+    });
+  },
+
+  linkGoogleAccount(
+    currentUserId: string, 
+    firebaseUser: { uid: string; email?: string | null; displayName?: string | null }
+  ): UserProfile {
+    const users = this._getRawUsers();
+    const idx = users.findIndex((u) => u.id === currentUserId);
+    const newUid = firebaseUser.uid;
+    const newEmail = firebaseUser.email || undefined;
+    
+    const existingIdx = users.findIndex((u) => u.id === newUid);
+    if (existingIdx !== -1 && existingIdx !== idx) {
+      users.splice(existingIdx, 1);
+    }
+
+    if (idx !== -1) {
+      const current = users[idx];
+      const updated: UserProfile = {
+        ...current,
+        id: newUid,
+        email: newEmail,
+        isVisitor: false,
+        password: '', // Platform auth delegated to Google / Firebase Auth
+        name: current.name === 'Atleta Visitante' && firebaseUser.displayName ? firebaseUser.displayName : current.name,
+      };
+      users[idx] = updated;
+      this.saveUsers(users);
+      this.setActiveUserId(newUid);
+      this.migrateUserData(currentUserId, newUid);
+      return sanitizeUserProfile(updated);
+    } else {
+      const budget = calculateDefaultBudget('intermediate', 'male');
+      const newUser: UserProfile = {
+        id: newUid,
+        name: firebaseUser.displayName || 'Atleta',
+        username: (firebaseUser.email?.split('@')[0] || `user_${Date.now()}`).toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30),
+        email: newEmail,
+        password: '',
+        isVisitor: false,
+        weightKg: 75,
+        heightM: 175,
+        gender: 'male',
+        level: 'intermediate',
+        focus: 'balanced',
+        frequency: 4,
+        preferredSplit: 'upper_lower',
+        exercisesPerMuscle: 1,
+        weeklyBudget: budget,
+        muscleBudgets: createDefaultBudgets(budget, 'balanced'),
+        createdAt: new Date().toISOString(),
+      };
+      users.push(newUser);
+      this.saveUsers(users);
+      this.setActiveUserId(newUid);
+      return sanitizeUserProfile(newUser);
+    }
+  },
 };
+

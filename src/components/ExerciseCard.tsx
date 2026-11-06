@@ -771,33 +771,108 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             )}
           </div>
 
-          {/* Menu de 3 Pontos para Todas as Ações do Exercício */}
-          <div className="relative shrink-0" ref={menuRef}>
-            <button
-              type="button"
-              onClick={() => setShowMenu((prev) => !prev)}
-              className="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm"
-              title="Opções do exercício"
-              aria-label="Opções do exercício"
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
+          {/* Lado Direito do Cabeçalho: Temporizador de Descanso no Topo + Menu de 3 Pontos */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Temporizador de Tempo de Descanso na parte de cima */}
+            <div className="flex items-center gap-1 bg-[#090e1a] px-2 py-1 rounded-xl border border-slate-700/80 shadow-xs">
+              <Clock className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <button
+                type="button"
+                onClick={() => handleAdjustRest(-15)}
+                className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-300 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation shadow-xs"
+                title="-15s descanso"
+                aria-label="Diminuir 15 segundos de descanso"
+              >
+                <Minus className="w-3 h-3 stroke-[2.5]" />
+              </button>
+              <span
+                className="text-white font-mono font-black text-xs min-w-[28px] sm:min-w-[32px] text-center"
+                title="Tempo de descanso configurado para este exercício"
+              >
+                {item.rest}s
+              </span>
+              <button
+                type="button"
+                onClick={() => handleAdjustRest(15)}
+                className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-300 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation shadow-xs"
+                title="+15s descanso"
+                aria-label="Aumentar 15 segundos de descanso"
+              >
+                <Plus className="w-3 h-3 stroke-[2.5]" />
+              </button>
+            </div>
 
-            {/* Dropdown Menu de 3 Pontos com Todas as Ferramentas */}
-            {showMenu && (
-              <div className="absolute right-0 top-9 w-64 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-1.5 z-40 animate-fadeIn space-y-1">
-                {/* 1. Trocar Exercício */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMenu(false);
-                    onOpenSwap(index);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-sky-300 hover:bg-sky-950/40 transition-colors text-left cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>Trocar Exercício</span>
-                </button>
+            {/* Menu de 3 Pontos para Todas as Ações do Exercício */}
+            <div className="relative shrink-0" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setShowMenu((prev) => !prev)}
+                className="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm"
+                title="Opções do exercício"
+                aria-label="Opções do exercício"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+
+              {/* Dropdown Menu de 3 Pontos com Todas as Ferramentas */}
+              {showMenu && (
+                <div className="absolute right-0 top-9 w-64 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-1.5 z-40 animate-fadeIn space-y-1">
+                  {/* 1. Adicionar Série (Movido para o menu 3 pontos conforme solicitação) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      onAddSet(index);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 transition-colors text-left cursor-pointer active:scale-95"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Plus className="w-4 h-4 text-emerald-400 stroke-[2.5] shrink-0" />
+                      <div>
+                        <span className="block font-bold">Adicionar Série</span>
+                        <span className="block text-[10px] text-slate-400">Criar série #{item.sets + 1}</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono font-black text-emerald-300 bg-emerald-500/25 px-2 py-0.5 rounded-lg border border-emerald-500/40">
+                      +{item.sets + 1}
+                    </span>
+                  </button>
+
+                  {/* 2. Remover Última Série */}
+                  {item.sets > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        onRemoveSet(index);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-rose-300 hover:bg-rose-950/40 transition-colors text-left cursor-pointer active:scale-95"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Minus className="w-4 h-4 text-rose-400 stroke-[2.5] shrink-0" />
+                        <div>
+                          <span className="block font-bold">Remover Série</span>
+                          <span className="block text-[10px] text-slate-400">Excluir última série (#{item.sets})</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono font-black text-rose-400 bg-rose-500/20 px-2 py-0.5 rounded-lg border border-rose-500/30">
+                        -{item.sets}
+                      </span>
+                    </button>
+                  )}
+
+                  {/* 3. Trocar Exercício */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      onOpenSwap(index);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-sky-300 hover:bg-sky-950/40 transition-colors text-left cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span>Trocar Exercício</span>
+                  </button>
 
                 {/* 2. Aparelho Ocupado? */}
                 <button
@@ -1021,6 +1096,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                 )}
               </div>
             )}
+          </div>
           </div>
         </div>
 
@@ -1789,77 +1865,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           );
         })}
           </div>
-        </div>
-      </div>
-
-      {/* 3. Rodapé do Card — Controles de Série e Descanso */}
-      <div className="p-3 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onAddSet(index)}
-            className="h-9 px-3 rounded-xl text-xs font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer touch-manipulation shadow-sm"
-          >
-            <Plus className="w-4 h-4 text-emerald-400 stroke-[2.5]" />
-            <span>Adicionar Série</span>
-          </button>
-
-          {item.sets > 1 && (
-            <button
-              type="button"
-              onClick={() => onRemoveSet(index)}
-              className="h-9 px-3 rounded-xl text-xs font-bold text-rose-300 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer touch-manipulation shadow-sm"
-              title="Remover última série"
-            >
-              <Minus className="w-4 h-4 text-rose-400 stroke-[2.5]" />
-              <span>Remover Série</span>
-            </button>
-          )}
-
-          {progression.status === 'progress' && (
-            <button
-              type="button"
-              onClick={() => {
-                for (let s = 1; s <= item.sets; s++) {
-                  const k = `${ex.id}_${s}`;
-                  if (!logs[k]?.done) {
-                    handleInputChange(k, 'weight', progression.suggestedWeight.toString());
-                  }
-                }
-              }}
-              className="h-9 px-3 rounded-xl text-xs font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 flex items-center gap-1.5 cursor-pointer touch-manipulation shadow-sm active:scale-95"
-              title="Aplicar carga recomendada de sobrecarga progressiva"
-            >
-              <Zap className="w-3.5 h-3.5 fill-emerald-400" />
-              <span>+{progression.suggestedWeight}kg</span>
-            </button>
-          )}
-        </div>
-
-        {/* Ajuste Rápido de Descanso com botões - e + bem visíveis */}
-        <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 shadow-sm">
-          <Clock className="w-4 h-4 text-sky-400 shrink-0" />
-          <button
-            type="button"
-            onClick={() => handleAdjustRest(-15)}
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-300 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation shadow-xs"
-            title="-15s descanso"
-            aria-label="Diminuir 15 segundos de descanso"
-          >
-            <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
-          </button>
-          <span className="text-white font-mono font-black text-xs sm:text-sm min-w-[36px] text-center">
-            {item.rest}s
-          </span>
-          <button
-            type="button"
-            onClick={() => handleAdjustRest(15)}
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-300 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation shadow-xs"
-            title="+15s descanso"
-            aria-label="Aumentar 15 segundos de descanso"
-          >
-            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-          </button>
         </div>
       </div>
       </>

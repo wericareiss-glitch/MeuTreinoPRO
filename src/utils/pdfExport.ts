@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { jsPDF } from 'jspdf';
 import {
   GeneratedWorkoutRoutine,
   WorkoutSessionSummary,
@@ -22,11 +21,12 @@ export interface PdfExportOptions {
  * Generates and downloads an elegant, print-ready A4 PDF for a planned workout routine
  * (ideal for taking to the gym floor or archiving the training split).
  */
-export function exportRoutineToPDF(
+export async function exportRoutineToPDF(
   routine: GeneratedWorkoutRoutine,
   user?: UserProfile | null,
   options: PdfExportOptions = {}
-): void {
+): Promise<void> {
+  const { jsPDF } = await import('jspdf');
   const {
     includeBiomechanicalCues = true,
     includeBlankLogBoxes = true,
@@ -195,10 +195,11 @@ export function exportRoutineToPDF(
  * Generates and downloads an elegant A4 PDF report for a completed workout session
  * (ideal for archiving progressive overload, PRs, and volume tonnage).
  */
-export function exportCompletedSessionToPDF(
+export async function exportCompletedSessionToPDF(
   session: WorkoutSessionSummary,
   athleteName = 'Atleta'
-): void {
+): Promise<void> {
+  const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',

@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { I18nProvider } from './utils/i18n.tsx';
+import { safeStorage } from './utils/storage.ts';
 import './index.css';
 
 // Registra Service Worker (/sw.js) com escopo raiz para suporte PWA offline nativo e instalação WebAPK no Android
@@ -85,7 +86,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   handleReset = () => {
-    localStorage.removeItem('alex_active_user_id');
+    safeStorage.remove('alex_active_user_id');
     window.location.reload();
   };
 

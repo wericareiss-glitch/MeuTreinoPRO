@@ -67,6 +67,11 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
   const handlePasswordUnlock = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    if (!user.password) {
+      markBiometricSessionUnlocked(user.id, true);
+      onUnlocked();
+      return;
+    }
     const valid = authStorage.verifyUserPassword(user.id, password);
     if (!valid) {
       setErrorMsg('Senha incorreta. Tente novamente ou use sua biometria.');
@@ -172,7 +177,7 @@ export const BiometricLockScreen: React.FC<BiometricLockScreenProps> = ({
 
         {/* Footer Actions: Toggle Password Fallback or Switch Profile */}
         <div className="pt-3 border-t border-slate-800/90 flex items-center justify-between gap-2 text-xs relative z-10">
-          {!user.isVisitor && (
+          {!user.isVisitor && Boolean(user.password) && (
             <button
               type="button"
               onClick={() => {

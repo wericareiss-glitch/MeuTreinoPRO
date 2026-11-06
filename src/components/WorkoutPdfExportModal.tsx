@@ -52,15 +52,15 @@ export const WorkoutPdfExportModal: React.FC<WorkoutPdfExportModalProps> = ({
 
   const athleteName = propAthleteName || user?.name || 'Atleta';
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (routine) {
-      exportRoutineToPDF(routine, user, {
+      await exportRoutineToPDF(routine, user, {
         includeBiomechanicalCues: includeCues,
         includeBlankLogBoxes: includeBlankBoxes,
         athleteName,
       });
     } else if (session) {
-      exportCompletedSessionToPDF(session, athleteName);
+      await exportCompletedSessionToPDF(session, athleteName);
     }
     setDownloadedToast(true);
     setTimeout(() => setDownloadedToast(false), 3000);

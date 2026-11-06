@@ -211,35 +211,53 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const res = authStorage.login(loginUsername, loginPassword);
-    if (res.error) {
-      setError(res.error);
+    const cleanUsername = loginUsername.trim().toLowerCase();
+    if (!cleanUsername) {
+      setError('Informe seu nome de usuário.');
       return;
     }
-    if (res.user) {
-      markBiometricSessionUnlocked(res.user.id, true);
-      if (enableBiometricOnLogin && biometricAvailability.isWebAuthnSupported) {
-        await registerBiometricCredential(res.user);
-      }
-      onSuccess(res.user);
+    const allUsers = (authStorage as any)._getRawUsers() as UserProfile[];
+    const found = allUsers.find((u) => u.username.toLowerCase() === cleanUsername);
+    if (!found) {
+      setError('Usuário não encontrado neste aparelho.');
+      return;
     }
+
+    if (found.password) {
+      const res = authStorage.login(cleanUsername, loginPassword);
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
+      if (res.user) {
+        markBiometricSessionUnlocked(res.user.id, true);
+        if (enableBiometricOnLogin && biometricAvailability.isWebAuthnSupported) {
+          await registerBiometricCredential(res.user);
+        }
+        onSuccess(res.user);
+      }
+      return;
+    }
+
+    // Perfil local sem senha no navegador
+    authStorage.setActiveUserId(found.id);
+    markBiometricSessionUnlocked(found.id, true);
+    if (enableBiometricOnLogin && biometricAvailability.isWebAuthnSupported) {
+      await registerBiometricCredential(found);
+    }
+    onSuccess(found);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (regPassword !== regPasswordConfirm) {
-      setError('A confirmação de senha não confere.');
-      return;
-    }
-
     const calculatedBudget = calculateDefaultBudget(regLevel, regGender);
 
     const res = authStorage.register({
       name: regName,
       username: regUsername,
-      password: regPassword,
+      password: '',
       weightKg: regWeight,
       heightM: regHeight,
       gender: regGender,
@@ -403,15 +421,45 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
               </div>
             )}
 
+            {/* Perfis Salvos Neste Dispositivo */}
+            {authStorage.getUsers().filter((u) => !u.isVisitor).length > 0 && (
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-slate-300 block">
+                  Perfis Salvos Neste Aparelho
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {authStorage.getUsers().filter((u) => !u.isVisitor).map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        authStorage.setActiveUserId(u.id);
+                        markBiometricSessionUnlocked(u.id, true);
+                        onSuccess(u);
+                      }}
+                      className="p-2.5 rounded-xl bg-[#0b1220] hover:bg-emerald-500/10 border border-slate-800 hover:border-emerald-500/40 text-left flex items-center gap-2.5 transition-all cursor-pointer group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center text-xs shrink-0 group-hover:scale-105 transition-transform">
+                        {u.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold text-white block truncate">{u.name}</span>
+                        <span className="text-[10px] text-slate-400 block truncate font-mono">@{u.username}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-semibold text-slate-300 block mb-1">
-                Nome de Usuário
+                Ou digite seu Nome de Usuário
               </label>
               <div className="relative flex items-center">
                 <User className="w-4 h-4 text-slate-500 absolute left-3" />
                 <input
                   type="text"
-                  required
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
                   placeholder="ex: alex"
@@ -422,17 +470,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
             <div>
               <label className="text-xs font-semibold text-slate-300 block mb-1">
-                Senha
+                Senha (caso possua senha anterior)
               </label>
               <div className="relative flex items-center gap-2">
                 <div className="relative flex-1 flex items-center">
                   <Lock className="w-4 h-4 text-slate-500 absolute left-3" />
                   <input
                     type="password"
-                    required
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="••••••"
+                    placeholder="Opcional se perfil sem senha"
                     className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
@@ -523,33 +570,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
               </div>
             </div>
 
-            {/* Passwords */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                  Senha
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={regPassword}
-                  onChange={(e) => setRegPassword(e.target.value)}
-                  placeholder="••••••"
-                  className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                  Confirmar Senha
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={regPasswordConfirm}
-                  onChange={(e) => setRegPasswordConfirm(e.target.value)}
-                  placeholder="••••••"
-                  className="w-full bg-[#0b1220] border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                />
+            {/* Platform Authentication & Cloud Note */}
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-950/30 via-slate-900 to-sky-950/30 border border-emerald-500/20 text-slate-300 text-xs">
+              <div className="flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-relaxed text-slate-300">
+                  Perfil criado diretamente no aparelho sem senhas frágeis no navegador. Para salvar e sincronizar seus treinos na nuvem, conecte com o <strong className="text-white">Google</strong>.
+                </p>
               </div>
             </div>
 

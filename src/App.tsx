@@ -3,76 +3,40 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Dumbbell, 
-  Sparkles, 
-  CheckCircle2, 
-  Download, 
-  Upload, 
-  RotateCcw, 
-  PlusCircle, 
-  Sliders,
-  Zap,
-  ArrowRight
+  Zap, 
+  ArrowRight 
 } from 'lucide-react';
 import { 
-  SplitOption, 
-  StrategyOption, 
-  PeriodizationStrategy,
-  PERIODIZATION_PHASES,
-  LevelOption, 
-  EquipmentRequirement, 
-  WorkoutItem, 
-  WorkoutLogs, 
+  UserProfile, 
+  Exercise, 
+  SplitOption,
+  WorkoutItem,
+  WorkoutLogs,
   WorkoutSessionSummary,
-  MuscleGroup,
-  Exercise,
-  UserProfile,
-  GeneratedWorkoutRoutine,
-  NutritionPlan,
-  BodyMeasurement,
-  rpeToRir,
-  rirToRpe
+  BodyMeasurement
 } from './types/workout';
-import { 
-  EXERCISE_DATABASE, 
-  SPLIT_MUSCLES, 
-  MUSCLE_NAMES 
-} from './data/exerciseDatabase';
-import { 
-  safeStorage, 
-  calculateVolumeLoad 
-} from './utils/storage';
-import { authStorage, ALL_MUSCLE_GROUPS } from './utils/auth';
-import { soundManager } from './utils/audio';
-import { generateWeeklyRoutines, generateQuickWorkoutRoutine } from './utils/routineGenerator';
-import { 
-  buildLocalSyncBundle, 
-  pushSyncBundleToSupabase, 
-  enqueueOfflineMutation, 
-  flushOfflineMutationQueue,
-  setFinishWorkoutSyncMode,
-  stageWorkoutDataForBackgroundSync
-} from './services/supabaseSync';
-import {
-  auth,
-  syncSessionToCloud,
-  syncRoutinesToCloud,
-  syncUserProfileToCloud,
-  syncMeasurementToCloud,
-  syncAllToFirebase
-} from './services/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { setupIntegrityAutoSync } from './services/dataIntegritySync';
+import { MUSCLE_NAMES } from './data/exerciseDatabase';
+import { safeStorage } from './utils/storage';
+import { TabType } from './types/navigation';
+import { useI18n } from './utils/i18n';
+import { useTheme } from './utils/theme';
+
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { HistoryProvider, useHistory } from './contexts/HistoryContext';
+import { WorkoutProvider, useWorkout } from './contexts/WorkoutContext';
 
 import { Header } from './components/Header';
 import { RestTimerDock } from './components/RestTimerDock';
 import { AuthModal } from './components/AuthModal';
 import { NavigationTabs } from './components/NavigationTabs';
 import { HomeView } from './components/HomeView';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { BiometricLockScreen } from './components/BiometricLockScreen';
+import { SectionErrorBoundary } from './components/SectionErrorBoundary';
 
-// Code Splitting de Abas Secundárias e Modais sob demanda (reduz significativamente o pacote inicial mobile)
+// Code Splitting de Abas Secundárias e Modais sob demanda
 const WorkoutListView = React.lazy(() =>
   import('./components/WorkoutListView').then((m) => ({ default: m.WorkoutListView }))
 );
@@ -112,1089 +76,133 @@ const BodyMeasurementsModal = React.lazy(() =>
 const ManualWorkoutModal = React.lazy(() =>
   import('./components/ManualWorkoutModal').then((m) => ({ default: m.ManualWorkoutModal }))
 );
-import { checkAndTriggerScheduledNotification } from './utils/notifications';
-import { TabType } from './types/navigation';
-import { useI18n } from './utils/i18n';
-import { OfflineIndicator } from './components/OfflineIndicator';
-import { useTheme } from './utils/theme';
-import { BiometricLockScreen } from './components/BiometricLockScreen';
-import {
-  isBiometricAppLockEnabled,
-  isBiometricSessionUnlocked,
-  onBiometricChange,
-} from './utils/biometricAuth';
 
-export default function App() {
+interface AppContentProps {
+  toastMessage: string | null;
+  showToast: (msg: string) => void;
+}
+
+function AppContent({ toastMessage, showToast }: AppContentProps) {
   const { t } = useI18n();
-  // Inicializa e sincroniza o sistema global de temas (Escuro de alto contraste / Claro de alta legibilidade)
   useTheme();
 
-  // Navigation tab state: 'inicio' | 'treino' | 'cardio' | 'perfil'
+  // Navigation tab state: 'inicio' | 'treino' | 'treino_ativo' | 'perfil'
   const [activeTab, setActiveTab] = useState<TabType>('inicio');
 
-  // Current active authenticated user
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authStorage.getActiveUser());
-  const loadedUserIdRef = useRef<string | null>(currentUser?.id || null);
-  const [isAuthOpen, setIsAuthOpen] = useState<boolean>(() => !authStorage.getActiveUser());
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isBudgetOpen, setIsBudgetOpen] = useState(false);
-  const [isAddExerciseOpen, setIsAddExerciseOpen] = useState(false);
-  const [isBiometricLocked, setIsBiometricLocked] = useState<boolean>(() => {
-    const u = authStorage.getActiveUser();
-    if (!u) return false;
-    return isBiometricAppLockEnabled(u.id) && !isBiometricSessionUnlocked(u.id);
-  });
+  // Auth Context
+  const {
+    currentUser,
+    isAuthOpen,
+    isProfileOpen,
+    setIsProfileOpen,
+    isBudgetOpen,
+    setIsBudgetOpen,
+    isBiometricLocked,
+    setIsBiometricLocked,
+    handleAuthSuccess,
+    handleLogout,
+    handleDeleteProfile,
+    handleSwitchProfile,
+    updateUser,
+    handleSaveBudgets,
+  } = useAuth();
 
-  useEffect(() => {
-    const syncBiometricLock = () => {
-      if (!currentUser) {
-        setIsBiometricLocked(false);
-        return;
-      }
-      setIsBiometricLocked(
-        isBiometricAppLockEnabled(currentUser.id) &&
-          !isBiometricSessionUnlocked(currentUser.id)
-      );
-    };
-    syncBiometricLock();
-    return onBiometricChange(syncBiometricLock);
-  }, [currentUser]);
+  // History Context
+  const {
+    sessions,
+    history,
+    weeklyCompletedSets,
+    measurements,
+    isHistoryOpen,
+    setIsHistoryOpen,
+    isAnalyticsOpen,
+    setIsAnalyticsOpen,
+    analyticsExerciseName,
+    isMeasurementsOpen,
+    setIsMeasurementsOpen,
+    summaryModalSession,
+    setSummaryModalSession,
+    handleSaveMeasurement,
+    handleDeleteMeasurement,
+    handleOpenAnalytics,
+    clearHistory,
+  } = useHistory();
 
-  // Verificador global de lembretes Push agendados (funciona em qualquer aba do app)
-  useEffect(() => {
-    if (!currentUser?.id) return;
-    const checkNow = () => {
-      checkAndTriggerScheduledNotification(currentUser.id, currentUser.name || 'Atleta');
-    };
-    checkNow();
-    const interval = setInterval(checkNow, 25000);
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        checkNow();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [currentUser?.id, currentUser?.name]);
+  // Workout Context
+  const {
+    split,
+    setSplit,
+    strategy,
+    setStrategy,
+    periodizationStrategy,
+    weeklyBudget,
+    setWeeklyBudget,
+    level,
+    setLevel,
+    equip,
+    setEquip,
+    restSeconds,
+    setRestSeconds,
+    routines,
+    setRoutines,
+    editingRoutine,
+    isManualWorkoutOpen,
+    setIsManualWorkoutOpen,
+    activeRoutineId,
+    activeRoutineStartedAt,
+    activeRoutine,
+    workoutItems,
+    logs,
+    workoutNotes,
+    setWorkoutNotes,
+    isAddExerciseOpen,
+    setIsAddExerciseOpen,
+    warmupData,
+    setWarmupData,
+    swapData,
+    setSwapData,
+    isMuted,
+    setIsMuted,
+    timerTriggerKey,
+    timerRestSeconds,
+    activeExerciseName,
+    completedSetsByMuscle,
+    totalSetsInWorkout,
+    totalCompletedSetsInWorkout,
+    activeWorkoutMuscles,
+    handleStartWorkout,
+    handleDiscardActiveWorkout,
+    finishAndSaveSession,
+    handleUpdateLog,
+    handleToggleSet,
+    handleAddSet,
+    handleRemoveSet,
+    handleMoveUp,
+    handleMoveDown,
+    handleReorderExercises,
+    handleReorderRoutines,
+    handleDeleteExercise,
+    handleSelectSwapExercise,
+    handleAddCustomExercise,
+    handleUpdateRest,
+    handleSelectPeriodizationStrategy,
+    handleGenerateWeeklyRoutines,
+    handleGenerateQuickWorkout,
+    handleShareRoutine,
+    handleSaveManualRoutine,
+    handleDeleteRoutine,
+    handleOpenCreateManualRoutine,
+    handleEditRoutine,
+  } = useWorkout();
 
-  // Sincronização automática com Firebase Firestore quando o usuário está autenticado no Firebase Auth
-  useEffect(() => {
-    if (currentUser?.id && !currentUser.isVisitor && !currentUser.id.startsWith('user_guest_') && auth.currentUser) {
-      syncAllToFirebase(currentUser.id, currentUser).catch(() => {});
-    }
-  }, [currentUser?.id]);
-
-  // Listener para sincronizar assim que a sessão do Firebase Auth for restabelecida
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
-      if (fbUser && currentUser && !currentUser.isVisitor && !currentUser.id.startsWith('user_guest_')) {
-        syncAllToFirebase(currentUser.id, currentUser).catch(() => {});
-      }
-    });
-    return () => unsubscribe();
-  }, [currentUser]);
-
-  // Helper for per-user storage key isolation
-  const userKey = (key: string) => currentUser ? `alex_u_${currentUser.id}_${key}` : `alex_guest_${key}`;
-
-  // Config state
-  const [split, setSplit] = useState<SplitOption>(() => {
-    const user = authStorage.getActiveUser();
-    if (!user) return 'upper_lower';
-    return safeStorage.get(`alex_u_${user.id}_split`, user.preferredSplit || (user.frequency === 3 || user.frequency === 6 ? 'ppl' : 'upper_lower'));
-  });
-  const [strategy, setStrategy] = useState<StrategyOption>('synergy');
-  const [periodizationStrategy, setPeriodizationStrategy] = useState<PeriodizationStrategy>(() => {
-    const user = authStorage.getActiveUser();
-    if (!user) return 'hypertrophy';
-    return safeStorage.get<PeriodizationStrategy>(
-      `alex_u_${user.id}_periodization_strategy`,
-      user.periodizationStrategy || (user.focus === 'strength' ? 'strength' : 'hypertrophy')
-    );
-  });
-  // Padrão sempre 1 exercício por músculo
-  const exercisesPerMuscle: 1 = 1;
-  const [weeklyBudget, setWeeklyBudget] = useState<number>(() => {
-    const user = authStorage.getActiveUser();
-    if (!user) return 80;
-    return safeStorage.get(`alex_u_${user.id}_weekly_budget`, user.weeklyBudget || 80);
-  });
-  const [level, setLevel] = useState<LevelOption>(() => currentUser?.level || 'intermediate');
-  const [equip, setEquip] = useState<EquipmentRequirement>('full_gym');
-  const [restSeconds, setRestSeconds] = useState<number>(30); // Padrão automático 30s por série
-
-  // Geração de Treinos Inteligentes & Treino Ativo
-  const [routines, setRoutines] = useState<GeneratedWorkoutRoutine[]>(() => {
-    const user = authStorage.getActiveUser();
-    if (!user) return [];
-    return safeStorage.get(`alex_u_${user.id}_routines`, []);
-  });
-  const [activeRoutineId, setActiveRoutineId] = useState<string | null>(() => {
-    const user = authStorage.getActiveUser();
-    if (!user) return null;
-    return safeStorage.get(`alex_u_${user.id}_active_routine_id`, null);
-  });
-  const [activeRoutineStartedAt, setActiveRoutineStartedAt] = useState<number | null>(() => {
-    const user = authStorage.getActiveUser();
-    if (!user) return null;
-    return safeStorage.get(`alex_u_${user.id}_active_routine_started_at`, null);
-  });
-
-  // Workout & Log state (Isolated per User)
-  const [workoutItems, setWorkoutItems] = useState<WorkoutItem[]>([]);
-  const [logs, setLogs] = useState<WorkoutLogs>({});
-  const [history, setHistory] = useState<WorkoutLogs>({});
-  const [sessions, setSessions] = useState<WorkoutSessionSummary[]>([]);
-  const [weeklyCompletedSets, setWeeklyCompletedSets] = useState<Record<MuscleGroup, number>>({} as Record<MuscleGroup, number>);
-  const [workoutNotes, setWorkoutNotes] = useState<string>('');
-
-  // Audio & Timer state
-  const [isMuted, setIsMuted] = useState<boolean>(() => safeStorage.get('alex_muted', false));
-  const [timerTriggerKey, setTimerTriggerKey] = useState(0);
-  const [timerRestSeconds, setTimerRestSeconds] = useState(30);
-
-  // Modals state
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
-  const [analyticsExerciseName, setAnalyticsExerciseName] = useState<string | undefined>(undefined);
-  const [isMeasurementsOpen, setIsMeasurementsOpen] = useState(false);
-  const [measurements, setMeasurements] = useState<BodyMeasurement[]>(() => {
-    const user = authStorage.getActiveUser();
-    if (!user) return [];
-    return safeStorage.get(`alex_u_${user.id}_measurements`, []);
-  });
-  const [warmupData, setWarmupData] = useState<{ isOpen: boolean; name: string; weight: string }>({
-    isOpen: false,
-    name: '',
-    weight: '60',
-  });
-  const [swapData, setSwapData] = useState<{
-    isOpen: boolean;
-    index: number | null;
-    currentExerciseId: string;
-    muscleKey: string;
-  }>({
-    isOpen: false,
-    index: null,
-    currentExerciseId: '',
-    muscleKey: '',
-  });
-  const [summaryModalSession, setSummaryModalSession] = useState<WorkoutSessionSummary | null>(null);
-  const [isManualWorkoutOpen, setIsManualWorkoutOpen] = useState(false);
-  const [editingRoutine, setEditingRoutine] = useState<GeneratedWorkoutRoutine | null>(null);
-
-  // Toast feedback
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showToast = useCallback((msg: string) => {
-    setToastMessage(msg);
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-    toastTimerRef.current = setTimeout(() => {
-      setToastMessage((curr) => (curr === msg ? null : curr));
-      toastTimerRef.current = null;
-    }, 2800);
-  }, []);
-
-  // Sync isolated user state whenever currentUser changes
-  useEffect(() => {
-    if (!currentUser) {
-      loadedUserIdRef.current = null;
-      setRoutines([]);
-      setActiveRoutineId(null);
-      setActiveRoutineStartedAt(null);
-      setWorkoutItems([]);
-      setLogs({});
-      setHistory({});
-      setSessions([]);
-      setWorkoutNotes('');
-      setMeasurements([]);
-      return;
-    }
-    const uid = currentUser.id;
-
-    const defaultSplit: SplitOption = currentUser.preferredSplit || (
-      currentUser.focus === 'glutes' 
-        ? 'lower' 
-        : currentUser.frequency === 3 || currentUser.frequency === 6
-        ? 'ppl' 
-        : currentUser.frequency === 5
-        ? 'abcde'
-        : 'upper_lower'
-    );
-    const resolvedSplit = safeStorage.get(`alex_u_${uid}_split`, defaultSplit);
-    const resolvedStrategy = safeStorage.get<StrategyOption>(`alex_u_${uid}_strategy`, 'synergy');
-    const resolvedBudget = safeStorage.get(`alex_u_${uid}_weekly_budget`, currentUser.weeklyBudget || 80);
-    const resolvedLevel = safeStorage.get<LevelOption>(`alex_u_${uid}_level`, currentUser.level || 'beginner');
-    const resolvedEquip = safeStorage.get<EquipmentRequirement>(`alex_u_${uid}_equip`, 'full_gym');
-
-    setSplit(resolvedSplit);
-    setStrategy(resolvedStrategy);
-    setWeeklyBudget(resolvedBudget);
-    setLevel(resolvedLevel);
-    setEquip(resolvedEquip);
-
-    let storedRoutines = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${uid}_routines`, []);
-    const hasInit = safeStorage.get<boolean>(`alex_u_${uid}_has_init_routines`, false);
-    if (storedRoutines.length === 0 && !hasInit) {
-      safeStorage.set(`alex_u_${uid}_has_init_routines`, true);
-      const nowTs = Date.now();
-      const initialGenerated = generateWeeklyRoutines({
-        user: currentUser,
-        split: resolvedSplit,
-        strategy: resolvedStrategy,
-        manualWeeklySets: resolvedBudget,
-        level: resolvedLevel,
-        equip: resolvedEquip,
-        restSeconds: 60,
-      }).map((r, idx) => ({
-        ...r,
-        id: `${r.id}_v1_${nowTs}_${idx}`,
-        version: 1,
-        createdAt: new Date(nowTs + idx).toISOString(),
-      }));
-      storedRoutines = initialGenerated;
-      safeStorage.set(`alex_u_${uid}_routines`, storedRoutines);
-    } else if (storedRoutines.length > 0 && !hasInit) {
-      safeStorage.set(`alex_u_${uid}_has_init_routines`, true);
-    }
-
-    setRoutines(storedRoutines);
-    setActiveRoutineId(safeStorage.get(`alex_u_${uid}_active_routine_id`, null));
-    setActiveRoutineStartedAt(safeStorage.get(`alex_u_${uid}_active_routine_started_at`, null));
-
-    setWorkoutItems(safeStorage.get(`alex_u_${uid}_workout`, []));
-    setLogs(safeStorage.get(`alex_u_${uid}_current_logs`, {}));
-    setHistory(safeStorage.get(`alex_u_${uid}_history_logs`, {}));
-    setSessions(safeStorage.get(`alex_u_${uid}_sessions`, []));
-    setWeeklyCompletedSets(safeStorage.get(`alex_u_${uid}_weekly_volume`, {} as Record<MuscleGroup, number>));
-    setWorkoutNotes(safeStorage.get(`alex_u_${uid}_workout_notes`, ''));
-    setMeasurements(safeStorage.get(`alex_u_${uid}_measurements`, []));
-
-    // Escuta sincronizações e merges de integridade vindos do Firebase ou outros dispositivos
-    const handleRemoteSync = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      if (customEvent.detail && customEvent.detail.userId === uid) {
-        const detail = customEvent.detail;
-        const newRoutines = detail.routines || safeStorage.get(`alex_u_${uid}_routines`, []);
-        const newSessions = detail.sessions || safeStorage.get(`alex_u_${uid}_sessions`, []);
-        const newMeasurements = detail.measurements || safeStorage.get(`alex_u_${uid}_measurements`, []);
-        setRoutines(newRoutines);
-        setWorkoutItems(safeStorage.get(`alex_u_${uid}_workout`, []));
-        setHistory(safeStorage.get(`alex_u_${uid}_history_logs`, {}));
-        setSessions(newSessions);
-        setWeeklyCompletedSets(safeStorage.get(`alex_u_${uid}_weekly_volume`, {} as Record<MuscleGroup, number>));
-        setWorkoutNotes(safeStorage.get(`alex_u_${uid}_workout_notes`, ''));
-        setMeasurements(newMeasurements);
-
-        // Se o perfil do atleta foi atualizado da nuvem, atualiza o estado em memória
-        const refreshedUser = authStorage.getActiveUser();
-        if (refreshedUser && refreshedUser.id === uid) {
-          setCurrentUser(refreshedUser);
-        }
-
-        const resolved = customEvent.detail.discrepanciesResolved;
-        if (resolved && resolved > 0) {
-          showToast(`⚡ ${resolved} item(ns) sincronizados com seus outros aparelhos!`);
-        }
-      }
-    };
-    window.addEventListener('meutreino:remote-sync-applied', handleRemoteSync);
-
-    // Registra auto-sincronismo e verificação de integridade no ciclo de vida do PWA apenas para contas autenticadas na nuvem
-    const cleanupAutoSync =
-      currentUser && !currentUser.isVisitor && !uid.startsWith('user_guest_') && auth.currentUser
-        ? setupIntegrityAutoSync(uid)
-        : () => {};
-
-    // Escuta hidratação assíncrona do IndexedDB (para históricos/rotinas maiores que o localStorage)
-    const handleIdbHydrated = () => {
-      const idbRoutines = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${uid}_routines`, []);
-      if (idbRoutines.length > 0) setRoutines(idbRoutines);
-      setWorkoutItems(safeStorage.get(`alex_u_${uid}_workout`, []));
-      setLogs(safeStorage.get(`alex_u_${uid}_current_logs`, {}));
-      setHistory(safeStorage.get(`alex_u_${uid}_history_logs`, {}));
-      setSessions(safeStorage.get(`alex_u_${uid}_sessions`, []));
-      setWeeklyCompletedSets(safeStorage.get(`alex_u_${uid}_weekly_volume`, {} as Record<MuscleGroup, number>));
-      setWorkoutNotes(safeStorage.get(`alex_u_${uid}_workout_notes`, ''));
-      setMeasurements(safeStorage.get(`alex_u_${uid}_measurements`, []));
-    };
-    window.addEventListener('meutreino:idb-hydrated', handleIdbHydrated);
-
-    // Marca o ID do usuário cujos dados foram carregados na memória
-    loadedUserIdRef.current = uid;
-
-    return () => {
-      cleanupAutoSync();
-      window.removeEventListener('meutreino:remote-sync-applied', handleRemoteSync);
-      window.removeEventListener('meutreino:idb-hydrated', handleIdbHydrated);
-    };
-  }, [currentUser?.id, showToast]);
-
-  // Update sound manager mute state
-  useEffect(() => {
-    soundManager.setMuted(isMuted);
-    safeStorage.set('alex_muted', isMuted);
-  }, [isMuted]);
-
-  // Garante estritamente que a aba 'treino_ativo' só existe e pode ser acessada se houver treino iniciado
+  // Ensure active tab redirects to treino if active routine is cleared
   useEffect(() => {
     if (activeTab === 'treino_ativo' && !activeRoutineId) {
       setActiveTab('treino');
     }
   }, [activeTab, activeRoutineId]);
 
-  // Persist user-isolated settings + agrupa na janela de 5s do Supabase
-  useEffect(() => {
-    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
-    const uid = currentUser.id;
-    safeStorage.set(`alex_u_${uid}_split`, split);
-    safeStorage.set(`alex_u_${uid}_strategy`, strategy);
-    safeStorage.set(`alex_u_${uid}_ex_per_muscle`, exercisesPerMuscle);
-    safeStorage.set(`alex_u_${uid}_weekly_budget`, weeklyBudget);
-    safeStorage.set(`alex_u_${uid}_level`, level);
-    safeStorage.set(`alex_u_${uid}_equip`, equip);
-    enqueueOfflineMutation(
-      uid,
-      'settings',
-      { split, strategy, weeklyBudget, level, equip, periodizationStrategy },
-      currentUser
-    );
-  }, [split, strategy, exercisesPerMuscle, weeklyBudget, level, equip, periodizationStrategy, currentUser]);
-
-  // Persist routines + enqueue delta
-  useEffect(() => {
-    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
-    safeStorage.set(`alex_u_${currentUser.id}_routines`, routines);
-    enqueueOfflineMutation(currentUser.id, 'routines', routines, currentUser);
-  }, [routines, currentUser]);
-
-  // Persist workout items
-  useEffect(() => {
-    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
-    safeStorage.set(`alex_u_${currentUser.id}_workout`, workoutItems);
-  }, [workoutItems, currentUser]);
-
-  // Persist logs + enqueue workoutLogs in Background Sync Outbox
-  useEffect(() => {
-    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
-    safeStorage.set(`alex_u_${currentUser.id}_current_logs`, logs);
-    enqueueOfflineMutation(currentUser.id, 'currentLogs', logs, currentUser);
-    enqueueOfflineMutation(
-      currentUser.id,
-      'workoutLogs',
-      { currentLogs: logs, historyLogs: history },
-      currentUser
-    );
-  }, [logs, history, currentUser]);
-
-  // Persist workout notes + enqueue delta
-  useEffect(() => {
-    if (!currentUser) {
-      safeStorage.set('alex_guest_workout_notes', workoutNotes);
-      return;
-    }
-    if (loadedUserIdRef.current !== currentUser.id) return;
-    safeStorage.set(`alex_u_${currentUser.id}_workout_notes`, workoutNotes);
-    enqueueOfflineMutation(currentUser.id, 'workoutNotes', workoutNotes, currentUser);
-  }, [workoutNotes, currentUser]);
-
-  // Persist measurements + enqueue delta
-  useEffect(() => {
-    if (!currentUser || loadedUserIdRef.current !== currentUser.id) return;
-    safeStorage.set(`alex_u_${currentUser.id}_measurements`, measurements);
-    enqueueOfflineMutation(currentUser.id, 'measurements', measurements, currentUser);
-  }, [measurements, currentUser]);
-
-  // Auto-flush da Fila de Sincronização Offline (Delta Queue) assim que a internet retornar
-  useEffect(() => {
-    if (!currentUser?.id) return;
-    const handleOnlineFlush = () => {
-      flushOfflineMutationQueue(currentUser.id, currentUser).catch(() => {});
-    };
-    window.addEventListener('online', handleOnlineFlush);
-    return () => window.removeEventListener('online', handleOnlineFlush);
-  }, [currentUser]);
-
-  // Measurement handlers
-  const handleSaveMeasurement = useCallback((item: BodyMeasurement) => {
-    if (!currentUser) return;
-    setMeasurements((prev) => {
-      const existingIdx = prev.findIndex((m) => m.id === item.id);
-      let updated: BodyMeasurement[];
-      if (existingIdx >= 0) {
-        updated = [...prev];
-        updated[existingIdx] = item;
-      } else {
-        updated = [item, ...prev];
-      }
-      safeStorage.set(`alex_u_${currentUser.id}_measurements`, updated);
-      return updated;
-    });
-    showToast('Check-in corporal salvo com sucesso!');
-  }, [currentUser, showToast]);
-
-  const handleDeleteMeasurement = useCallback((id: string) => {
-    if (!currentUser) return;
-    setMeasurements((prev) => {
-      const updated = prev.filter((m) => m.id !== id);
-      safeStorage.set(`alex_u_${currentUser.id}_measurements`, updated);
-      return updated;
-    });
-    showToast('Registo de medição removido.');
-  }, [currentUser, showToast]);
-
-  const handleOpenAnalytics = useCallback((exerciseName?: string) => {
-    setAnalyticsExerciseName(exerciseName);
-    setIsAnalyticsOpen(true);
-  }, []);
-
-  // Handlers para criação e gerenciamento manual de treinos
-  const handleOpenCreateManualRoutine = useCallback(() => {
-    setEditingRoutine(null);
-    setIsManualWorkoutOpen(true);
-  }, []);
-
-  const handleEditRoutine = useCallback((routine: GeneratedWorkoutRoutine) => {
-    setEditingRoutine(routine);
-    setIsManualWorkoutOpen(true);
-  }, []);
-
-  const handleSaveManualRoutine = useCallback((routine: GeneratedWorkoutRoutine) => {
-    setRoutines((prev) => {
-      const stored = currentUser
-        ? safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${currentUser.id}_routines`, [])
-        : [];
-      const baseList = prev.length >= stored.length ? prev : stored;
-      const existingIdx = baseList.findIndex((r) => r.id === routine.id);
-      let updated: GeneratedWorkoutRoutine[];
-      if (existingIdx >= 0) {
-        updated = [...baseList];
-        updated[existingIdx] = {
-          ...routine,
-          version: routine.version || baseList[existingIdx].version || 1,
-          createdAt: routine.createdAt || baseList[existingIdx].createdAt || new Date().toISOString(),
-        };
-      } else {
-        const nextVersion = baseList.reduce((maxV, r) => Math.max(maxV, r.version || 1), 0) + 1;
-        const nowTs = Date.now();
-        const stampedRoutine: GeneratedWorkoutRoutine = {
-          ...routine,
-          id: routine.id ? `${routine.id}_v${nextVersion}` : `custom_routine_${nowTs}_v${nextVersion}`,
-          version: nextVersion,
-          createdAt: new Date(nowTs).toISOString(),
-        };
-        updated = [...baseList, stampedRoutine];
-      }
-      if (currentUser) {
-        safeStorage.set(`alex_u_${currentUser.id}_routines`, updated);
-        try {
-          const syncBundle = buildLocalSyncBundle(currentUser.id, currentUser);
-          syncBundle.routines = updated;
-          pushSyncBundleToSupabase(syncBundle).catch(() => {});
-        } catch {}
-      }
-      return updated;
-    });
-    showToast(`Treino "${routine.name}" salvo e acumulado na sua lista!`);
-  }, [currentUser, showToast]);
-
-  const handleDeleteRoutine = useCallback((routineId: string) => {
-    setRoutines((prev) => {
-      const updated = prev.filter((r) => r.id !== routineId);
-      if (currentUser) {
-        safeStorage.set(`alex_u_${currentUser.id}_routines`, updated);
-        try {
-          const syncBundle = buildLocalSyncBundle(currentUser.id, currentUser);
-          syncBundle.routines = updated;
-          pushSyncBundleToSupabase(syncBundle).catch(() => {});
-        } catch {}
-      } else {
-        safeStorage.set('alex_guest_routines', updated);
-      }
-      return updated;
-    });
-
-    // Se o treino deletado era o treino ativo, limpa o estado ativo
-    setActiveRoutineId((curr) => {
-      if (curr === routineId) {
-        if (currentUser) {
-          safeStorage.remove(`alex_u_${currentUser.id}_active_routine_id`);
-          safeStorage.remove(`alex_u_${currentUser.id}_active_routine_started_at`);
-        }
-        return null;
-      }
-      return curr;
-    });
-
-    showToast('Treino removido da lista com sucesso.');
-  }, [currentUser, showToast]);
-
-  // Geração de rotinas da semana (ACUMULA com versionamento e timestamp exclusivo sem sobrepor existentes)
-  const handleGenerateWeeklyRoutines = useCallback((forcedSplit?: SplitOption) => {
-    if (!currentUser) return;
-    const splitToUse: SplitOption = forcedSplit || split || currentUser.preferredSplit || (
-      currentUser.focus === 'glutes'
-        ? 'lower'
-        : currentUser.frequency === 3 || currentUser.frequency === 6
-        ? 'ppl'
-        : currentUser.frequency === 5
-        ? 'abcde'
-        : 'upper_lower'
-    );
-    const newRoutines = generateWeeklyRoutines({
-      user: currentUser,
-      split: splitToUse,
-      strategy,
-      manualWeeklySets: weeklyBudget,
-      level,
-      equip,
-      restSeconds,
-      customMuscleBudgets: currentUser.muscleBudgets,
-      periodizationStrategy,
-    });
-    setRoutines((prev) => {
-      const stored = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${currentUser.id}_routines`, []);
-      const mergedMap = new Map<string, GeneratedWorkoutRoutine>();
-      stored.forEach((r) => mergedMap.set(r.id, r));
-      prev.forEach((r) => mergedMap.set(r.id, r));
-      const existingRoutines = Array.from(mergedMap.values());
-
-      const nextVersion = existingRoutines.reduce((maxV, r) => Math.max(maxV, r.version || 1), 0) + 1;
-      const nowTs = Date.now();
-      const hasExisting = existingRoutines.length > 0;
-
-      const stampedNewRoutines: GeneratedWorkoutRoutine[] = newRoutines.map((r, idx) => ({
-        ...r,
-        id: `routine_${r.letter.toLowerCase()}_v${nextVersion}_${nowTs}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
-        name: hasExisting ? `${r.name} • v${nextVersion}` : r.name,
-        version: nextVersion,
-        createdAt: new Date(nowTs + idx).toISOString(),
-      }));
-
-      // Acumula os novos treinos preservando 100% dos treinos anteriores
-      const updated = [...existingRoutines, ...stampedNewRoutines];
-      safeStorage.set(`alex_u_${currentUser.id}_routines`, updated);
-
-      try {
-        const syncBundle = buildLocalSyncBundle(currentUser.id, currentUser);
-        syncBundle.routines = updated;
-        pushSyncBundleToSupabase(syncBundle).catch(() => {});
-      } catch {}
-
-      return updated;
-    });
-    showToast(`+${newRoutines.length} novos treinos acumulados na sua lista (${weeklyBudget} séries/sem)!`);
-  }, [currentUser, split, strategy, weeklyBudget, level, equip, restSeconds, periodizationStrategy, showToast]);
-
-  // Geração de Treino Rápido (Aleatório balanceado Full Body / Dobradiça — sempre acumula com versão única)
-  const handleGenerateQuickWorkout = useCallback(() => {
-    if (!currentUser) return;
-    const quickRoutine = generateQuickWorkoutRoutine({
-      user: currentUser,
-      equip,
-      restSeconds,
-    });
-    setRoutines((prev) => {
-      const stored = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${currentUser.id}_routines`, []);
-      const mergedMap = new Map<string, GeneratedWorkoutRoutine>();
-      stored.forEach((r) => mergedMap.set(r.id, r));
-      prev.forEach((r) => mergedMap.set(r.id, r));
-      const existingRoutines = Array.from(mergedMap.values());
-
-      const nextVersion = existingRoutines.reduce((maxV, r) => Math.max(maxV, r.version || 1), 0) + 1;
-      const nowTs = Date.now();
-      const stampedQuick: GeneratedWorkoutRoutine = {
-        ...quickRoutine,
-        id: `quick_routine_v${nextVersion}_${nowTs}_${Math.random().toString(36).slice(2, 6)}`,
-        name: `${quickRoutine.name} #${nextVersion}`,
-        version: nextVersion,
-        createdAt: new Date(nowTs).toISOString(),
-      };
-
-      const updated = [...existingRoutines, stampedQuick];
-      safeStorage.set(`alex_u_${currentUser.id}_routines`, updated);
-
-      try {
-        const syncBundle = buildLocalSyncBundle(currentUser.id, currentUser);
-        syncBundle.routines = updated;
-        pushSyncBundleToSupabase(syncBundle).catch(() => {});
-      } catch {}
-
-      return updated;
-    });
-    showToast(`⚡ Treino Rápido acumulado na sua lista de treinos!`);
-  }, [currentUser, equip, restSeconds, showToast]);
-
-  // Compartilhar treino formatado
-  const handleShareRoutine = useCallback((routine: GeneratedWorkoutRoutine) => {
-    const shareText = `🏋️ Treino ${routine.letter} - ${routine.name}\n` +
-      routine.items.map(i => `• ${i.exercise.name}: ${i.sets} séries × ${i.reps} reps (RIR: ${i.rir})`).join('\n') +
-      `\n\nCriado no MeuTreino Pro`;
-    if (navigator.share) {
-      navigator.share({ title: routine.name, text: shareText }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(shareText).then(() => {
-        showToast('Treino copiado para a área de transferência!');
-      });
-    }
-  }, [showToast]);
-
-  // Excluir Perfil com limpeza de storage e logout imediato (nunca logar automaticamente em outro usuário)
-  const handleDeleteProfile = useCallback((userId: string) => {
-    authStorage.deleteUser(userId);
-    authStorage.logout();
-    setCurrentUser(null);
-    setIsProfileOpen(false);
-    setIsAuthOpen(true);
-    showToast('Perfil excluído e sessão encerrada com segurança.');
-  }, [showToast]);
-
-  // Trocar Perfil exige desconexão imediata para proteger os dados da conta atual
-  const handleSwitchProfile = useCallback(() => {
-    authStorage.logout();
-    setCurrentUser(null);
-    setIsProfileOpen(false);
-    setIsAuthOpen(true);
-    showToast('Sessão bloqueada. Faça login para acessar outro perfil.');
-  }, [showToast]);
-
-  // Iniciar treino selecionado
-  const handleStartWorkout = useCallback((routine: GeneratedWorkoutRoutine) => {
-    if (!currentUser) return;
-    const uid = currentUser.id;
-    const now = Date.now();
-    setActiveRoutineId(routine.id);
-    setActiveRoutineStartedAt(now);
-    setWorkoutItems(routine.items);
-    setLogs({});
-    safeStorage.set(`alex_u_${uid}_active_routine_id`, routine.id);
-    safeStorage.set(`alex_u_${uid}_active_routine_started_at`, now);
-    safeStorage.set(`alex_u_${uid}_workout`, routine.items);
-    safeStorage.set(`alex_u_${uid}_current_logs`, {});
-    setActiveTab('treino_ativo');
-    showToast(`Treino ${routine.letter} iniciado! Bom treino!`);
-  }, [currentUser, showToast]);
-
-  // Descartar/Cancelar treino em andamento (confirmação já feita no componente de visualização)
-  const handleDiscardActiveWorkout = useCallback(() => {
-    if (!currentUser) return;
-    const uid = currentUser.id;
-    setActiveRoutineId(null);
-    setActiveRoutineStartedAt(null);
-    setLogs({});
-    setWorkoutNotes('');
-    safeStorage.remove(`alex_u_${uid}_active_routine_id`);
-    safeStorage.remove(`alex_u_${uid}_active_routine_started_at`);
-    safeStorage.remove(`alex_u_${uid}_current_logs`);
-    safeStorage.remove(`alex_u_${uid}_workout_notes`);
-    setActiveTab('treino');
-    showToast('Treino em andamento cancelado.');
-  }, [currentUser, showToast]);
-
-  // Identificação do treino ativo
-  const activeRoutine = useMemo(() => {
-    if (!activeRoutineId) return null;
-    return routines.find((r) => r.id === activeRoutineId) || (routines.length > 0 ? routines[0] : null);
-  }, [routines, activeRoutineId]);
-
-  const handleUpdateRest = useCallback((index: number, newRest: number) => {
-    setWorkoutItems((prev) => {
-      const updated = [...prev];
-      if (updated[index]) {
-        updated[index] = {
-          ...updated[index],
-          rest: Math.max(5, newRest),
-        };
-      }
-      return updated;
-    });
-  }, []);
-
-  const handleSelectPeriodizationStrategy = useCallback((phase: PeriodizationStrategy) => {
-    setPeriodizationStrategy(phase);
-    const phaseCfg = PERIODIZATION_PHASES[phase] || PERIODIZATION_PHASES.hypertrophy;
-    if (currentUser) {
-      safeStorage.set(`alex_u_${currentUser.id}_periodization_strategy`, phase);
-    }
-    setWorkoutItems((prev) =>
-      prev.map((item) => ({
-        ...item,
-        reps: phaseCfg.repRange,
-        rir: phaseCfg.rirTarget,
-      }))
-    );
-    showToast(`Meta de repetições ajustada: ${phaseCfg.label} (${phaseCfg.repBadge})`);
-  }, [currentUser, showToast]);
-
-  // Log handlers (Sincronização bidirecional automática de RPE 6-10 e RIR 0-4 + Técnica de Intensidade + Delta Sync)
-  const handleUpdateLog = useCallback((key: string, field: 'weight' | 'reps' | 'rpe' | 'rir' | 'setType', val: string) => {
-    setLogs((prev) => {
-      const current = prev[key] || { weight: '', reps: '', done: false };
-      const updated = { ...current, [field]: val };
-
-      if (field === 'rpe') {
-        updated.rir = rpeToRir(val);
-      } else if (field === 'rir') {
-        updated.rpe = rirToRpe(val);
-      }
-
-      if (currentUser?.id) {
-        enqueueOfflineMutation(currentUser.id, 'currentLogs', { [key]: updated }, currentUser);
-      }
-
-      return {
-        ...prev,
-        [key]: updated,
-      };
-    });
-  }, [currentUser]);
-
-  const handleToggleSet = useCallback((key: string, restSec: number) => {
-    setLogs((prev) => {
-      const current = prev[key] || { weight: '', reps: '', done: false };
-      const nextDone = !current.done;
-
-      if (nextDone) {
-        soundManager.vibrateSetComplete();
-        if (restSec > 0) {
-          setTimerRestSeconds(restSec);
-          setTimerTriggerKey((k) => k + 1);
-          showToast(`Série concluída! Descanso de ${restSec}s iniciado.`);
-        } else {
-          showToast('⚡ 1º exercício do Bi-set concluído! Vá direto para o 2º exercício sem descanso!');
-        }
-      }
-
-      const nextEntry = {
-        ...current,
-        done: nextDone,
-        timestamp: Date.now(),
-      };
-
-      if (currentUser?.id) {
-        enqueueOfflineMutation(currentUser.id, 'currentLogs', { [key]: nextEntry }, currentUser);
-      }
-
-      return {
-        ...prev,
-        [key]: nextEntry,
-      };
-    });
-  }, [showToast, currentUser]);
-
-  const handleAddSet = useCallback((itemIndex: number) => {
-    setWorkoutItems((prev) => {
-      const copy = [...prev];
-      copy[itemIndex] = { ...copy[itemIndex], sets: copy[itemIndex].sets + 1 };
-      return copy;
-    });
-    showToast('Série adicional adicionada.');
-  }, [showToast]);
-
-  const handleRemoveSet = useCallback((itemIndex: number) => {
-    setWorkoutItems((prev) => {
-      const copy = [...prev];
-      if (copy[itemIndex].sets > 1) {
-        copy[itemIndex] = { ...copy[itemIndex], sets: copy[itemIndex].sets - 1 };
-      }
-      return copy;
-    });
-  }, []);
-
-  // Exercise reordering (Master Controls + Drag & Drop)
-  const syncActiveRoutineItems = useCallback((updatedItems: WorkoutItem[]) => {
-    if (!activeRoutineId) return;
-    setRoutines((prev) =>
-      prev.map((r) => (r.id === activeRoutineId ? { ...r, items: updatedItems } : r))
-    );
-  }, [activeRoutineId]);
-
-  const handleMoveUp = useCallback((index: number) => {
-    if (index <= 0) return;
-    setWorkoutItems((prev) => {
-      const copy = [...prev];
-      const temp = copy[index];
-      copy[index] = copy[index - 1];
-      copy[index - 1] = temp;
-      syncActiveRoutineItems(copy);
-      return copy;
-    });
-  }, [syncActiveRoutineItems]);
-
-  const handleMoveDown = useCallback((index: number) => {
-    setWorkoutItems((prev) => {
-      if (index >= prev.length - 1) return prev;
-      const copy = [...prev];
-      const temp = copy[index];
-      copy[index] = copy[index + 1];
-      copy[index + 1] = temp;
-      syncActiveRoutineItems(copy);
-      return copy;
-    });
-  }, [syncActiveRoutineItems]);
-
-  const handleReorderExercises = useCallback((fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex) return;
-    setWorkoutItems((prev) => {
-      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) return prev;
-      const copy = [...prev];
-      const [moved] = copy.splice(fromIndex, 1);
-      copy.splice(toIndex, 0, moved);
-      syncActiveRoutineItems(copy);
-      return copy;
-    });
-    showToast('Ordem dos exercícios atualizada!');
-  }, [syncActiveRoutineItems, showToast]);
-
-  const handleReorderRoutines = useCallback((fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex) return;
-    setRoutines((prev) => {
-      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) return prev;
-      const copy = [...prev];
-      const [moved] = copy.splice(fromIndex, 1);
-      copy.splice(toIndex, 0, moved);
-      return copy;
-    });
-    showToast('Ordem dos treinos atualizada!');
-  }, [showToast]);
-
-  const handleDeleteExercise = useCallback((index: number) => {
-    setWorkoutItems((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      syncActiveRoutineItems(next);
-      return next;
-    });
-    showToast('Exercício removido do treino.');
-  }, [syncActiveRoutineItems, showToast]);
-
-  const handleSelectSwapExercise = useCallback((index: number, newExercise: Exercise) => {
-    setWorkoutItems((prev) => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], exercise: newExercise };
-      syncActiveRoutineItems(copy);
-      return copy;
-    });
-    showToast(`Substituído para ${newExercise.name}`);
-  }, [syncActiveRoutineItems, showToast]);
-
-  const handleAddCustomExercise = useCallback((newItem: WorkoutItem) => {
-    setWorkoutItems((prev) => {
-      const next = [...prev, newItem];
-      syncActiveRoutineItems(next);
-      return next;
-    });
-    showToast(`Exercício "${newItem.exercise.name}" adicionado ao treino!`);
-  }, [syncActiveRoutineItems, showToast]);
-
-  // Volume Dashboard Calculations
-  const activeWorkoutMuscles = useMemo(() => {
-    return Array.from(new Set(workoutItems.map((item) => item.muscleKey)));
-  }, [workoutItems]);
-
-  const completedSetsByMuscle = useMemo(() => {
-    // Início da semana atual (Segunda-feira 00:00:00 local)
-    const now = new Date();
-    const day = now.getDay();
-    const diff = (day === 0 ? -6 : 1) - day;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + diff);
-    monday.setHours(0, 0, 0, 0);
-
-    const counts: Record<MuscleGroup, number> = {} as Record<MuscleGroup, number>;
-
-    // 1. Soma as séries concluídas nas sessões da semana atual
-    const thisWeekSessions = sessions.filter((s) => new Date(s.date) >= monday);
-    thisWeekSessions.forEach((sess) => {
-      sess.completedExercises?.forEach((ex) => {
-        if (ex.muscleKey) {
-          counts[ex.muscleKey] = (counts[ex.muscleKey] || 0) + (ex.sets?.length || 0);
-        }
-      });
-    });
-
-    // 2. Soma as séries já marcadas como concluídas no treino em andamento
-    workoutItems.forEach((item) => {
-      for (let s = 1; s <= item.sets; s++) {
-        const key = `${item.exercise.id}_${s}`;
-        if (logs[key]?.done) {
-          counts[item.muscleKey] = (counts[item.muscleKey] || 0) + 1;
-        }
-      }
-    });
-
-    return counts;
-  }, [sessions, workoutItems, logs]);
-
-  // Overall progress
-  const totalSetsInWorkout = useMemo(() => {
-    return workoutItems.reduce((acc, item) => acc + item.sets, 0);
-  }, [workoutItems]);
-
-  const totalCompletedSetsInWorkout = useMemo(() => {
-    let count = 0;
-    workoutItems.forEach((item) => {
-      for (let s = 1; s <= item.sets; s++) {
-        const key = `${item.exercise.id}_${s}`;
-        if (logs[key]?.done) count++;
-      }
-    });
-    return count;
-  }, [workoutItems, logs]);
-
-  const activeExerciseName = useMemo(() => {
-    if (!activeRoutine) return undefined;
-    const pendingItem =
-      workoutItems.find((it) => {
-        for (let s = 1; s <= it.sets; s++) {
-          if (!logs[`${it.exercise.id}_${s}`]?.done) return true;
-        }
-        return false;
-      }) || workoutItems[0];
-    return pendingItem?.exercise.name || activeRoutine.name;
-  }, [activeRoutine, workoutItems, logs]);
-
-  // Finish and save session
-  const finishAndSaveSession = () => {
-    if (!currentUser) return;
-    const uid = currentUser.id;
-    // Merge latest persisted logs from safeStorage with React state so zero keystrokes are lost
-    const storedLogs = safeStorage.get<WorkoutLogs>(`alex_u_${uid}_current_logs`, {});
-    const finalLogs: WorkoutLogs = { ...storedLogs, ...logs };
-    Object.keys(storedLogs).forEach((k) => {
-      if (storedLogs[k] && logs[k]) {
-        finalLogs[k] = {
-          ...logs[k],
-          ...storedLogs[k],
-          done: logs[k].done || storedLogs[k].done,
-        };
-      }
-    });
-
-    // Auto-mark any set that has weight filled as completed (fallback to item reps if empty)
-    workoutItems.forEach((item) => {
-      for (let s = 1; s <= item.sets; s++) {
-        const key = `${item.exercise.id}_${s}`;
-        const log = finalLogs[key];
-        if (log && !log.done && parseFloat(log.weight) > 0) {
-          const repsVal = parseInt(log.reps, 10) || parseInt(item.reps, 10) || 10;
-          finalLogs[key] = { ...log, reps: repsVal.toString(), done: true };
-        }
-      }
-    });
-
-    const completedKeys = Object.keys(finalLogs).filter((k) => finalLogs[k].done);
-    if (completedKeys.length === 0) {
-      showToast('Preencha ao menos uma série com carga e repetições antes de salvar a sessão.');
-      return;
-    }
-
-    const totalVolumeLoad = calculateVolumeLoad(finalLogs);
-
-    // Build completed exercise summary
-    const completedExercisesSummary = workoutItems
-      .map((item) => {
-        const itemSets: { weight: number; reps: number; rpe?: string; rir?: string }[] = [];
-        for (let s = 1; s <= item.sets; s++) {
-          const key = `${item.exercise.id}_${s}`;
-          if (finalLogs[key]?.done) {
-            itemSets.push({
-              weight: parseFloat(finalLogs[key].weight) || 0,
-              reps: parseInt(finalLogs[key].reps, 10) || 0,
-              rpe: finalLogs[key].rpe,
-              rir: finalLogs[key].rir,
-            });
-          }
-        }
-        return {
-          name: item.exercise.name,
-          muscleKey: item.muscleKey,
-          muscleGroup: MUSCLE_NAMES[item.muscleKey],
-          sets: itemSets,
-        };
-      })
-      .filter((ex) => ex.sets.length > 0);
-
-    const resolvedSplitName = activeRoutine
-      ? `${activeRoutine.letter} — ${activeRoutine.name}`
-      : split.toUpperCase();
-
-    const newSession: WorkoutSessionSummary = {
-      id: `session_${Date.now()}`,
-      date: new Date().toISOString(),
-      splitName: resolvedSplitName,
-      totalSets: completedKeys.length,
-      totalVolumeLoadKg: totalVolumeLoad,
-      notes: workoutNotes.trim() || undefined,
-      completedExercises: completedExercisesSummary,
-    };
-
-    const updatedSessions = [newSession, ...sessions];
-    setSessions(updatedSessions);
-    safeStorage.set(`alex_u_${uid}_sessions`, updatedSessions);
-
-    // Save logs as history for next time
-    const updatedHistory = { ...history, ...finalLogs };
-    setHistory(updatedHistory);
-    safeStorage.set(`alex_u_${uid}_history_logs`, updatedHistory);
-
-    // Accumulate weekly volume
-    const newWeeklyVolume = { ...completedSetsByMuscle };
-    setWeeklyCompletedSets(newWeeklyVolume);
-    safeStorage.set(`alex_u_${uid}_weekly_volume`, newWeeklyVolume);
-
-    // Finaliza a sessão ativa e remove o treino em andamento (a aba Treino Ativo sumirá)
-    setActiveRoutineId(null);
-    setActiveRoutineStartedAt(null);
-    setLogs({});
-    setWorkoutNotes('');
-    safeStorage.remove(`alex_u_${uid}_active_routine_id`);
-    safeStorage.remove(`alex_u_${uid}_active_routine_started_at`);
-    safeStorage.remove(`alex_u_${uid}_current_logs`);
-    safeStorage.remove(`alex_u_${uid}_workout_notes`);
-
-    soundManager.playCelebration();
-    soundManager.vibrate([150, 100, 150, 100, 300]);
-    setSummaryModalSession(newSession);
-    showToast(`🏆 Parabéns! Sessão Concluída — Volume: ${totalVolumeLoad.toLocaleString()} kg.`);
-
-    // Ativa o modo 'finish workout' no sincronizador para priorizar o upload de 'sessions', 'workoutLogs' e 'measurements'
-    // e armazena no Outbox do Background Sync API caso o usuário feche o app prematuramente após o treino
-    try {
-      syncSessionToCloud(uid, newSession).catch(() => {});
-      setFinishWorkoutSyncMode(uid, true, currentUser);
-      enqueueOfflineMutation(uid, 'sessions', updatedSessions, currentUser, { isFinishWorkout: true });
-      enqueueOfflineMutation(
-        uid,
-        'workoutLogs',
-        { currentLogs: {}, historyLogs: finalLogs },
-        currentUser,
-        { isFinishWorkout: true }
-      );
-      if (measurements.length > 0) {
-        enqueueOfflineMutation(uid, 'measurements', measurements, currentUser, { isFinishWorkout: true });
-      }
-      enqueueOfflineMutation(uid, 'historyLogs', finalLogs, currentUser, { isFinishWorkout: true });
-      stageWorkoutDataForBackgroundSync(uid, currentUser).catch(() => {});
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
-        flushOfflineMutationQueue(uid, currentUser).catch(() => {
-          const syncBundle = buildLocalSyncBundle(uid, currentUser);
-          syncBundle.sessions = updatedSessions;
-          syncBundle.workoutLogs = { currentLogs: {}, historyLogs: finalLogs };
-          pushSyncBundleToSupabase(syncBundle).catch(() => {});
-        });
-      }
-    } catch {}
-
-    setActiveTab('inicio');
-  };
-
-  // Export & Share
+  // Export and Share Helpers
   const buildExportText = () => {
     if (!workoutItems.length) return 'Nenhum treino gerado.';
     const lines = [
@@ -1290,38 +298,31 @@ export default function App() {
           throw new Error('Invalid backup structure');
         }
         if (parsed.currentLogs) {
-          setLogs(parsed.currentLogs);
           safeStorage.set(`alex_u_${uid}_current_logs`, parsed.currentLogs);
         }
         if (parsed.historyLogs) {
-          setHistory(parsed.historyLogs);
           safeStorage.set(`alex_u_${uid}_history_logs`, parsed.historyLogs);
         }
         if (Array.isArray(parsed.sessions)) {
-          setSessions(parsed.sessions);
           safeStorage.set(`alex_u_${uid}_sessions`, parsed.sessions);
         }
         if (parsed.weeklyVolume) {
-          setWeeklyCompletedSets(parsed.weeklyVolume);
           safeStorage.set(`alex_u_${uid}_weekly_volume`, parsed.weeklyVolume);
         }
         if (Array.isArray(parsed.routines)) {
-          setRoutines(parsed.routines);
           safeStorage.set(`alex_u_${uid}_routines`, parsed.routines);
         }
         if (Array.isArray(parsed.measurements)) {
-          setMeasurements(parsed.measurements);
           safeStorage.set(`alex_u_${uid}_measurements`, parsed.measurements);
         }
         if (Array.isArray(parsed.workoutItems)) {
-          setWorkoutItems(parsed.workoutItems);
           safeStorage.set(`alex_u_${uid}_workout`, parsed.workoutItems);
         }
         if (parsed.workoutNotes !== undefined) {
-          setWorkoutNotes(parsed.workoutNotes);
           safeStorage.set(`alex_u_${uid}_workout_notes`, parsed.workoutNotes);
         }
         showToast('✅ Dados do backup restaurados e salvos com sucesso!');
+        window.location.reload();
       } catch {
         showToast('⚠️ Arquivo de backup inválido ou corrompido.');
       } finally {
@@ -1329,70 +330,6 @@ export default function App() {
       }
     };
     reader.readAsText(file);
-  };
-
-  const handleResetToday = () => {
-    if (!currentUser) return;
-    const uid = currentUser.id;
-    setLogs({});
-    setWorkoutNotes('');
-    safeStorage.remove(`alex_u_${uid}_current_logs`);
-    safeStorage.remove(`alex_u_${uid}_workout_notes`);
-    showToast('Anotações de hoje foram zeradas.');
-  };
-
-
-  // Profile and Auth Actions
-  const handleAuthSuccess = (user: UserProfile) => {
-    setCurrentUser(user);
-    setIsAuthOpen(false);
-    showToast(`Bem-vindo, ${user.name}!`);
-    const targetSplit: SplitOption = user.preferredSplit || (
-      user.focus === 'glutes'
-        ? 'lower'
-        : user.frequency === 3 || user.frequency === 6
-        ? 'ppl'
-        : user.frequency === 5
-        ? 'abcde'
-        : 'upper_lower'
-    );
-    setSplit(targetSplit);
-    safeStorage.set(`alex_u_${user.id}_split`, targetSplit);
-
-    const existingRoutines = safeStorage.get<GeneratedWorkoutRoutine[]>(`alex_u_${user.id}_routines`, []);
-    if (existingRoutines.length === 0) {
-      const generated = generateWeeklyRoutines({
-        user,
-        split: targetSplit,
-        manualWeeklySets: user.weeklyBudget,
-        level: user.level || 'intermediate',
-        equip: 'full_gym',
-        restSeconds: 30,
-      });
-      setRoutines(generated);
-      safeStorage.set(`alex_u_${user.id}_routines`, generated);
-      safeStorage.set(`alex_u_${user.id}_has_init_routines`, true);
-    }
-  };
-
-  const handleLogout = () => {
-    authStorage.logout();
-    setCurrentUser(null);
-    setIsProfileOpen(false);
-    setIsAuthOpen(true);
-    showToast('Você foi desconectado.');
-  };
-
-  const handleSaveBudgets = (totalBudget: number, newBudgets: Record<MuscleGroup, number>) => {
-    if (!currentUser) return;
-    const updated = authStorage.updateProfile(currentUser.id, {
-      weeklyBudget: totalBudget,
-      muscleBudgets: newBudgets,
-    });
-    if (updated) {
-      setCurrentUser(updated);
-      showToast('Séries atualizadas com sucesso!');
-    }
   };
 
   return (
@@ -1413,10 +350,10 @@ export default function App() {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         onOpenProfile={() => setActiveTab('perfil')}
-        onOpenVolumeBudget={() => setIsBudgetOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenAnalytics={() => handleOpenAnalytics()}
         onOpenMeasurements={() => setIsMeasurementsOpen(true)}
+        onOpenVolumeBudget={() => setIsBudgetOpen(true)}
         onShare={handleShare}
         isMuted={isMuted}
         onToggleMute={() => setIsMuted(!isMuted)}
@@ -1425,7 +362,7 @@ export default function App() {
         hasActiveWorkout={!!activeRoutineId}
       />
 
-      {/* Responsive Navigation Tabs (Subheader on Desktop, Dock on Mobile - Oculto durante o treino ativo para foco total) */}
+      {/* Responsive Navigation Tabs (Subheader on Desktop, Dock on Mobile) */}
       {activeTab !== 'treino_ativo' && (
         <NavigationTabs
           activeTab={activeTab}
@@ -1439,7 +376,7 @@ export default function App() {
 
       {/* Main Container - Renders the selected Tab View */}
       <main className="max-w-6xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
-        {/* Banner Flutuante Rápido de Retorno ao Treino Ativo quando o usuário navega para outras abas */}
+        {/* Banner Flutuante Rápido de Retorno ao Treino Ativo */}
         {activeRoutine && activeTab !== 'treino_ativo' && (
           <div className="mb-4 p-3 rounded-2xl bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-teal-500/20 border border-amber-400/50 shadow-lg flex items-center justify-between gap-3 animate-fadeIn">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -1472,32 +409,34 @@ export default function App() {
           </div>
         )}
 
-        {/* ABA 1: INÍCIO (Resumo do atleta, KPIs, acompanhamento de volume e histórico detalhado) */}
+        {/* ABA 1: INÍCIO */}
         {activeTab === 'inicio' && (
-          <HomeView
-            user={currentUser}
-            sessions={sessions}
-            completedSetsByMuscle={completedSetsByMuscle}
-            activeWorkoutMuscles={activeWorkoutMuscles}
-            totalSetsInWorkout={totalSetsInWorkout}
-            totalCompletedSetsInWorkout={totalCompletedSetsInWorkout}
-            workoutNotes={workoutNotes}
-            onUpdateWorkoutNotes={setWorkoutNotes}
-            onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-            onGoToWorkout={() => {
-              if (activeRoutineId) {
-                setActiveTab('treino_ativo');
-              } else {
-                setActiveTab('treino');
-              }
-            }}
-            onViewSummary={(sess) => setSummaryModalSession(sess)}
-            onOpenAnalytics={() => handleOpenAnalytics()}
-            onOpenMeasurements={() => setIsMeasurementsOpen(true)}
-          />
+          <SectionErrorBoundary sectionName="Painel Principal">
+            <HomeView
+              user={currentUser}
+              sessions={sessions}
+              completedSetsByMuscle={completedSetsByMuscle}
+              activeWorkoutMuscles={activeWorkoutMuscles}
+              totalSetsInWorkout={totalSetsInWorkout}
+              totalCompletedSetsInWorkout={totalCompletedSetsInWorkout}
+              workoutNotes={workoutNotes}
+              onUpdateWorkoutNotes={setWorkoutNotes}
+              onOpenVolumeBudget={() => setIsBudgetOpen(true)}
+              onGoToWorkout={() => {
+                if (activeRoutineId) {
+                  setActiveTab('treino_ativo');
+                } else {
+                  setActiveTab('treino');
+                }
+              }}
+              onViewSummary={(sess) => setSummaryModalSession(sess)}
+              onOpenAnalytics={() => handleOpenAnalytics()}
+              onOpenMeasurements={() => setIsMeasurementsOpen(true)}
+            />
+          </SectionErrorBoundary>
         )}
 
-        {/* Abas Secundárias Carregadas Sob Demanda (Lazy + Suspense) */}
+        {/* Abas Secundárias Carregadas Sob Demanda */}
         <React.Suspense
           fallback={
             <div className="py-16 text-center text-xs text-slate-400 animate-pulse">
@@ -1505,104 +444,105 @@ export default function App() {
             </div>
           }
         >
-          {/* ABA 2: TREINO (Exibe os treinos acumulados e painel de geração/personalização) */}
+          {/* ABA 2: TREINO */}
           {activeTab === 'treino' && currentUser && (
-            <WorkoutListView
-              user={currentUser}
-              routines={routines}
-              activeRoutineId={activeRoutineId}
-              onStartWorkout={handleStartWorkout}
-              onCreateManualWorkout={handleOpenCreateManualRoutine}
-              onGenerateQuickWorkout={handleGenerateQuickWorkout}
-              onEditRoutine={handleEditRoutine}
-              onDeleteRoutine={handleDeleteRoutine}
-              onShareRoutine={handleShareRoutine}
-              onReorderRoutines={handleReorderRoutines}
-              split={split}
-              setSplit={setSplit}
-              strategy={strategy}
-              setStrategy={setStrategy}
-              weeklyBudget={weeklyBudget}
-              setWeeklyBudget={setWeeklyBudget}
-              level={level}
-              setLevel={setLevel}
-              equip={equip}
-              setEquip={setEquip}
-              restSeconds={restSeconds}
-              setRestSeconds={setRestSeconds}
-              onGenerateRoutines={handleGenerateWeeklyRoutines}
-              onUpdateUser={setCurrentUser}
-              periodizationStrategy={periodizationStrategy}
-              setPeriodizationStrategy={handleSelectPeriodizationStrategy}
-              onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-            />
+            <SectionErrorBoundary sectionName="Lista de Treinos">
+              <WorkoutListView
+                user={currentUser}
+                routines={routines}
+                activeRoutineId={activeRoutineId}
+                onStartWorkout={(r) => handleStartWorkout(r, () => setActiveTab('treino_ativo'))}
+                onCreateManualWorkout={handleOpenCreateManualRoutine}
+                onGenerateQuickWorkout={handleGenerateQuickWorkout}
+                onEditRoutine={handleEditRoutine}
+                onDeleteRoutine={handleDeleteRoutine}
+                onShareRoutine={handleShareRoutine}
+                onReorderRoutines={handleReorderRoutines}
+                split={split}
+                setSplit={setSplit}
+                strategy={strategy}
+                setStrategy={setStrategy}
+                weeklyBudget={weeklyBudget}
+                setWeeklyBudget={setWeeklyBudget}
+                level={level}
+                setLevel={setLevel}
+                equip={equip}
+                setEquip={setEquip}
+                restSeconds={restSeconds}
+                setRestSeconds={setRestSeconds}
+                onGenerateRoutines={handleGenerateWeeklyRoutines}
+                onUpdateUser={updateUser}
+                periodizationStrategy={periodizationStrategy}
+                setPeriodizationStrategy={handleSelectPeriodizationStrategy}
+                onOpenVolumeBudget={() => setIsBudgetOpen(true)}
+              />
+            </SectionErrorBoundary>
           )}
 
-          {/* ABA 2.5: TREINO ATIVO (Aba dinâmica: SÓ EXISTE quando um treino foi iniciado e some ao concluir ou descartar) */}
+          {/* ABA 2.5: TREINO ATIVO */}
           {activeTab === 'treino_ativo' && activeRoutine && (
-            <ActiveWorkoutView
-              routine={activeRoutine}
-              workoutItems={workoutItems}
-              logs={logs}
-              history={history}
-              sessions={sessions}
-              onOpenAnalytics={handleOpenAnalytics}
-              startedAt={activeRoutineStartedAt || Date.now()}
-              workoutNotes={workoutNotes}
-              onUpdateWorkoutNotes={setWorkoutNotes}
-              onOpenAddExercise={() => setIsAddExerciseOpen(true)}
-              onMoveUp={handleMoveUp}
-              onMoveDown={handleMoveDown}
-              onReorderExercises={handleReorderExercises}
-              onDeleteExercise={handleDeleteExercise}
-              onUpdateLog={handleUpdateLog}
-              onToggleSet={handleToggleSet}
-              onUpdateRest={handleUpdateRest}
-              onOpenWarmup={(name, weight) => setWarmupData({ isOpen: true, name, weight })}
-              onOpenSwap={(idx) =>
-                setSwapData({
-                  isOpen: true,
-                  index: idx,
-                  currentExerciseId: workoutItems[idx].exercise.id,
-                  muscleKey: workoutItems[idx].muscleKey,
-                })
-              }
-              onAddSet={handleAddSet}
-              onRemoveSet={handleRemoveSet}
-              periodizationStrategy={periodizationStrategy}
-              userFocus={currentUser?.focus}
-              onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
-              onFinishSession={finishAndSaveSession}
-              onDiscardSession={handleDiscardActiveWorkout}
-              onBackToList={() => setActiveTab('treino')}
-            />
+            <SectionErrorBoundary sectionName="Treino Ativo">
+              <ActiveWorkoutView
+                routine={activeRoutine}
+                workoutItems={workoutItems}
+                logs={logs}
+                history={history}
+                sessions={sessions}
+                onOpenAnalytics={handleOpenAnalytics}
+                startedAt={activeRoutineStartedAt || Date.now()}
+                workoutNotes={workoutNotes}
+                onUpdateWorkoutNotes={setWorkoutNotes}
+                onOpenAddExercise={() => setIsAddExerciseOpen(true)}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
+                onReorderExercises={handleReorderExercises}
+                onDeleteExercise={handleDeleteExercise}
+                onUpdateLog={handleUpdateLog}
+                onToggleSet={handleToggleSet}
+                onUpdateRest={handleUpdateRest}
+                onOpenWarmup={(name, weight) => setWarmupData({ isOpen: true, name, weight })}
+                onOpenSwap={(idx) =>
+                  setSwapData({
+                    isOpen: true,
+                    index: idx,
+                    currentExerciseId: workoutItems[idx].exercise.id,
+                    muscleKey: workoutItems[idx].muscleKey,
+                  })
+                }
+                onAddSet={handleAddSet}
+                onRemoveSet={handleRemoveSet}
+                periodizationStrategy={periodizationStrategy}
+                userFocus={currentUser?.focus}
+                onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
+                onFinishSession={() => finishAndSaveSession(() => setActiveTab('inicio'))}
+                onDiscardSession={() => handleDiscardActiveWorkout(() => setActiveTab('treino'))}
+                onBackToList={() => setActiveTab('treino')}
+              />
+            </SectionErrorBoundary>
           )}
 
-          {/* ABA: PERFIL (Metas corporais, configurações de conta, segurança e histórico) */}
+          {/* ABA: PERFIL */}
           {activeTab === 'perfil' && currentUser && (
-            <ProfileView
-              user={currentUser}
-              sessions={sessions}
-              onUpdateUser={setCurrentUser}
-              onLogout={handleLogout}
-              onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-              onExportBackup={handleExportBackup}
-              onImportBackup={handleImportBackup}
-              onViewSummary={(sess) => setSummaryModalSession(sess)}
-              onClearHistory={() => {
-                if (!currentUser) return;
-                setSessions([]);
-                safeStorage.remove(`alex_u_${currentUser.id}_sessions`);
-                showToast('Histórico do perfil foi apagado.');
-              }}
-              onDeleteProfile={handleDeleteProfile}
-              onSwitchProfile={handleSwitchProfile}
-            />
+            <SectionErrorBoundary sectionName="Perfil">
+              <ProfileView
+                user={currentUser}
+                sessions={sessions}
+                onUpdateUser={updateUser}
+                onLogout={handleLogout}
+                onOpenVolumeBudget={() => setIsBudgetOpen(true)}
+                onExportBackup={handleExportBackup}
+                onImportBackup={handleImportBackup}
+                onViewSummary={(sess) => setSummaryModalSession(sess)}
+                onClearHistory={clearHistory}
+                onDeleteProfile={handleDeleteProfile}
+                onSwitchProfile={handleSwitchProfile}
+              />
+            </SectionErrorBoundary>
           )}
         </React.Suspense>
       </main>
 
-      {/* Floating HUD Rest Timer (com MediaSession API para Lockscreen & Smartwatch) */}
+      {/* Floating HUD Rest Timer */}
       <RestTimerDock
         initialSeconds={timerRestSeconds}
         triggerKey={timerTriggerKey}
@@ -1611,7 +551,7 @@ export default function App() {
         activeExerciseName={activeExerciseName}
       />
 
-      {/* Modals (Code Split via React.lazy + Suspense e montados sob demanda) */}
+      {/* Modals */}
       <AuthModal
         isOpen={isAuthOpen}
         onSuccess={handleAuthSuccess}
@@ -1631,7 +571,7 @@ export default function App() {
             isOpen={isProfileOpen}
             onClose={() => setIsProfileOpen(false)}
             user={currentUser}
-            onUpdateUser={setCurrentUser}
+            onUpdateUser={updateUser}
             onLogout={handleLogout}
             onOpenVolumeBudget={() => setIsBudgetOpen(true)}
           />
@@ -1673,12 +613,7 @@ export default function App() {
               setIsHistoryOpen(false);
               setSummaryModalSession(sess);
             }}
-            onClearHistory={() => {
-              if (!currentUser) return;
-              setSessions([]);
-              safeStorage.remove(`alex_u_${currentUser.id}_sessions`);
-              showToast('Histórico deste perfil foi apagado.');
-            }}
+            onClearHistory={clearHistory}
           />
         )}
 
@@ -1735,5 +670,31 @@ export default function App() {
         )}
       </React.Suspense>
     </div>
+  );
+}
+
+export default function App() {
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage((curr) => (curr === msg ? null : curr));
+      toastTimerRef.current = null;
+    }, 2800);
+  }, []);
+
+  return (
+    <AuthProvider onShowToast={showToast}>
+      <HistoryProvider onShowToast={showToast}>
+        <WorkoutProvider onShowToast={showToast}>
+          <AppContent toastMessage={toastMessage} showToast={showToast} />
+        </WorkoutProvider>
+      </HistoryProvider>
+    </AuthProvider>
   );
 }
