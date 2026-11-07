@@ -121,13 +121,11 @@ export const MuscleSymmetryRadar: React.FC<MuscleSymmetryRadarProps> = ({
           exLog.sets.forEach((s) => {
             const w = Number(s.weight) || 0;
             const r = Number(s.reps) || 0;
-            const rir = s.rir !== undefined && s.rir !== '' ? parseFloat(s.rir) : 1;
 
             stats[muscle].sets += 1;
             if (w > 0 && r > 0) {
               stats[muscle].volumeKg += w * r;
-              const effReps = r + Math.max(0, isNaN(rir) ? 0 : rir);
-              const est1RM = w * (1 + effReps / 30);
+              const est1RM = w * (1 + r / 30);
               if (est1RM > stats[muscle].best1RM) {
                 stats[muscle].best1RM = Math.round(est1RM * 10) / 10;
               }

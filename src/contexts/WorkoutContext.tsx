@@ -15,9 +15,7 @@ import {
   WorkoutLogs,
   MuscleGroup,
   Exercise,
-  GeneratedWorkoutRoutine,
-  rpeToRir,
-  rirToRpe
+  GeneratedWorkoutRoutine
 } from '../types/workout';
 import { safeStorage, calculateVolumeLoad } from '../utils/storage';
 import { soundManager } from '../utils/audio';
@@ -86,7 +84,7 @@ export interface WorkoutContextType {
   handleStartWorkout: (routine: GeneratedWorkoutRoutine, onStartNav?: () => void) => void;
   handleDiscardActiveWorkout: (onCancelNav?: () => void) => void;
   finishAndSaveSession: (onFinishedNav?: () => void) => void;
-  handleUpdateLog: (key: string, field: 'weight' | 'reps' | 'rpe' | 'rir' | 'setType', val: string) => void;
+  handleUpdateLog: (key: string, field: 'weight' | 'reps' | 'setType', val: string) => void;
   handleToggleSet: (key: string, restSec: number) => void;
   handleAddSet: (itemIndex: number) => void;
   handleRemoveSet: (itemIndex: number) => void;
@@ -469,15 +467,13 @@ export const WorkoutProvider: React.FC<{
 
     const completedExercisesSummary = workoutItems
       .map((item) => {
-        const itemSets: { weight: number; reps: number; rpe?: string; rir?: string }[] = [];
+        const itemSets: { weight: number; reps: number }[] = [];
         for (let s = 1; s <= item.sets; s++) {
           const key = `${item.exercise.id}_${s}`;
           if (finalLogs[key]?.done) {
             itemSets.push({
               weight: parseFloat(finalLogs[key].weight) || 0,
               reps: parseInt(finalLogs[key].reps, 10) || 0,
-              rpe: finalLogs[key].rpe,
-              rir: finalLogs[key].rir,
             });
           }
         }
@@ -525,17 +521,10 @@ export const WorkoutProvider: React.FC<{
     onFinishedNav?.();
   }, [uid, logs, workoutItems, activeRoutine, split, workoutNotes, history, completedSetsByMuscle, addCompletedSession, onShowToast]);
 
-  const handleUpdateLog = useCallback((key: string, field: 'weight' | 'reps' | 'rpe' | 'rir' | 'setType', val: string) => {
+  const handleUpdateLog = useCallback((key: string, field: 'weight' | 'reps' | 'setType', val: string) => {
     setLogs((prev) => {
       const current = prev[key] || { weight: '', reps: '', done: false };
       const updated = { ...current, [field]: val };
-
-      if (field === 'rpe') {
-        updated.rir = rpeToRir(val);
-      } else if (field === 'rir') {
-        updated.rpe = rirToRpe(val);
-      }
-
       return {
         ...prev,
         [key]: updated,
@@ -543,20 +532,18 @@ export const WorkoutProvider: React.FC<{
     });
   }, []);
 
-  const handleToggleSet = useCallback((key: string, restSec: number) => {
+  const handleToggleSet = useCallback((key: string, restSec?: number) => {
     setLogs((prev) => {
       const current = prev[key] || { weight: '', reps: '', done: false };
       const nextDone = !current.done;
 
       if (nextDone) {
         soundManager.vibrateSetComplete();
-        if (restSec > 0) {
-          setTimerRestSeconds(restSec);
-          setTimerTriggerKey((k) => k + 1);
-          onShowToast(`Série concluída! Descanso de ${restSec}s iniciado.`);
-        } else {
-          onShowToast('⚡ 1º exercício do Bi-set concluído! Vá direto para o 2º exercício sem descanso!');
-        }
+        const exerciseId = key.split('_')[0];
+        const matchItem = workoutItems.find((it) => it.exercise.id === exerciseId);
+        const restDuration = restSec && restSec > 0 ? restSec : (matchItem?.rest || 60);
+        setTimerRestSeconds(restDuration);
+        setTimerTriggerKey((prev) => prev + 1);
       }
 
       const nextEntry = {
@@ -570,7 +557,7 @@ export const WorkoutProvider: React.FC<{
         [key]: nextEntry,
       };
     });
-  }, [onShowToast]);
+  }, [workoutItems]);
 
   const handleAddSet = useCallback((itemIndex: number) => {
     setWorkoutItems((prev) => {
@@ -691,7 +678,6 @@ export const WorkoutProvider: React.FC<{
       prev.map((item) => ({
         ...item,
         reps: phaseCfg.repRange,
-        rir: phaseCfg.rirTarget,
       }))
     );
     onShowToast(`Meta de repetições ajustada: ${phaseCfg.label} (${phaseCfg.repBadge})`);
@@ -779,7 +765,7 @@ export const WorkoutProvider: React.FC<{
 
   const handleShareRoutine = useCallback((routine: GeneratedWorkoutRoutine) => {
     const shareText = `🏋️ Treino ${routine.letter} - ${routine.name}\n` +
-      routine.items.map(i => `• ${i.exercise.name}: ${i.sets} séries × ${i.reps} reps (RIR: ${i.rir})`).join('\n') +
+      routine.items.map(i => `• ${i.exercise.name}: ${i.sets} séries × ${i.reps} reps`).join('\n') +
       `\n\nCriado no MeuTreino Pro`;
     if (navigator.share) {
       navigator.share({ title: routine.name, text: shareText }).catch(() => {});

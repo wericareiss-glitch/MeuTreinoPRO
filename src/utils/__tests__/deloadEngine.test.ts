@@ -64,34 +64,28 @@ describe('deloadEngine', () => {
       expect(result.reasons.length).toBeGreaterThan(0);
     });
 
-    it('detects high RPE 9-10 density (> 45% of sets) in recent sessions', () => {
-      const heavySession: WorkoutSessionSummary = {
-        id: 's-heavy',
+    it('detects high volume density in recent sessions', () => {
+      const heavySessions: WorkoutSessionSummary[] = Array.from({ length: 6 }, (_, i) => ({
+        id: `s-heavy-${i}`,
         splitName: 'Treino Intenso',
         date: new Date().toISOString(),
         totalVolumeLoadKg: 8000,
-        totalSets: 5,
+        totalSets: 20,
         completedExercises: [
           {
             name: 'Supino',
             muscleGroup: 'Peito',
             muscleKey: 'chest',
-            sets: [
-              { weight: 100, reps: 6, rpe: '10' },
-              { weight: 100, reps: 6, rpe: '9' },
-              { weight: 100, reps: 5, rpe: '9' },
-              { weight: 90, reps: 6, rpe: '9' },
-              { weight: 90, reps: 6, rpe: '8' },
-            ],
+            sets: Array.from({ length: 20 }, () => ({ weight: 100, reps: 6 })),
           },
         ],
-      };
+      }));
 
-      const result = analyzeFatigueAndDeload(baseUser, [heavySession], {});
+      const result = analyzeFatigueAndDeload(baseUser, heavySessions, {});
 
-      expect(result.highRpeSetsCount).toBe(4); // 4 out of 5 sets with RPE >= 9 (80%)
+      expect(result.totalLoggedSets).toBe(120);
       expect(result.fatigueScore).toBeGreaterThanOrEqual(45); // baseline 20 + 25
-      expect(result.reasons.some((r) => r.includes('RPE 9-10'))).toBe(true);
+      expect(result.reasons.some((r) => r.includes('densidade de volume'))).toBe(true);
     });
   });
 });

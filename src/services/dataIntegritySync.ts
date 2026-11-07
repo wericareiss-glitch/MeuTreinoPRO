@@ -145,8 +145,6 @@ function rebuildHistoryLogsFromSessions(sessions: WorkoutSessionSummary[]): Work
         history[key] = {
           weight: set.weight?.toString() || '0',
           reps: set.reps?.toString() || '0',
-          rpe: set.rpe,
-          rir: set.rir,
           done: true,
           timestamp: extractTimestamp(session),
         };

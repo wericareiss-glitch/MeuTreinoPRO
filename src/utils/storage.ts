@@ -434,28 +434,18 @@ export function calculateVolumeLoad(logs: WorkoutLogs): number {
 }
 
 /**
- * Estimates 1RM (One Rep Max) using Epley formula adjusted for RPE/RIR
+ * Estimates 1RM (One Rep Max) using standard Epley formula
  */
 export function calculate1RM(
   weight: string | number,
-  reps: string | number,
-  rpe?: string | number
+  reps: string | number
 ): number | null {
   const w = typeof weight === 'number' ? weight : parseFloat(weight);
   const r = typeof reps === 'number' ? reps : parseInt(reps, 10);
   if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) return null;
 
-  let rir = 0;
-  if (rpe !== undefined && rpe !== '') {
-    const rpeNum = typeof rpe === 'number' ? rpe : parseFloat(rpe);
-    if (!isNaN(rpeNum) && rpeNum >= 5 && rpeNum <= 10) {
-      rir = Math.max(0, 10 - rpeNum);
-    }
-  }
-
-  const effectiveReps = r + rir;
-  if (effectiveReps <= 1) return Math.round(w * 10) / 10;
-  const est = w * (1 + effectiveReps / 30);
+  if (r <= 1) return Math.round(w * 10) / 10;
+  const est = w * (1 + r / 30);
   return Math.round(est * 10) / 10;
 }
 
@@ -464,29 +454,24 @@ export function calculate1RM(
  */
 export function calculate6RM(
   weight: string | number,
-  reps: string | number,
-  rpe?: string | number
+  reps: string | number
 ): number | null {
-  const oneRm = calculate1RM(weight, reps, rpe);
+  const oneRm = calculate1RM(weight, reps);
   if (!oneRm || oneRm <= 0) return null;
   const sixRm = oneRm / (1 + 6 / 30);
   return Math.round(sixRm * 2) / 2;
 }
 
 /**
- * Estimates recommended weight for the next set based on current weight, reps, and RPE
+ * Estimates recommended weight for the next set based on current weight and reps
  */
 export function estimateNextSetWeight(
   currentWeight: number,
   currentReps: number,
-  currentRpe: number,
-  targetReps = currentReps,
-  targetRpe = 8
+  targetReps = currentReps
 ): number | null {
-  const oneRm = calculate1RM(currentWeight, currentReps, currentRpe);
+  const oneRm = calculate1RM(currentWeight, currentReps);
   if (!oneRm || oneRm <= 0) return null;
-  const targetRir = Math.max(0, 10 - targetRpe);
-  const effectiveTargetReps = Math.max(1, targetReps + targetRir);
-  const nextWeight = oneRm / (1 + effectiveTargetReps / 30);
+  const nextWeight = oneRm / (1 + Math.max(1, targetReps) / 30);
   return Math.round(nextWeight * 2) / 2;
 }

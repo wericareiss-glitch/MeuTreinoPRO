@@ -218,14 +218,13 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
 
     workoutItems.forEach((item, idx) => {
       lines.push(`${idx + 1}. *${item.exercise.name}* (${MUSCLE_NAMES[item.muscleKey]})`);
-      lines.push(`• Séries: ${item.sets} x ${item.reps} | ${item.rir} | Descanso: ${item.rest}s`);
+      lines.push(`• Séries: ${item.sets} x ${item.reps} | Descanso: ${item.rest}s`);
       
       const loggedSets: string[] = [];
       for (let s = 1; s <= item.sets; s++) {
         const k = `${item.exercise.id}_${s}`;
         if (logs[k]?.done) {
-          const rpeBadge = logs[k].rpe ? ` @RPE ${logs[k].rpe}` : '';
-          loggedSets.push(`S${s}: ${logs[k].weight || 0}kg x ${logs[k].reps || 0}${rpeBadge}`);
+          loggedSets.push(`S${s}: ${logs[k].weight || 0}kg x ${logs[k].reps || 0}`);
         }
       }
       if (loggedSets.length > 0) {

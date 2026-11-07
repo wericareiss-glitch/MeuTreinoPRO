@@ -8,8 +8,6 @@ import { createPortal } from 'react-dom';
 import { Sparkles, HelpCircle, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export type TechnicalTermKey =
-  | 'RPE'
-  | 'RIR'
   | 'SERIES'
   | 'REPS'
   | '1RM'
@@ -29,36 +27,6 @@ interface TermMetadata {
 }
 
 export const TECHNICAL_TERMS_DICTIONARY: Record<TechnicalTermKey, TermMetadata> = {
-  RPE: {
-    code: 'RPE',
-    title: 'RPE (Percepção Subjetiva de Esforço · 6 a 10)',
-    shortSubtitle: 'Mede o quão perto do limite você terminou a série',
-    conciseExplanation:
-      'Escala de 6 a 10 que traduz o esforço real da série. RPE 10 significa esforço máximo (0 repetições sobrando); RPE 8 significa que você parou com 2 repetições na reserva.',
-    technicalFailureGuide:
-      'Como sentir a Falha Técnica no RPE: A falha técnica acontece quando a velocidade de subida (concêntrica) cai drasticamente e você sente que, se tentar mais uma repetição, precisará "roubar" com o corpo ou desalinhar a articulação.',
-    practicalExamples: [
-      'RPE 8 (Ideal p/ maioria das séries): As últimas 2 reps ficam lentas, mas saem limpas.',
-      'RPE 9 (Quase no limite): A barra quase para no meio do caminho; caberia só mais 1 rep.',
-      'RPE 10 (Falha Técnica): Última repetição possível com postura 100% correta.',
-    ],
-    accentColor: 'text-sky-400 border-sky-500/40',
-  },
-  RIR: {
-    code: 'RIR',
-    title: 'RIR (Repetições na Reserva · 0 a 4)',
-    shortSubtitle: 'Quantas repetições limpas ainda cabiam antes de travar',
-    conciseExplanation:
-      'Indica quantas repetições completas você ainda conseguiria fazer com boa postura antes de atingir a falha. É o inverso direto do RPE (RIR = 10 - RPE).',
-    technicalFailureGuide:
-      'Como identificar seu RIR real: Observe a perda involuntária de velocidade da carga. Quando o músculo começa a queimar intensamente e a subida demora o dobro da primeira repetição, você está a 1 ou 2 repetições da falha técnica (RIR 1–2).',
-    practicalExamples: [
-      'RIR 2: Movimento exige foco total, mas sem tremedeira ou perda de estabilidade.',
-      'RIR 1: A repetição sobe "arrastada" — qualquer tentativa além da próxima falharia.',
-      'RIR 0 (Falha Técnica): Você encerra porque uma próxima repetição encurtaria a amplitude.',
-    ],
-    accentColor: 'text-amber-400 border-amber-500/40',
-  },
   SERIES: {
     code: 'SERIES',
     title: 'Séries (Sets de Trabalho)',
@@ -66,7 +34,7 @@ export const TECHNICAL_TERMS_DICTIONARY: Record<TechnicalTermKey, TermMetadata> 
     conciseExplanation:
       'Cada bloco de repetições seguido por um período de descanso. Exemplo: "3 séries" significa executar o exercício 3 vezes com pausa de recuperação entre elas.',
     technicalFailureGuide:
-      'Como validar uma Série Efetiva: Para gerar hipertrofia, a série precisa terminar próxima da falha técnica (entre RIR 0 e RIR 3). Se a última repetição subiu na mesma velocidade da primeira, o peso está leve (série de aquecimento).',
+      'Como validar uma Série Efetiva: Para gerar hipertrofia, a série precisa terminar próxima da falha técnica concêntrica. Se a última repetição subiu na mesma velocidade da primeira, o peso está leve (série de aquecimento).',
     practicalExamples: [
       '1ª Série: Músculo descansado — controle a descida em 2 a 3 segundos.',
       'Última Série: Fadiga acumulada — mantenha a postura sem compensar com a lombar.',
@@ -92,11 +60,11 @@ export const TECHNICAL_TERMS_DICTIONARY: Record<TechnicalTermKey, TermMetadata> 
     title: '1RM (Uma Repetição Máxima Estimada)',
     shortSubtitle: 'Carga máxima teórica para 1 única repetição perfeita',
     conciseExplanation:
-      'Calculado automaticamente pelas fórmulas científicas de Epley/Brzycki com base no peso, repetições e RIR que você registrou na série.',
+      'Calculado automaticamente pelas fórmulas científicas de Epley/Brzycki com base no peso e repetições que você registrou na série.',
     technicalFailureGuide:
-      'Segurança Articular: Você nunca precisa testar 1 repetição máxima real (o que traz risco de lesão). Basta treinar próximo da falha técnica (RIR 1 ou 2) na sua faixa normal de 6 a 12 reps para descobrir seu 1RM real.',
+      'Segurança Articular: Você nunca precisa testar 1 repetição máxima real (o que traz risco de lesão). Basta treinar com técnica estrita na sua faixa normal de 6 a 12 reps para descobrir seu 1RM estimado.',
     practicalExamples: [
-      'Ex: 80kg × 8 reps com RIR 2 projeta um 1RM estimado de ~107kg.',
+      'Ex: 80kg × 8 reps projeta um 1RM estimado de ~101kg.',
       'Se seu 1RM estimado subiu ao longo das semanas, houve sobrecarga progressiva!',
     ],
     accentColor: 'text-purple-400 border-purple-500/40',
@@ -106,7 +74,7 @@ export const TECHNICAL_TERMS_DICTIONARY: Record<TechnicalTermKey, TermMetadata> 
     title: '6RM (Seis Repetições Máximas Estimadas)',
     shortSubtitle: 'Peso estimado que levaria à falha técnica na 6ª repetição',
     conciseExplanation:
-      'Mostra qual carga você aguentaria para fazer exatamente 6 repetições até o limite técnico (RIR 0). Ideal para calibrar séries pesadas de força e hipertrofia.',
+      'Mostra qual carga você aguentaria para fazer exatamente 6 repetições até o limite técnico. Ideal para calibrar séries pesadas de força e hipertrofia.',
     technicalFailureGuide:
       'Como usar na prática: Na carga de 6RM, a 4ª repetição já começa a pesar, a 5ª desacelera bastante e a 6ª é a última repetição possível sem roubar.',
     practicalExamples: [
@@ -123,9 +91,9 @@ export const TECHNICAL_TERMS_DICTIONARY: Record<TechnicalTermKey, TermMetadata> 
     technicalFailureGuide:
       'Como sentir o limite em técnicas avançadas: Em séries de Falha (F), Drop-set (D) ou Rest-Pause (RP), pare no exato segundo em que a técnica quebrar (ex: cotovelos abrindo demais ou coluna saindo do banco).',
     practicalExamples: [
-      'W (Warm-up / Aquecimento): 50% a 70% da carga, longe da falha (RIR 4+).',
-      'T (Trabalho): Série principal controlada (RIR 1 a 2).',
-      'F (Falha): Série levada até RIR 0 com postura estrita.',
+      'W (Warm-up / Aquecimento): 50% a 70% da carga, para lubrificar as articulações.',
+      'T (Trabalho): Série principal pesada mantendo boa velocidade e cadência.',
+      'F (Falha): Série levada até a última repetição completa com postura estrita.',
       'D (Drop-set): Atingiu a falha técnica ➔ reduza 20–30% do peso e faça mais reps imediatamente.',
       'RP (Rest-Pause): Atingiu a falha técnica ➔ respire 15s e faça +3 a 5 reps.',
     ],
@@ -138,7 +106,7 @@ export const TECHNICAL_TERMS_DICTIONARY: Record<TechnicalTermKey, TermMetadata> 
     conciseExplanation:
       'Você executa a série do 1º exercício e vai imediatamente para o 2º exercício. O cronômetro de descanso só dispara após concluir o segundo.',
     technicalFailureGuide:
-      'Controle de Fadiga: No 1º exercício do Bi-set, pare a 1 repetição da falha técnica (RIR 1) para manter o controle motor e não comprometer a postura no 2º exercício.',
+      'Controle de Fadiga: No 1º exercício do Bi-set, pare quando restarem poucos graus de amplitude perfeita para manter o controle motor no 2º exercício.',
     practicalExamples: [
       'Bi-set Agonista/Antagonista (ex: Peito + Costas): Economiza tempo mantendo alta carga.',
     ],

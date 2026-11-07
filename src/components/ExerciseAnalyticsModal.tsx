@@ -48,7 +48,7 @@ import {
   CartesianGrid,
   ReferenceLine 
 } from 'recharts';
-import { WorkoutSessionSummary, Exercise, rirToRpe } from '../types/workout';
+import { WorkoutSessionSummary, Exercise } from '../types/workout';
 import { EXERCISE_DATABASE, MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { calculate1RM, safeStorage } from '../utils/storage';
 
@@ -67,14 +67,12 @@ interface ProgressionPoint {
   avgWeight: number;
   estimated1RM: number;
   avgReps: number;
-  avgRpe: number | null;
-  estimatedRir: number | null;
   totalVolume: number;
   setsCount: number;
   isSimulated?: boolean;
 }
 
-// Custom Tooltip component for Recharts load & RPE progression
+// Custom Tooltip component for Recharts load progression
 const CustomLoadRpeTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload || !payload.length) return null;
   const data: ProgressionPoint = payload[0]?.payload;
@@ -117,22 +115,13 @@ const CustomLoadRpeTooltip = ({ active, payload, label }: any) => {
 
         <div className="flex items-center justify-between">
           <span className="text-slate-400 flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-            RPE Médio (Esforço):
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+            1RM Estimado:
           </span>
-          <span className="font-mono font-bold text-amber-300 text-sm">
-            {data.avgRpe !== null ? `@RPE ${data.avgRpe}` : '—'}
+          <span className="font-mono font-bold text-cyan-300 text-sm">
+            ~{data.estimated1RM} kg
           </span>
         </div>
-
-        {data.estimatedRir !== null && (
-          <div className="flex items-center justify-between text-[11px] text-slate-400 pl-4">
-            <span>RIR (Reps na Reserva):</span>
-            <span className="font-mono font-medium text-emerald-300">
-              ~{data.estimatedRir} reps
-            </span>
-          </div>
-        )}
 
         <div className="border-t border-slate-800/80 pt-2 flex items-center justify-between text-[11px] text-slate-400">
           <span>{data.setsCount} séries · média {data.avgReps} reps</span>
@@ -185,9 +174,8 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
     }
   }, [initialExerciseName]);
 
-  // Active chart view tab: 'load_rpe' | 'scatter_rpe_load' | 'estimated_1rm' | 'volume'
-  const [chartView, setChartView] = useState<'load_rpe' | 'scatter_rpe_load' | 'estimated_1rm' | 'volume'>('load_rpe');
-  const [scatterMetric, setScatterMetric] = useState<'rpe' | 'rir'>('rpe');
+  // Active chart view tab: 'load_rpe' | 'estimated_1rm' | 'volume'
+  const [chartView, setChartView] = useState<'load_rpe' | 'estimated_1rm' | 'volume'>('load_rpe');
   const [formula1RM, setFormula1RM] = useState<'epley' | 'brzycki'>('epley');
 
   // Demo / Simulation mode toggle for previewing overload curves
@@ -206,7 +194,6 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
         let max1RM = 0;
         let totalReps = 0;
         let totalVol = 0;
-        const rpes: number[] = [];
 
         match.sets.forEach((set) => {
           const w = Number(set.weight) || 0;
@@ -214,16 +201,10 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
           if (w > maxWeight) maxWeight = w;
           sumWeight += w;
 
-          const rpeStr = set.rpe || (set.rir ? rirToRpe(set.rir) : undefined);
-          const e1rm = calculate1RM(w.toString(), r.toString(), rpeStr || set.rir);
+          const e1rm = calculate1RM(w.toString(), r.toString());
           if (e1rm && e1rm > max1RM) max1RM = e1rm;
           totalReps += r;
           totalVol += w * r;
-
-          if (rpeStr) {
-            const parsed = parseFloat(rpeStr);
-            if (!isNaN(parsed) && parsed > 0) rpes.push(parsed);
-          }
         });
 
         const d = new Date(session.date);
@@ -231,7 +212,6 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
           ? `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`
           : `Sessão ${dataPoints.length + 1}`;
 
-        const avgRpeVal = rpes.length > 0 ? +(rpes.reduce((a, b) => a + b, 0) / rpes.length).toFixed(1) : null;
         const avgWeight = match.sets.length > 0 ? Math.round((sumWeight / match.sets.length) * 10) / 10 : maxWeight;
 
         dataPoints.push({
@@ -242,8 +222,6 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
           avgWeight,
           estimated1RM: max1RM > 0 ? max1RM : maxWeight,
           avgReps: Math.round(totalReps / match.sets.length),
-          avgRpe: avgRpeVal,
-          estimatedRir: avgRpeVal !== null ? Math.max(0, +(10 - avgRpeVal).toFixed(1)) : null,
           totalVolume: Math.round(totalVol),
           setsCount: match.sets.length,
           isSimulated: false,
@@ -256,15 +234,14 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
 
   // Realistic progressive overload demo data (6 sessions progression)
   const simulatedData = useMemo((): ProgressionPoint[] => {
-    // Generate realistic progression curve matching selected exercise
     const baseWeight = 60;
     const progressionSteps = [
-      { deltaW: 0, rpe: 7.5, reps: 10, date: '10/10' },
-      { deltaW: 2.5, rpe: 8.0, reps: 10, date: '17/10' },
-      { deltaW: 2.5, rpe: 7.5, reps: 10, date: '24/10' }, // adaptation: same weight, lower RPE
-      { deltaW: 5.0, rpe: 8.5, reps: 9, date: '31/10' },
-      { deltaW: 5.0, rpe: 8.0, reps: 10, date: '07/11' }, // adaptation: same weight, more reps, lower RPE
-      { deltaW: 7.5, rpe: 8.5, reps: 9, date: '14/11' },
+      { deltaW: 0, reps: 10, date: '10/10' },
+      { deltaW: 2.5, reps: 10, date: '17/10' },
+      { deltaW: 2.5, reps: 11, date: '24/10' },
+      { deltaW: 5.0, reps: 9, date: '31/10' },
+      { deltaW: 5.0, reps: 10, date: '07/11' },
+      { deltaW: 7.5, reps: 10, date: '14/11' },
     ];
 
     return progressionSteps.map((step, idx) => {
@@ -272,7 +249,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
       const avgWeight = maxWeight - 2.5;
       const totalReps = step.reps * 3;
       const totalVol = Math.round(maxWeight * totalReps);
-      const e1rm = Math.round(maxWeight * (1 + (step.reps + (10 - step.rpe)) / 30));
+      const e1rm = Math.round(maxWeight * (1 + step.reps / 30));
 
       return {
         sessionDate: `2026-${idx + 10}-01`,
@@ -282,8 +259,6 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
         avgWeight,
         estimated1RM: e1rm,
         avgReps: step.reps,
-        avgRpe: step.rpe,
-        estimatedRir: +(10 - step.rpe).toFixed(1),
         totalVolume: totalVol,
         setsCount: 3,
         isSimulated: true,
@@ -309,8 +284,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
         growthPercent: 0,
         weightDelta: 0,
         isPlateaued: false,
-        avgRpeOverall: null,
-        recentRpe: null,
+        recent1RM: 0,
         totalVolumeAccumulated: 0,
         maxSessionVolume: 0,
         avgVolumePerSession: 0,
@@ -322,8 +296,6 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
 
     let prWeight = 0;
     let pr1RM = 0;
-    let rpeSum = 0;
-    let rpeCount = 0;
     let totalVolAcc = 0;
     let maxVol = 0;
 
@@ -332,10 +304,6 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
       if (d.estimated1RM > pr1RM) pr1RM = d.estimated1RM;
       totalVolAcc += d.totalVolume;
       if (d.totalVolume > maxVol) maxVol = d.totalVolume;
-      if (d.avgRpe !== null) {
-        rpeSum += d.avgRpe;
-        rpeCount++;
-      }
     });
 
     const firstPoint = chartData[0];
@@ -345,8 +313,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
       ? Math.round((weightDelta / firstPoint.maxWeight) * 100) 
       : 0;
 
-    const recentRpe = lastPoint.avgRpe;
-    const firstRpe = firstPoint.avgRpe;
+    const recent1RM = lastPoint.estimated1RM || pr1RM;
 
     // Detect plateau: last 3 sessions have identical or decreasing weight
     let isPlateaued = false;
@@ -357,33 +324,23 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
       }
     }
 
-    // Diagnostic of Overload (Carga vs RPE relationship)
+    // Diagnostic of Overload (Carga e Repetições)
     let diagnosticType: 'effective' | 'pushing' | 'efficiency' | 'plateau' | 'neutral' = 'neutral';
-    let diagnosticMessage = 'Registre sessões subsequentes para comparar a taxa de esforço percebido.';
+    let diagnosticMessage = 'Registre sessões subsequentes para comparar a taxa de evolução.';
 
-    if (chartData.length >= 2 && recentRpe !== null && firstRpe !== null) {
-      const rpeDelta = recentRpe - firstRpe;
-
-      if (isPlateaued && recentRpe >= 9) {
+    if (chartData.length >= 2) {
+      if (isPlateaued) {
         diagnosticType = 'plateau';
-        diagnosticMessage = 'Carga estagnada com RPE no limite (≥ 9.0). Fadiga acumulada ou necessidade de deload/ajuste técnico.';
-      } else if (weightDelta > 0 && rpeDelta <= 0.2) {
+        diagnosticMessage = 'Carga estável nas últimas 3 sessões. Considere deload, variação de cadência ou aumento sutil de repetições.';
+      } else if (weightDelta > 0) {
         diagnosticType = 'effective';
-        diagnosticMessage = 'Sobrecarga Progressiva Efetiva: A carga subiu mantendo o RPE estável. Ganho real de força hipertrófica e adaptação neural!';
-      } else if (weightDelta > 0 && rpeDelta > 0.2) {
-        diagnosticType = 'pushing';
-        diagnosticMessage = 'Progressão com Aumento de Esforço: A carga subiu acompanhada de maior RPE. Bom avanço, mas monitore a proximidade da falha muscular.';
-      } else if (weightDelta === 0 && rpeDelta < -0.3) {
+        diagnosticMessage = `Sobrecarga Progressiva Efetiva: Ganho de +${weightDelta}kg em relação à primeira sessão. Excelente ganho de força e adaptação muscular!`;
+      } else if (weightDelta === 0) {
         diagnosticType = 'efficiency';
-        diagnosticMessage = 'Adaptação de Eficiência: A mesma carga foi movida com menor esforço (RPE caiu). Excelente momento para adicionar 1 a 2.5 kg na próxima sessão!';
+        diagnosticMessage = 'Carga mantida com consolidação técnica. Busque adicionar repetições extras antes de aumentar o peso.';
       } else {
         diagnosticType = 'neutral';
-        diagnosticMessage = 'Intensidade e carga dentro da faixa estável de trabalho.';
-      }
-    } else if (chartData.length >= 2) {
-      if (weightDelta > 0) {
-        diagnosticType = 'effective';
-        diagnosticMessage = `Evolução positiva de +${weightDelta}kg em relação à primeira sessão!`;
+        diagnosticMessage = 'Variação normal de intensidade de treino.';
       }
     }
 
@@ -391,14 +348,10 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
     let nextSessionSuggestion: string | null = null;
     if (lastPoint) {
       const curW = lastPoint.maxWeight;
-      const curRpe = lastPoint.avgRpe ?? 8.0;
-
-      if (curRpe <= 7.5) {
-        nextSessionSuggestion = `Carga sugerida: ~${Math.round(curW * 1.05)}kg (+5%) mantendo 8-10 reps (@RPE 8)`;
-      } else if (curRpe <= 8.5) {
-        nextSessionSuggestion = `Carga sugerida: ~${Math.round(curW * 1.025)}kg (+2.5%) mantendo repetições limpas (@RPE 8-9)`;
-      } else {
+      if (isPlateaued) {
         nextSessionSuggestion = `Manter ${curW}kg e buscar +1 repetição com técnica estrita antes de elevar a carga`;
+      } else {
+        nextSessionSuggestion = `Carga sugerida: ~${Math.round(curW * 1.025)}kg (+2.5%) mantendo repetições completas`;
       }
     }
 
@@ -409,8 +362,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
       growthPercent,
       weightDelta,
       isPlateaued,
-      avgRpeOverall: rpeCount > 0 ? +(rpeSum / rpeCount).toFixed(1) : null,
-      recentRpe,
+      recent1RM,
       totalVolumeAccumulated: totalVolAcc,
       maxSessionVolume: maxVol,
       avgVolumePerSession: Math.round(totalVolAcc / chartData.length),
@@ -447,7 +399,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
                 )}
               </div>
               <p className="text-xs text-slate-400">
-                Visualização de progressão de carga (kg) e esforço percebido (RPE/RIR) ao longo das sessões
+                Visualização de progressão de carga (kg), repetições e volume ao longo das sessões
               </p>
             </div>
           </div>
@@ -536,7 +488,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
             </div>
           )}
 
-          {/* KPI Stat Cards (Carga, RPE, Evolução e Volume) */}
+          {/* KPI Stat Cards (Carga, 1RM, Evolução e Volume) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Recorde (PR Carga)</span>
@@ -547,23 +499,19 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
             </div>
 
             <div className="bg-[#0b1322] border border-slate-800 rounded-2xl p-3">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">RPE Recente</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">1RM Recente</span>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-lg font-black font-mono text-amber-400">
-                  {kpis.recentRpe !== null ? `@${kpis.recentRpe}` : '—'}
+                  {kpis.recent1RM > 0 ? `~${kpis.recent1RM} kg` : '—'}
                 </span>
-                {kpis.recentRpe !== null && (
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
-                    kpis.recentRpe >= 9 ? 'bg-rose-500/20 text-rose-300' :
-                    kpis.recentRpe >= 8 ? 'bg-amber-500/20 text-amber-300' :
-                    'bg-emerald-500/20 text-emerald-300'
-                  }`}>
-                    {kpis.recentRpe >= 9 ? 'Falha / Alto' : kpis.recentRpe >= 8 ? 'Zona Ótima' : 'Moderado'}
+                {kpis.recent1RM > 0 && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/20 text-amber-300">
+                    Preditivo
                   </span>
                 )}
               </div>
               <span className="text-[10px] text-slate-500">
-                {kpis.avgRpeOverall !== null ? `Média geral @${kpis.avgRpeOverall}` : 'esforço percebido'}
+                força máxima estimada
               </span>
             </div>
 
@@ -603,8 +551,8 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
               <div>
                 <strong className="text-xs font-bold block">Alerta de Platô de Sobrecarga</strong>
                 <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
-                  A carga máxima deste exercício está estável há 3 ou mais sessões consecutivas com RPE alto.
-                  Recomendado: aumentar o tempo de descanso entre séries (3 min), alternar pegada/inclinação ou aplicar um ciclo de deload para ressensibilizar as fibras.
+                  A carga máxima deste exercício está estável há 3 ou mais sessões consecutivas.
+                  Recomendado: aumentar o tempo de descanso entre séries, variar pegada/inclinação ou aplicar um ciclo de deload para ressensibilizar as fibras musculares.
                 </p>
               </div>
             </div>
@@ -623,20 +571,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
                 }`}
               >
                 <TrendingUp className="w-3.5 h-3.5" />
-                <span>Carga (kg) & RPE</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setChartView('scatter_rpe_load')}
-                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  chartView === 'scatter_rpe_load'
-                    ? 'bg-amber-500 text-slate-950 shadow-md font-black'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Activity className="w-3.5 h-3.5" />
-                <span>Dispersão RPE × Carga</span>
+                <span>Evolução de Carga (kg)</span>
               </button>
 
               <button
@@ -680,23 +615,20 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse" />
                   <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
-                    Progressão de Carga (kg) & Intensidade RPE por Sessão
+                    Progressão de Carga (kg) por Sessão
                   </h3>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-mono font-bold bg-sky-500/10 text-sky-300 border border-sky-500/20 px-2 py-0.5 rounded">
-                    Eixo Esq: Carga (kg)
-                  </span>
-                  <span className="text-[10px] font-mono font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20 px-2 py-0.5 rounded">
-                    Eixo Dir: RPE (6-10)
+                    Eixo Y: Carga (kg)
                   </span>
                 </div>
               </div>
 
               {chartData.length > 0 ? (
                 <div className="space-y-4">
-                  {/* Container Recharts com Eixo Duplo */}
+                  {/* Container Recharts de Carga */}
                   <div className="h-64 sm:h-72 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart 
@@ -719,7 +651,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
                           tickLine={false} 
                         />
 
-                        {/* Eixo Y Esquerdo: Carga (kg) */}
+                        {/* Eixo Y: Carga (kg) */}
                         <YAxis 
                           yAxisId="weight"
                           stroke="#38bdf8" 
@@ -727,18 +659,6 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
                           unit="kg"
                           tickLine={false}
                           domain={['dataMin - 5', 'dataMax + 5']}
-                        />
-
-                        {/* Eixo Y Direito: RPE (Escala 5 a 10) */}
-                        <YAxis 
-                          yAxisId="rpe"
-                          orientation="right"
-                          stroke="#f59e0b" 
-                          fontSize={11} 
-                          unit=" RPE"
-                          tickLine={false}
-                          domain={[5, 10]}
-                          ticks={[6, 7, 8, 9, 10]}
                         />
 
                         {/* Tooltip com formatação detalhada */}
@@ -751,24 +671,8 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
                           formatter={(val) => {
                             if (val === 'maxWeight') return <span className="text-xs text-sky-300 font-bold">Carga Máxima Real (kg)</span>;
                             if (val === 'avgWeight') return <span className="text-xs text-slate-400 font-medium">Carga Média (kg)</span>;
-                            if (val === 'avgRpe') return <span className="text-xs text-amber-300 font-bold">RPE Médio (Esforço 1-10)</span>;
                             return val;
                           }}
-                        />
-
-                        {/* Linha de Referência da Faixa Ideal de RPE (8.0 a 9.0) */}
-                        <ReferenceLine 
-                          yAxisId="rpe"
-                          y={8.5} 
-                          stroke="#10b981" 
-                          strokeDasharray="4 4" 
-                          strokeWidth={1.5}
-                          label={{ 
-                            value: 'Zona Ótima (RPE 8-9)', 
-                            fill: '#10b981', 
-                            fontSize: 10, 
-                            position: 'insideTopRight' 
-                          }} 
                         />
 
                         {/* Curva de Área & Linha: Carga Máxima (kg) */}
@@ -800,19 +704,6 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
                           strokeDasharray="4 4"
                           dot={{ fill: '#94a3b8', r: 2.5 }} 
                           name="avgWeight"
-                        />
-
-                        {/* Curva de Linha: RPE Médio (Eixo Direito) */}
-                        <Line 
-                          yAxisId="rpe"
-                          type="monotone" 
-                          dataKey="avgRpe" 
-                          stroke="#f59e0b" 
-                          strokeWidth={2.5} 
-                          dot={{ fill: '#f59e0b', r: 4, stroke: '#b45309', strokeWidth: 2 }} 
-                          activeDot={{ r: 6, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }} 
-                          name="avgRpe"
-                          connectNulls
                         />
                       </ComposedChart>
                     </ResponsiveContainer>
@@ -870,7 +761,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
                   <Dumbbell className="w-8 h-8 mx-auto opacity-30 text-slate-400" />
                   <p>Nenhuma sessão concluída ainda com este exercício.</p>
                   <p className="text-[11px] text-slate-600 max-w-sm mx-auto">
-                    Assim que você registrar séries com peso e RPE e finalizar um treino, o gráfico duplo de sobrecarga será preenchido automaticamente!
+                    Assim que você registrar séries com peso e repetições e finalizar um treino, o gráfico de evolução será preenchido automaticamente!
                   </p>
                   <button
                     type="button"
@@ -885,173 +776,6 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
             </div>
           )}
 
-          {/* ============================================================== */}
-          {/* 1.5 VISUALIZAÇÃO DE DISPERSÃO (SCATTER PLOT): RPE/RIR VS CARGA */}
-          {/* ============================================================== */}
-          {chartView === 'scatter_rpe_load' && (() => {
-            const scatterPoints = chartData.map((pt, idx) => {
-              const rpeVal = pt.avgRpe ?? 8;
-              const rirVal = pt.estimatedRir ?? Math.max(0, +(10 - rpeVal).toFixed(1));
-              return {
-                ...pt,
-                xWeight: pt.maxWeight,
-                yEffort: scatterMetric === 'rpe' ? rpeVal : rirVal,
-                rpeVal,
-                rirVal,
-                weekNum: idx + 1,
-              };
-            });
-
-            return (
-              <div className="bg-[#090f1d] border border-slate-800 rounded-3xl p-4 sm:p-5 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
-                      <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
-                        Gráfico de Dispersão: Relação Esforço ({scatterMetric.toUpperCase()}) × Carga (kg)
-                      </h3>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Identifica como seu esforço percebido varia conforme a carga sobe ao longo das semanas.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 self-start sm:self-auto">
-                    <button
-                      type="button"
-                      onClick={() => setScatterMetric('rpe')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                        scatterMetric === 'rpe'
-                          ? 'bg-amber-500 text-slate-950 font-black'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Plotar RPE (6-10)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setScatterMetric('rir')}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                        scatterMetric === 'rir'
-                          ? 'bg-emerald-500 text-slate-950 font-black'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Plotar RIR (0-4)
-                    </button>
-                  </div>
-                </div>
-
-                {scatterPoints.length > 0 ? (
-                  <div className="space-y-4">
-                    <div className="h-64 sm:h-72 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ScatterChart margin={{ top: 15, right: 20, left: -5, bottom: 10 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1f2d47" opacity={0.6} />
-                          <XAxis
-                            type="number"
-                            dataKey="xWeight"
-                            name="Carga"
-                            unit=" kg"
-                            stroke="#38bdf8"
-                            fontSize={11}
-                            domain={['dataMin - 5', 'dataMax + 5']}
-                            tickLine={false}
-                          />
-                          <YAxis
-                            type="number"
-                            dataKey="yEffort"
-                            name={scatterMetric === 'rpe' ? 'RPE' : 'RIR'}
-                            unit={scatterMetric === 'rpe' ? ' RPE' : ' RIR'}
-                            stroke={scatterMetric === 'rpe' ? '#f59e0b' : '#10b981'}
-                            fontSize={11}
-                            domain={scatterMetric === 'rpe' ? [5.5, 10.2] : [-0.2, 4.5]}
-                            tickLine={false}
-                          />
-                          <ZAxis type="number" dataKey="avgReps" range={[80, 260]} name="Repetições" />
-                          <Tooltip
-                            cursor={{ strokeDasharray: '3 3', stroke: '#475569' }}
-                            content={({ active, payload }) => {
-                              if (!active || !payload || !payload.length) return null;
-                              const pt = payload[0].payload;
-                              return (
-                                <div className="bg-[#0a101f]/95 border border-[#223354] rounded-2xl p-3 shadow-2xl text-xs text-white space-y-1.5">
-                                  <div className="font-bold text-sky-300 border-b border-slate-800 pb-1">
-                                    Semana/Sessão #{pt.sessionIndex} ({pt.displayDate})
-                                  </div>
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-slate-400">Carga Utilizada:</span>
-                                    <span className="font-mono font-black text-white">{pt.xWeight} kg</span>
-                                  </div>
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-slate-400">Esforço Reportado:</span>
-                                    <span className="font-mono font-bold text-amber-300">
-                                      RPE {pt.rpeVal} (RIR {pt.rirVal})
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-slate-400">Média de Reps:</span>
-                                    <span className="font-mono text-emerald-300">{pt.avgReps} reps</span>
-                                  </div>
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-slate-400">1RM Estimado:</span>
-                                    <span className="font-mono text-cyan-300">~{pt.estimated1RM} kg</span>
-                                  </div>
-                                </div>
-                              );
-                            }}
-                          />
-                          <ReferenceLine
-                            y={scatterMetric === 'rpe' ? 8.5 : 1.5}
-                            stroke="#10b981"
-                            strokeDasharray="4 4"
-                            label={{
-                              value: scatterMetric === 'rpe' ? 'Zona Ótima Hipertrofia (RPE 8-9)' : 'Zona Ótima Hipertrofia (RIR 1-2)',
-                              fill: '#10b981',
-                              fontSize: 10,
-                              position: 'insideTopRight',
-                            }}
-                          />
-                          <Scatter
-                            name={scatterMetric === 'rpe' ? 'Sessões (Carga × RPE)' : 'Sessões (Carga × RIR)'}
-                            data={scatterPoints}
-                            fill={scatterMetric === 'rpe' ? '#f59e0b' : '#10b981'}
-                          />
-                        </ScatterChart>
-                      </ResponsiveContainer>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                      <div className="bg-[#0b1322] border border-slate-800 rounded-xl p-2.5">
-                        <span className="text-[10px] font-bold uppercase text-sky-400 block">Leitura Diagonal Direita</span>
-                        <p className="text-[11px] text-slate-300 mt-0.5">
-                          Pontos mais à direita com mesmo RPE indicam ganho real de força neural sem aumento da fadiga.
-                        </p>
-                      </div>
-                      <div className="bg-[#0b1322] border border-slate-800 rounded-xl p-2.5">
-                        <span className="text-[10px] font-bold uppercase text-emerald-400 block">Zona Alvo (RPE 8-9 / RIR 1-2)</span>
-                        <p className="text-[11px] text-slate-300 mt-0.5">
-                          Melhor relação estímulo-fadiga para hipertrofia muscular e progressão sustentável.
-                        </p>
-                      </div>
-                      <div className="bg-[#0b1322] border border-slate-800 rounded-xl p-2.5">
-                        <span className="text-[10px] font-bold uppercase text-rose-400 block">Alerta de Fadiga (RPE 10 / RIR 0)</span>
-                        <p className="text-[11px] text-slate-300 mt-0.5">
-                          Se a carga estagnar no topo do eixo Y por 3 semanas, considere reduzir 10% (deload).
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-14 text-center text-slate-500 text-xs">
-                    <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-400" />
-                    <p>Nenhuma sessão concluída ainda com este exercício.</p>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
 
           {/* ============================================================== */}
           {/* 2. VISUALIZAÇÃO: 1RM ESTIMADO + CALCULADORA E META MENSAL      */}

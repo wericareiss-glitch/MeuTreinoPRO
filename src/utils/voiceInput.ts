@@ -6,7 +6,6 @@
 export interface ParsedVoiceSetCommand {
   weight?: string;
   reps?: string;
-  rpe?: number;
   completeSet?: boolean;
   rawTranscript: string;
 }
@@ -133,24 +132,7 @@ export function parseVoiceWorkoutCommand(rawTranscript: string): ParsedVoiceSetC
     result.completeSet = true;
   }
 
-  // 1. Extrai RPE explícito ("rpe 8", "esforço 9", "nota 8")
   let cleanedForWeightReps = normalized;
-  const rpeMatch = cleanedForWeightReps.match(/\b(?:rpe|esforco|esforço|nota)\s*(?:de\s*)?(\d+(?:\.\d+)?)/i);
-  if (rpeMatch) {
-    const parsedRpe = Math.round(parseFloat(rpeMatch[1]));
-    if (parsedRpe >= 6 && parsedRpe <= 10) {
-      result.rpe = parsedRpe;
-    }
-    cleanedForWeightReps = cleanedForWeightReps.replace(rpeMatch[0], ' ');
-  }
-
-  // 2. Extrai RIR explícito ("rir 2", "reserva 1", "sobraram 2") e converte para RPE (10 - RIR)
-  const rirMatch = cleanedForWeightReps.match(/\b(?:rir|reserva|sobrando|sobraram|sobrou)\s*(?:de\s*)?(\d+)/i);
-  if (rirMatch) {
-    const parsedRir = Math.min(4, Math.max(0, parseInt(rirMatch[1], 10)));
-    result.rpe = 10 - parsedRir;
-    cleanedForWeightReps = cleanedForWeightReps.replace(rirMatch[0], ' ');
-  }
 
   // 3. Procura padrão explícito de carga: "80 kg", "80 quilos", "peso 80"
   const weightExplicit =
@@ -193,12 +175,7 @@ export function parseVoiceWorkoutCommand(rawTranscript: string): ParsedVoiceSetC
       result.reps = String(nextNum);
     }
   }
-  if (!result.rpe && remainingNumbers.length > 0) {
-    const maybeRpe = Math.round(parseFloat(remainingNumbers[0]));
-    if (maybeRpe >= 6 && maybeRpe <= 10) {
-      result.rpe = maybeRpe;
-    }
-  }
+
 
   return result;
 }

@@ -22,7 +22,11 @@ export default defineConfig(() => {
               if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
               if (id.includes('firebase')) return 'vendor-firebase';
               if (id.includes('lucide-react')) return 'vendor-icons';
-              return 'vendor';
+              if (id.includes('motion')) return 'vendor-motion';
+              if (id.includes('lottie-react')) return 'vendor-lottie';
+              if (id.includes('react-window') || id.includes('react-virtuoso')) return 'vendor-virtual';
+              if (id.includes('react') || id.includes('react-dom') || id.includes('react-is')) return 'vendor-react';
+              return 'vendor-misc';
             }
           },
         },

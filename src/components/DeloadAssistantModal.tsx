@@ -141,7 +141,7 @@ export const DeloadAssistantModal: React.FC<DeloadAssistantModalProps> = ({
           </span>
           <p className="text-slate-300 leading-relaxed text-[11px] sm:text-xs">
             Um microciclo de Deload reduz temporariamente o volume em <strong>-40% de séries</strong> e sugere
-            <strong> -10% de carga</strong> mantendo boa técnica e RPE 6 a 7 (RIR 3 a 4). Isso dissipa a fadiga residual do Sistema Nervoso Central e tendões sem perda de massa muscular, permitindo um retorno com força total e quebra de platôs.
+            <strong> -10% de carga</strong> mantendo boa técnica e execução controlada. Isso dissipa a fadiga residual do Sistema Nervoso Central e tendões sem perda de massa muscular, permitindo um retorno com força total e quebra de platôs.
           </p>
         </div>
 

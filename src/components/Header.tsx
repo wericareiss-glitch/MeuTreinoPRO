@@ -724,7 +724,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <div>
                     <span className="block text-xs font-bold">Perfil</span>
                     <span className={`block text-[10px] ${activeTab === 'perfil' ? 'text-slate-900/80' : 'text-slate-400'}`}>
-                      Periodização & RIR
+                      Periodização do Treino
                     </span>
                   </div>
                 </button>

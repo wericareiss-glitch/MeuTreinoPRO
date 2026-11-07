@@ -42,7 +42,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
   const [totalTime, setTotalTime] = useState(initialSeconds);
   const [isRunning, setIsRunning] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isPip, setIsPip] = useState(false); // Ultra-mini floating pill
+  const [isPip, setIsPip] = useState(true); // Modo discreto padrão (Mini pill flutuante)
   const [hasStartedEver, setHasStartedEver] = useState(false);
 
   const prevTriggerRef = useRef(triggerKey);
@@ -61,7 +61,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
       hasFinishedAlertedRef.current = false;
       setIsRunning(true);
       setHasStartedEver(true);
-      setIsPip(false);
+      setIsPip(true);
       soundManager.startBackgroundKeepAlive();
       wakeLockManager.request().catch(() => {});
     }
@@ -310,31 +310,46 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
 
   const isMediaSessionSupported = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
 
-  // 1. MODO ULTRA-COMPACTO (Mini Pill / Pip Flutuante)
+  // 1. MODO ULTRA-COMPACTO DISCRETO (Mini Pill / Pip Flutuante)
   if (isPip) {
     return (
       <div className="fixed bottom-[76px] md:bottom-5 left-1/2 -translate-x-1/2 z-30 animate-fadeIn">
-        <div className="bg-[#0b1220]/95 backdrop-blur-xl border border-sky-500/40 rounded-full px-3.5 py-2 shadow-2xl shadow-black/80 flex items-center gap-2.5 ring-1 ring-sky-400/20">
-          <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
-          <span className="text-xs font-mono font-black text-sky-400 tracking-tight">
+        <div className="bg-[#080d1a]/95 backdrop-blur-xl border border-sky-500/40 rounded-full px-3.5 py-1.5 shadow-2xl shadow-black/90 flex items-center gap-2.5 ring-1 ring-sky-400/20">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+            <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 hidden sm:inline">
+              Descanso
+            </span>
+          </div>
+
+          <span className="text-xs sm:text-sm font-mono font-black text-sky-300 tracking-tight">
             {formattedTime}
           </span>
 
           <button
             type="button"
+            onClick={() => handleAdjust(30)}
+            className="px-2 py-0.5 rounded-full bg-slate-800/90 hover:bg-slate-700 text-sky-300 text-[10px] font-mono font-bold border border-slate-700 cursor-pointer active:scale-95 transition-all"
+            title="Mais 30s"
+          >
+            +30s
+          </button>
+
+          <button
+            type="button"
             onClick={handleToggleRunning}
-            className={`w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 ${
+            className={`w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 ${
               isRunning ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-slate-950'
             }`}
             title={isRunning ? 'Pausar' : 'Retomar'}
           >
-            {isRunning ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+            {isRunning ? <Pause className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current ml-0.5" />}
           </button>
 
           <button
             type="button"
             onClick={() => setIsPip(false)}
-            className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className="p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
             title="Expandir barra"
           >
             <Maximize2 className="w-3.5 h-3.5" />
@@ -343,7 +358,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
           <button
             type="button"
             onClick={handleStopAndClose}
-            className="p-1.5 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+            className="p-1 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
             title="Fechar descanso"
           >
             <X className="w-3.5 h-3.5" />

@@ -21,7 +21,7 @@ export interface FatigueAnalysis {
   recommendDeload: boolean;
   fatigueScore: number; // 0 a 100
   consecutiveHeavyWeeks: number;
-  highRpeSetsCount: number;
+  totalLoggedSets: number;
   mrvExceededMuscles: string[];
   reasons: string[];
 }
@@ -55,31 +55,23 @@ export function analyzeFatigueAndDeload(
     );
   }
 
-  // 2. Analisa as últimas 10 sessões para densidade de RPE 9 e 10
+  // 2. Analisa as últimas 10 sessões para densidade de volume e séries concluídas
   const recentSessions = [...sessions].reverse().slice(0, 10);
-  let highRpeSetsCount = 0;
   let totalLoggedSets = 0;
 
   recentSessions.forEach((s) => {
     s.completedExercises?.forEach((ex) => {
-      ex.sets?.forEach((st) => {
+      ex.sets?.forEach(() => {
         totalLoggedSets++;
-        const rpeNum = parseInt(st.rpe || '0', 10);
-        if (rpeNum >= 9) {
-          highRpeSetsCount++;
-        }
       });
     });
   });
 
-  if (totalLoggedSets > 0) {
-    const highRpeRatio = highRpeSetsCount / totalLoggedSets;
-    if (highRpeRatio > 0.45) {
-      fatigueScore += 25;
-      reasons.push(
-        `${Math.round(highRpeRatio * 100)}% das séries recentes foram realizadas em RPE 9-10 (próximo ou na falha concêntrica).`
-      );
-    }
+  if (recentSessions.length >= 6 && totalLoggedSets / recentSessions.length >= 18) {
+    fatigueScore += 25;
+    reasons.push(
+      `Alta densidade de volume recente (média de ${Math.round(totalLoggedSets / recentSessions.length)} séries por sessão).`
+    );
   }
 
   // 3. Verifica consistência prolongada sem intervalo (> 4 semanas seguidas com mais de 3 treinos por semana)
@@ -107,7 +99,7 @@ export function analyzeFatigueAndDeload(
     recommendDeload,
     fatigueScore: finalScore,
     consecutiveHeavyWeeks,
-    highRpeSetsCount,
+    totalLoggedSets,
     mrvExceededMuscles,
     reasons,
   };

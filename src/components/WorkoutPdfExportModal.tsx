@@ -197,7 +197,7 @@ export const WorkoutPdfExportModal: React.FC<WorkoutPdfExportModalProps> = ({
                         </span>
                       </div>
                       <div className="text-[11px] font-mono font-bold text-slate-700">
-                        {item.sets} séries × {item.reps} reps · {item.rir} · Descanso: {item.rest}s
+                        {item.sets} séries × {item.reps} reps · Descanso: {item.rest}s
                       </div>
                     </div>
 
@@ -317,8 +317,7 @@ export const WorkoutPdfExportModal: React.FC<WorkoutPdfExportModalProps> = ({
                         {ex.sets.map((s, sIdx) => {
                           const est1RM = calculate1RM(
                             s.weight.toString(),
-                            s.reps.toString(),
-                            s.rpe || s.rir
+                            s.reps.toString()
                           );
                           return (
                             <div
@@ -329,7 +328,7 @@ export const WorkoutPdfExportModal: React.FC<WorkoutPdfExportModalProps> = ({
                                 <strong>Série #{sIdx + 1}:</strong> {s.weight} kg × {s.reps} reps
                               </span>
                               <span className="text-slate-600">
-                                {s.rpe ? `@RPE ${s.rpe}` : ''} · 1RM Est.: ~{est1RM || s.weight} kg
+                                1RM Est.: ~{est1RM || s.weight} kg
                               </span>
                             </div>
                           );

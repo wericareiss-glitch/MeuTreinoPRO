@@ -53,7 +53,6 @@ export interface PeriodizationPhaseConfig {
   shortLabel: string;
   repRange: string;
   repBadge: string;
-  rirTarget: string;
   restRecommended: number;
   intensityPct: string;
   stimulus: string;
@@ -66,7 +65,6 @@ export const PERIODIZATION_PHASES: Record<PeriodizationStrategy, PeriodizationPh
     shortLabel: 'Força',
     repRange: '3-5',
     repBadge: '3-5 reps',
-    rirTarget: 'RIR 1-2',
     restRecommended: 120,
     intensityPct: '85–92% 1RM',
     stimulus: 'Tensão Neural & Recrutamento Miofibrilar Máximo',
@@ -77,7 +75,6 @@ export const PERIODIZATION_PHASES: Record<PeriodizationStrategy, PeriodizationPh
     shortLabel: 'Hipertrofia',
     repRange: '8-12',
     repBadge: '8-12 reps',
-    rirTarget: 'RIR 1-2',
     restRecommended: 75,
     intensityPct: '70–80% 1RM',
     stimulus: 'Tensão Mecânica Ótima & Volume Efetivo',
@@ -88,7 +85,6 @@ export const PERIODIZATION_PHASES: Record<PeriodizationStrategy, PeriodizationPh
     shortLabel: 'Metabólico',
     repRange: '15+',
     repBadge: '15+ reps',
-    rirTarget: 'RIR 0-1',
     restRecommended: 45,
     intensityPct: '55–65% 1RM',
     stimulus: 'Estresse Metabólico, Pump & Densidade Sarcoplasmática',
@@ -117,14 +113,14 @@ export const SET_INTENSITY_TYPES: SetIntensityOption[] = [
     code: 'T',
     shortLabel: 'T',
     label: 'Série de Trabalho (T)',
-    description: 'Série principal hipertrofia/força dentro da faixa alvo de repetições e RIR',
+    description: 'Série principal de trabalho dentro da faixa alvo de repetições',
     badgeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
   },
   {
     code: 'F',
     shortLabel: 'F',
     label: 'Falha Concêntrica (F)',
-    description: 'Série levada até a falha muscular momentânea (RIR 0 / RPE 10)',
+    description: 'Série levada até a falha muscular momentânea concêntrica',
     badgeClass: 'bg-rose-500/20 text-rose-400 border-rose-500/40',
   },
   {
@@ -149,10 +145,9 @@ export interface WorkoutItem {
   exercise: Exercise;
   sets: number;
   reps: string;
-  rir: string;
+  rir?: string;
   rest: number;
   tagRole?: string;
-  isBisetWithNext?: boolean;
 }
 
 export interface GeneratedWorkoutRoutine {
@@ -171,49 +166,9 @@ export interface GeneratedWorkoutRoutine {
   createdAt?: string;
 }
 
-export interface RpeScaleOption {
-  rpe: string;
-  rir: string;
-  label: string;
-  shortLabel: string;
-  description: string;
-  badgeColor: string;
-}
-
-export const RPE_RIR_SCALE: RpeScaleOption[] = [
-  { rpe: '10', rir: '0', label: 'RPE 10 · RIR 0 (Falha Máxima)', shortLabel: 'RPE 10 · RIR 0', description: '0 repetições restantes na reserva (falha concêntrica)', badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
-  { rpe: '9', rir: '1', label: 'RPE 9 · RIR 1 (Muito Pesado)', shortLabel: 'RPE 9 · RIR 1', description: '1 repetição restante na reserva com boa técnica', badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
-  { rpe: '8', rir: '2', label: 'RPE 8 · RIR 2 (Pesado Ótimo)', shortLabel: 'RPE 8 · RIR 2', description: '2 repetições restantes na reserva (estímulo ideal para hipertrofia)', badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
-  { rpe: '7', rir: '3', label: 'RPE 7 · RIR 3 (Moderado)', shortLabel: 'RPE 7 · RIR 3', description: '3 repetições restantes na reserva', badgeColor: 'bg-sky-500/20 text-sky-300 border-sky-500/40' },
-  { rpe: '6', rir: '4', label: 'RPE 6 · RIR 4 (Leve / Aquecimento)', shortLabel: 'RPE 6 · RIR 4', description: '4 repetições restantes na reserva', badgeColor: 'bg-slate-700/50 text-slate-300 border-slate-600/40' },
-];
-
-export const rpeToRir = (rpe?: string): string => {
-  if (!rpe) return '';
-  const val = parseFloat(rpe);
-  if (isNaN(val)) return '';
-  const rir = Math.max(0, 10 - val);
-  return rir.toString();
-};
-
-export const rirToRpe = (rir?: string): string => {
-  if (!rir) return '';
-  const val = parseFloat(rir);
-  if (isNaN(val)) return '';
-  const rpe = Math.max(6, Math.min(10, 10 - val));
-  return rpe.toString();
-};
-
-export const getRpeScaleInfo = (rpeValue?: string): RpeScaleOption | undefined => {
-  if (!rpeValue) return undefined;
-  return RPE_RIR_SCALE.find((item) => item.rpe === rpeValue);
-};
-
 export interface SetData {
   weight: string;
   reps: string;
-  rpe?: string;
-  rir?: string;
   setType?: SetIntensityType;
   done: boolean;
   timestamp?: number;
@@ -232,7 +187,7 @@ export interface WorkoutSessionSummary {
     name: string;
     muscleKey?: MuscleGroup;
     muscleGroup: string;
-    sets: { weight: number; reps: number; rpe?: string; rir?: string }[];
+    sets: { weight: number; reps: number }[];
   }[];
   updatedAt?: string;
 }
@@ -317,8 +272,6 @@ export interface ProgressionSuggestion {
   currentWeight: number;
   suggestedWeight: number;
   suggestedReps: string;
-  suggestedRpe: string;
-  suggestedRir: string;
   suggestedRestSeconds: number;
   status: 'progress' | 'maintain' | 'deload' | 'baseline';
   reason: string;

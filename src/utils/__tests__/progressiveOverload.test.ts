@@ -103,11 +103,10 @@ describe('progressiveOverload', () => {
         []
       );
       expect(suggestion.status).toBe('baseline');
-      expect(suggestion.suggestedRpe).toBe('7.5');
       expect(suggestion.currentWeight).toBe(0);
     });
 
-    it('suggests load increase (+2.5kg for upper compound) when reps hit ceiling with controlled RPE (<= 8.5)', () => {
+    it('suggests load increase (+2.5kg for upper compound) when reps hit ceiling', () => {
       const previousSession: WorkoutSessionSummary = {
         id: 's-1',
         splitName: 'Treino A',
@@ -120,8 +119,8 @@ describe('progressiveOverload', () => {
             muscleGroup: 'Peito',
             muscleKey: 'chest',
             sets: [
-              { weight: 80, reps: 10, rpe: '8' },
-              { weight: 80, reps: 10, rpe: '8.5' },
+              { weight: 80, reps: 10 },
+              { weight: 80, reps: 10 },
             ],
           },
         ],
@@ -141,7 +140,7 @@ describe('progressiveOverload', () => {
       expect(suggestion.reason).toContain('Meta batida com folga');
     });
 
-    it('suggests maintaining weight to consolidate technique when reps hit ceiling but RPE is at extreme failure (>= 9.5)', () => {
+    it('suggests maintaining weight to consolidate reps when below ceiling', () => {
       const previousSession: WorkoutSessionSummary = {
         id: 's-1',
         splitName: 'Treino A',
@@ -154,8 +153,8 @@ describe('progressiveOverload', () => {
             muscleGroup: 'Peito',
             muscleKey: 'chest',
             sets: [
-              { weight: 80, reps: 10, rpe: '10' },
-              { weight: 80, reps: 10, rpe: '9.5' },
+              { weight: 80, reps: 8 },
+              { weight: 80, reps: 9 },
             ],
           },
         ],
@@ -171,7 +170,7 @@ describe('progressiveOverload', () => {
 
       expect(suggestion.status).toBe('maintain');
       expect(suggestion.suggestedWeight).toBe(80);
-      expect(suggestion.reason).toContain('falha extrema');
+      expect(suggestion.reason).toContain('mesma carga antes de subir');
     });
   });
 });

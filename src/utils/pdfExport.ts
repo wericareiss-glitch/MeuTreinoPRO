@@ -117,10 +117,10 @@ export async function exportRoutineToPDF(
     doc.setFontSize(10.5);
     doc.text(`${idx + 1}. ${ex.name}`, margin + 4, y + 6.5);
 
-    // Right metadata: Muscle, Sets x Reps, RIR, Rest
+    // Right metadata: Muscle, Sets x Reps, Rest
     doc.setFontSize(8.5);
     doc.setTextColor(14, 116, 144); // Cyan-700
-    const metaRight = `${muscleLabel.toUpperCase()}  |  ${item.sets} séries × ${item.reps} reps  |  Meta: ${item.rir}  |  Descanso: ${item.rest}s`;
+    const metaRight = `${muscleLabel.toUpperCase()}  |  ${item.sets} séries × ${item.reps} reps  |  Descanso: ${item.rest}s`;
     doc.text(metaRight, pageWidth - margin - 4, y + 6.5, { align: 'right' });
 
     // Target fiber & stability
@@ -396,7 +396,7 @@ export async function exportCompletedSessionToPDF(
     doc.setFontSize(8.5);
 
     ex.sets.forEach((s, sIdx) => {
-      const est1RM = calculate1RM(s.weight.toString(), s.reps.toString(), s.rpe || s.rir);
+      const est1RM = calculate1RM(s.weight.toString(), s.reps.toString());
       doc.setDrawColor(226, 232, 240);
       doc.line(margin + 4, setY, pageWidth - margin - 4, setY);
       doc.setTextColor(30, 41, 59);
@@ -407,7 +407,7 @@ export async function exportCompletedSessionToPDF(
       );
       doc.setTextColor(100, 116, 139);
       doc.text(
-        `Esforço: ${s.rpe ? `RPE ${s.rpe}` : 'RPE 8'} ${s.rir !== undefined ? `(RIR ${s.rir})` : ''}   |   1RM Est.: ~${est1RM || s.weight} kg   |   Vol: ${(s.weight * s.reps).toLocaleString('pt-BR')} kg`,
+        `1RM Est.: ~${est1RM || s.weight} kg   |   Vol: ${(s.weight * s.reps).toLocaleString('pt-BR')} kg`,
         pageWidth - margin - 6,
         setY + 4.2,
         { align: 'right' }

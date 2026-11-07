@@ -37,7 +37,6 @@ interface ExercisePerformanceHistoryEntry {
   setsCount: number;
   topWeight: number;
   topReps: number;
-  topRpe?: string;
   estimated1RM: number;
   volumeLoadKg: number;
   setsDetail: string;
@@ -83,9 +82,6 @@ const VirtualizedExerciseHistoryRow = React.memo(
           <div className="text-right shrink-0 font-mono">
             <div className="text-xs font-black text-emerald-400">
               {entry.topWeight} kg &times; {entry.topReps}
-              {entry.topRpe ? (
-                <span className="text-[10px] text-amber-300 ml-1">@{entry.topRpe}</span>
-              ) : null}
             </div>
             <div className="text-[10px] text-slate-400 flex items-center justify-end gap-1.5">
               <span>1RM ~{entry.estimated1RM}kg</span>
@@ -189,7 +185,6 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
       let topWeight = 0;
       let topReps = 0;
-      let topRpe: string | undefined;
       let best1RM = 0;
       let volumeLoadKg = 0;
 
@@ -201,7 +196,6 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         if (w > topWeight || (w === topWeight && r > topReps)) {
           topWeight = w;
           topReps = r;
-          topRpe = st.rpe;
         }
         if (est1RM > best1RM) {
           best1RM = est1RM;
@@ -228,7 +222,6 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         setsCount: matchedEx.sets.length,
         topWeight,
         topReps,
-        topRpe,
         estimated1RM: best1RM,
         volumeLoadKg: Math.round(volumeLoadKg),
         setsDetail,
@@ -359,7 +352,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
   const handleExportSessionCSV = () => {
     if (!session) return;
-    const headers = ['Data', 'Divisao', 'Exercicio', 'Serie', 'Carga (kg)', 'Reps', 'RPE', 'RIR'];
+    const headers = ['Data', 'Divisao', 'Exercicio', 'Serie', 'Carga (kg)', 'Reps'];
     const rows: string[][] = [];
     const dStr = new Date(session.date).toLocaleDateString('pt-BR');
     session.completedExercises.forEach((ex) => {
@@ -370,9 +363,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
           `"${ex.name}"`,
           `"${sIdx + 1}"`,
           `"${s.weight}"`,
-          `"${s.reps}"`,
-          `"${s.rpe || ''}"`,
-          `"${s.rir || ''}"`
+          `"${s.reps}"`
         ]);
       });
     });
@@ -706,7 +697,6 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                         </span>
                         <strong className="text-emerald-400 font-black">
                           {topSet?.weight || 0} kg &times; {topSet?.reps || 0}
-                          {topSet?.rpe ? ` @RPE ${topSet.rpe}` : ''}
                         </strong>
                       </div>
                     </button>

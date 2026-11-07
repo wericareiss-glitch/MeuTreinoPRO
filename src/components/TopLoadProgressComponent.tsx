@@ -163,7 +163,7 @@ export const TopLoadProgressComponent: React.FC<TopLoadProgressComponentProps> =
           const r = Number(set.reps) || 0;
           if (w <= 0 || r <= 0) return;
 
-          const est1RM = calculate1RM(w.toString(), r.toString(), set.rpe || set.rir) || w;
+          const est1RM = calculate1RM(w.toString(), r.toString()) || w;
           if (est1RM > sessBest1RM) {
             sessBest1RM = est1RM;
             sessBestWeight = w;
