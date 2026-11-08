@@ -70,7 +70,7 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
       onDragOver={(e) => onCardDragOver(visualIdx, e)}
       onDrop={(e) => onCardDrop(visualIdx, e)}
       onDragEnd={onCardDragEnd}
-      className={`p-4 sm:p-5 rounded-3xl border transition-all relative flex flex-col justify-between h-full overflow-hidden ${
+      className={`p-4 sm:p-5 rounded-3xl border transition-all relative flex flex-col justify-between h-full ${
         isDraggingThis ? 'card-dragging' : ''
       } ${isDropTargetThis ? 'card-drop-target' : ''} ${
         isActive
@@ -158,10 +158,10 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
             {isMenuOpen && (
               <>
                 <div
-                  className="fixed inset-0 z-20"
+                  className="fixed inset-0 z-40"
                   onClick={onCloseMenu}
                 />
-                <div className="absolute right-0 top-10 z-30 w-48 bg-[#0b1220] border border-slate-700 rounded-2xl shadow-2xl py-1.5 animate-fadeIn">
+                <div className="absolute right-0 top-11 z-50 w-52 bg-[#0b1220] border border-slate-700 rounded-2xl shadow-2xl py-1.5 animate-fadeIn">
                   <button
                     type="button"
                     onClick={() => {
@@ -287,7 +287,7 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
               </button>
             )}
           </div>
-          {routine.items.slice(0, 5).map((it, idx) => (
+          {routine.items.slice(0, 6).map((it, idx) => (
             <div key={idx} className="text-xs text-slate-300 truncate flex items-center justify-between gap-1.5 py-0.5">
               <div className="flex items-center gap-1.5 truncate">
                 <span className="text-slate-500 text-[10px]">•</span>
@@ -298,9 +298,9 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
               </span>
             </div>
           ))}
-          {routine.items.length > 5 && (
+          {routine.items.length > 6 && (
             <div className="text-[11px] text-slate-500 italic pl-3">
-              + mais {routine.items.length - 5} exercício(s)...
+              + mais {routine.items.length - 6} exercício(s)...
             </div>
           )}
         </div>

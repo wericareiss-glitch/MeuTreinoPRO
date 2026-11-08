@@ -197,11 +197,12 @@ export function applyAccentToDOM(accent: AccentColor) {
 export function isSystemThemeDetectionDisabled(): boolean {
   if (typeof window === 'undefined') return false;
   try {
+    const mode = localStorage.getItem(THEME_MODE_STORAGE_KEY);
+    if (mode === 'system') return false;
     const disabledFlag = localStorage.getItem(AUTO_DETECT_DISABLED_KEY);
     if (disabledFlag === 'true') return true;
     const forcedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     if (forcedTheme === 'dark' || forcedTheme === 'oled' || forcedTheme === 'light') return true;
-    const mode = localStorage.getItem(THEME_MODE_STORAGE_KEY);
     if (mode === 'dark' || mode === 'oled' || mode === 'light') return true;
   } catch {
     // Ignora erro de leitura no localStorage
@@ -399,9 +400,21 @@ export function useTheme() {
       setCurrentAccentColor(newAccent);
     };
 
+    const handleCustomEvent = (e: Event) => {
+      const custom = e as CustomEvent;
+      if (custom.detail?.theme) {
+        setCurrentTheme(custom.detail.theme);
+      }
+      if (custom.detail?.mode) {
+        setCurrentThemeMode(custom.detail.mode);
+      }
+    };
+
     listeners.add(handler);
+    window.addEventListener('meutreino:theme-updated', handleCustomEvent);
     return () => {
       listeners.delete(handler);
+      window.removeEventListener('meutreino:theme-updated', handleCustomEvent);
     };
   }, []);
 

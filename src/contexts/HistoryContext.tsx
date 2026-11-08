@@ -7,7 +7,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { WorkoutSessionSummary, WorkoutLogs, BodyMeasurement, MuscleGroup } from '../types/workout';
 import { safeStorage } from '../utils/storage';
 import { useAuth } from './AuthContext';
-import { syncSessionToCloud } from '../services/firebase';
+import { syncSessionToCloud, syncMeasurementToCloud, deleteMeasurementFromCloud } from '../services/firebase';
 
 export interface HistoryContextType {
   sessions: WorkoutSessionSummary[];
@@ -128,8 +128,12 @@ export const HistoryProvider: React.FC<{
       safeStorage.set(`alex_u_${uid}_measurements`, updated);
       return updated;
     });
+
+    if (currentUser && !currentUser.isVisitor) {
+      syncMeasurementToCloud(uid, item).catch(() => {});
+    }
     onShowToast('Check-in corporal salvo com sucesso!');
-  }, [uid, onShowToast]);
+  }, [uid, currentUser, onShowToast]);
 
   const handleDeleteMeasurement = useCallback((id: string) => {
     if (!uid) return;
@@ -138,8 +142,12 @@ export const HistoryProvider: React.FC<{
       safeStorage.set(`alex_u_${uid}_measurements`, updated);
       return updated;
     });
+
+    if (currentUser && !currentUser.isVisitor) {
+      deleteMeasurementFromCloud(uid, id).catch(() => {});
+    }
     onShowToast('Registo de medição removido.');
-  }, [uid, onShowToast]);
+  }, [uid, currentUser, onShowToast]);
 
   const handleOpenAnalytics = useCallback((exerciseName?: string) => {
     setAnalyticsExerciseName(exerciseName);

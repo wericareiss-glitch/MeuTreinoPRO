@@ -12,7 +12,9 @@ import {
   X, 
   History, 
   Target, 
-  ChevronDown 
+  ChevronDown,
+  LayoutGrid,
+  GalleryHorizontal 
 } from 'lucide-react';
 import { 
   UserProfile,
@@ -23,7 +25,7 @@ import {
   FocusOption,
   PeriodizationStrategy
 } from '../../types/workout';
-import { VersionFilterMode } from './types';
+import { VersionFilterMode, RoutineViewMode } from './types';
 import { RoutineGeneratorPanel } from './RoutineGeneratorPanel';
 
 export interface RoutineListHeaderProps {
@@ -37,6 +39,8 @@ export interface RoutineListHeaderProps {
   setSearchQuery: (query: string) => void;
   versionFilter: VersionFilterMode;
   setVersionFilter: (filter: VersionFilterMode) => void;
+  viewMode: RoutineViewMode;
+  onToggleViewMode: (mode: RoutineViewMode) => void;
   hasCustomRoutines: boolean;
   activeCardIdx: number;
   onScrollToActiveRoutine: () => void;
@@ -73,6 +77,8 @@ export const RoutineListHeader: React.FC<RoutineListHeaderProps> = ({
   setSearchQuery,
   versionFilter,
   setVersionFilter,
+  viewMode,
+  onToggleViewMode,
   hasCustomRoutines,
   activeCardIdx,
   onScrollToActiveRoutine,
@@ -257,13 +263,43 @@ export const RoutineListHeader: React.FC<RoutineListHeaderProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Seletor de Modo de Visualização */}
+              <div className="flex items-center bg-slate-900/90 p-0.5 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => onToggleViewMode('grid')}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                    viewMode === 'grid'
+                      ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Exibir todos os treinos em grade vertical"
+                >
+                  <LayoutGrid className="w-3 h-3" />
+                  <span>Grade</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleViewMode('carousel')}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                    viewMode === 'carousel'
+                      ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Exibir treinos em carrossel horizontal deslizável"
+                >
+                  <GalleryHorizontal className="w-3 h-3" />
+                  <span>Carrossel</span>
+                </button>
+              </div>
+
               {activeCardIdx >= 0 && (
                 <button
                   type="button"
                   onClick={onScrollToActiveRoutine}
                   className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 transition-colors cursor-pointer"
-                  title="Centralizar o treino ativo no carrossel"
+                  title="Centralizar o treino ativo"
                 >
                   <Target className="w-3 h-3" />
                   <span>Ir ao Ativo</span>

@@ -145,7 +145,6 @@ export interface WorkoutItem {
   exercise: Exercise;
   sets: number;
   reps: string;
-  rir?: string;
   rest: number;
   tagRole?: string;
 }

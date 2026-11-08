@@ -116,9 +116,9 @@ function normalizeSpokenPortugueseNumbers(input: string): string {
 /**
  * Interpreta comandos de voz em português para preenchimento rápido de série:
  * Exemplos suportados:
- * - "80 quilos 10 repetições rpe 8"
+ * - "80 quilos 10 repetições"
  * - "80 por 10" / "80 x 10"
- * - "100 kg 8 reps rir 2"
+ * - "100 kg 8 reps"
  * - "62 e meio 12 repetições concluir"
  */
 export function parseVoiceWorkoutCommand(rawTranscript: string): ParsedVoiceSetCommand {

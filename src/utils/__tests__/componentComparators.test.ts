@@ -121,7 +121,6 @@ describe('Component Comparators & Memoization Audit', () => {
       sets: 4,
       reps: '8-10',
       rest: 90,
-      rir: 'RIR 1-2',
       muscleKey: 'chest',
     };
 

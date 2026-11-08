@@ -245,14 +245,11 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
     'hypertrophy';
 
   let repRange = '8 a 12';
-  let rir = level === 'beginner' ? 'RIR 2' : level === 'intermediate' ? 'RIR 1-2' : 'RIR 0-1';
 
   if (targetPeriodization === 'strength') {
     repRange = '3 a 5';
-    rir = 'RIR 1-2';
   } else if (targetPeriodization === 'metabolic') {
     repRange = '15 a 20';
-    rir = 'RIR 0-1';
   }
 
   // =========================================================================
@@ -442,7 +439,6 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
         exercise: chosen,
         sets: actualSets,
         reps: repRange,
-        rir: rir,
         rest: calculatedRest,
         tagRole: isCompound ? 'Composto / Base' : 'Isolador',
       });
@@ -591,7 +587,6 @@ export function generateQuickWorkoutRoutine(
       exercise: getFilteredExercise('quadriceps', 'Alongamento'),
       sets: 3,
       reps: '8 a 10',
-      rir: 'RIR 1-2',
       rest: 60,
       tagRole: 'Joelho Dominante',
     },
@@ -602,7 +597,6 @@ export function generateQuickWorkoutRoutine(
       exercise: getFilteredExercise('hamstrings', 'Alongamento'),
       sets: 3,
       reps: '8 a 10',
-      rir: 'RIR 1-2',
       rest: 60,
       tagRole: 'Dobradiça de Quadril (Hinge)',
     },
@@ -613,7 +607,6 @@ export function generateQuickWorkoutRoutine(
       exercise: getFilteredExercise('chest'),
       sets: 3,
       reps: '8 a 10',
-      rir: 'RIR 1-2',
       rest: 60,
       tagRole: 'Empurrar',
     },
@@ -624,7 +617,6 @@ export function generateQuickWorkoutRoutine(
       exercise: getFilteredExercise('back'),
       sets: 3,
       reps: '8 a 10',
-      rir: 'RIR 1-2',
       rest: 60,
       tagRole: 'Puxar',
     },
@@ -635,7 +627,6 @@ export function generateQuickWorkoutRoutine(
       exercise: getFilteredExercise(user.focus === 'glutes' ? 'glutes' : 'shoulders'),
       sets: 3,
       reps: '10 a 12',
-      rir: 'RIR 1',
       rest: 45,
       tagRole: 'Acessório / Detalhe',
     },

@@ -13,7 +13,7 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
         .keys()
         .then((names) => {
           names.forEach((name) => {
-            if (!name.includes('meutreino-sw-v4.4')) {
+            if (!name.includes('meutreino-sw-v5.0')) {
               caches.delete(name);
             }
           });
@@ -25,18 +25,23 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       .register('/sw.js', { scope: '/' })
       .then((registration) => {
         registration.update().catch(() => {});
+
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          window.dispatchEvent(new CustomEvent('meutreino:sw-update-available', { detail: { registration } }));
+        }
+
         registration.addEventListener('updatefound', () => {
           const installingWorker = registration.installing;
           if (!installingWorker) return;
           installingWorker.addEventListener('statechange', () => {
             if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              installingWorker.postMessage({ type: 'SKIP_WAITING' });
+              window.dispatchEvent(new CustomEvent('meutreino:sw-update-available', { detail: { registration } }));
             }
           });
         });
       })
       .catch(() => {
-        // Ignora falhas silenciosamente em ambiente de preview restrito
+        // Ignora falhas silenciosamente em ambiente restrito
       });
   });
 }

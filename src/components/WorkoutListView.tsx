@@ -12,12 +12,15 @@ import {
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { soundManager } from '../utils/audio';
 import { authStorage, getPresetWeights, scaleWeightsToBudget } from '../utils/auth';
+import { safeStorage } from '../utils/storage';
 import { 
   WorkoutListViewProps, 
   RoutineVisualEntry, 
   VersionFilterMode, 
+  RoutineViewMode,
   CarouselItemData,
   HorizontalRoutineSlot,
+  RoutineCard,
   RoutineListHeader,
   RoutineCarouselNav,
   RoutineEmptyState
@@ -27,6 +30,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   user,
   routines,
   activeRoutineId,
+  initialViewMode,
   onStartWorkout,
   onCreateManualWorkout,
   onGenerateQuickWorkout,
@@ -64,10 +68,19 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [versionFilter, setVersionFilter] = useState<VersionFilterMode>('all');
+  const [viewMode, setViewMode] = useState<RoutineViewMode>(() =>
+    safeStorage.get<RoutineViewMode>('meutreino_routines_view_mode', initialViewMode || 'grid')
+  );
   const [containerWidth, setContainerWidth] = useState<number>(() =>
     typeof window !== 'undefined' ? Math.min(896, Math.max(320, window.innerWidth - 32)) : 360
   );
   const [currentVisibleIdx, setCurrentVisibleIdx] = useState<number>(0);
+
+  const handleToggleViewMode = useCallback((mode: RoutineViewMode) => {
+    setViewMode(mode);
+    safeStorage.set('meutreino_routines_view_mode', mode);
+    soundManager.vibrate(10);
+  }, []);
 
   // Painel de Geração & Personalização de Treinos
   const [isGeneratorOpen, setIsGeneratorOpen] = useState<boolean>(() => routines.length === 0);
@@ -121,54 +134,64 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     }
   }, [onShareRoutine, user.frequency]);
 
-  // Treinos ordenados do mais recente para o mais antigo
+  // Ordem natural dos treinos cadastrados ou gerados (A, B, C, D...)
   const sortedEntries = useMemo<RoutineVisualEntry[]>(() => {
-    const len = routines.length;
-    const result = new Array<RoutineVisualEntry>(len);
-    for (let i = 0; i < len; i++) {
-      result[i] = {
-        routine: routines[len - 1 - i],
-        visualIdx: i,
-      };
-    }
-    return result;
+    return routines.map((routine, idx) => ({
+      routine,
+      visualIdx: idx,
+    }));
   }, [routines]);
 
-  // Filtra por modo de versão + busca textual
+  // Filtra por modo de versão + busca textual e re-indexa visualIdx para alinhamento 1:1
   const filteredEntries = useMemo<RoutineVisualEntry[]>(() => {
     let baseEntries = sortedEntries;
 
     if (versionFilter === 'latest') {
-      const seenKeys = new Set<string>();
-      baseEntries = sortedEntries.filter(({ routine }) => {
-        if (routine.id === activeRoutineId) {
-          seenKeys.add(`${routine.letter}::${routine.name.trim().toLowerCase()}`);
-          return true;
+      // Identifica a versão mais alta de cada letra de treino para exibir apenas as mais recentes
+      const latestVersionByLetter = new Map<string, number>();
+      routines.forEach((r) => {
+        const letterKey = (r.letter || 'A').toUpperCase();
+        const curMax = latestVersionByLetter.get(letterKey) || 0;
+        const v = r.version || 1;
+        if (v > curMax) {
+          latestVersionByLetter.set(letterKey, v);
         }
-        const key = `${routine.letter}::${routine.name.trim().toLowerCase()}`;
-        if (seenKeys.has(key)) return false;
-        seenKeys.add(key);
-        return true;
       });
+
+      const latestRoutineIds = new Set<string>();
+      routines.forEach((r) => {
+        const letterKey = (r.letter || 'A').toUpperCase();
+        const maxV = latestVersionByLetter.get(letterKey) || 1;
+        if ((r.version || 1) === maxV || r.id === activeRoutineId) {
+          latestRoutineIds.add(r.id);
+        }
+      });
+
+      baseEntries = sortedEntries.filter(({ routine }) => latestRoutineIds.has(routine.id));
     } else if (versionFilter === 'custom') {
       baseEntries = sortedEntries.filter(({ routine }) => Boolean(routine.isCustom));
     }
 
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return baseEntries;
+    const finalFiltered = !q
+      ? baseEntries
+      : baseEntries.filter(({ routine }) => {
+          if (routine.name.toLowerCase().includes(q)) return true;
+          if (routine.subtitle.toLowerCase().includes(q)) return true;
+          if (routine.letter.toLowerCase().includes(q)) return true;
+          if (routine.version && `v${routine.version}`.includes(q)) return true;
+          return routine.items.some(
+            (it) =>
+              it.exercise.name.toLowerCase().includes(q) ||
+              (MUSCLE_NAMES[it.muscleKey] || it.muscleKey).toLowerCase().includes(q)
+          );
+        });
 
-    return baseEntries.filter(({ routine }) => {
-      if (routine.name.toLowerCase().includes(q)) return true;
-      if (routine.subtitle.toLowerCase().includes(q)) return true;
-      if (routine.letter.toLowerCase().includes(q)) return true;
-      if (routine.version && `v${routine.version}`.includes(q)) return true;
-      return routine.items.some(
-        (it) =>
-          it.exercise.name.toLowerCase().includes(q) ||
-          (MUSCLE_NAMES[it.muscleKey] || it.muscleKey).toLowerCase().includes(q)
-      );
-    });
-  }, [sortedEntries, versionFilter, activeRoutineId, searchQuery]);
+    return finalFiltered.map((entry, idx) => ({
+      routine: entry.routine,
+      visualIdx: idx,
+    }));
+  }, [sortedEntries, routines, versionFilter, activeRoutineId, searchQuery]);
 
   // Calcula largura responsiva de cada card no carrossel horizontal
   const itemWidth = useMemo(() => {
@@ -234,10 +257,8 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     setGenSuccess(true);
     setTimeout(() => {
       setGenSuccess(false);
-      if (routines.length > 0) {
-        setIsGeneratorOpen(false);
-        scrollToRoutineIndex(0);
-      }
+      setIsGeneratorOpen(false);
+      scrollToRoutineIndex(0);
     }, 1800);
   }, [
     user.id,
@@ -249,7 +270,6 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     periodizationStrategy,
     onUpdateUser,
     onGenerateRoutines,
-    routines.length,
     scrollToRoutineIndex,
   ]);
 
@@ -273,15 +293,19 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   const handleReorderVisualCards = useCallback(
     (fromVisualIdx: number, toVisualIdx: number) => {
       if (fromVisualIdx === toVisualIdx || !onReorderRoutines) return;
-      const total = routines.length;
-      const fromOriginalIdx = total - 1 - fromVisualIdx;
-      const toOriginalIdx = total - 1 - toVisualIdx;
-      if (fromOriginalIdx >= 0 && toOriginalIdx >= 0 && fromOriginalIdx < total && toOriginalIdx < total) {
+      const fromRoutine = filteredEntries[fromVisualIdx]?.routine;
+      const toRoutine = filteredEntries[toVisualIdx]?.routine;
+      if (!fromRoutine || !toRoutine) return;
+
+      const fromOriginalIdx = routines.findIndex((r) => r.id === fromRoutine.id);
+      const toOriginalIdx = routines.findIndex((r) => r.id === toRoutine.id);
+
+      if (fromOriginalIdx >= 0 && toOriginalIdx >= 0 && fromOriginalIdx !== toOriginalIdx) {
         onReorderRoutines(fromOriginalIdx, toOriginalIdx);
         soundManager.vibrate(25);
       }
     },
-    [routines.length, onReorderRoutines]
+    [filteredEntries, routines, onReorderRoutines]
   );
 
   // Pointer Hold-and-Drag on Routine Card Grip Handle (600ms hold delay)
@@ -505,6 +529,8 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
         setSearchQuery={setSearchQuery}
         versionFilter={versionFilter}
         setVersionFilter={setVersionFilter}
+        viewMode={viewMode}
+        onToggleViewMode={handleToggleViewMode}
         hasCustomRoutines={routines.some((r) => r.isCustom)}
         activeCardIdx={activeCardIdx}
         onScrollToActiveRoutine={handleScrollToActiveRoutine}
@@ -540,6 +566,37 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
           onGenerateQuickWorkout={onGenerateQuickWorkout}
           onCreateManualWorkout={onCreateManualWorkout}
         />
+      ) : viewMode === 'grid' ? (
+        /* Visualização em Grade Completa (todos os treinos visíveis de uma vez, sem cortes) */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredEntries.map((entry) => (
+            <RoutineCard
+              key={entry.routine.id}
+              entry={entry}
+              isActive={activeRoutineId === entry.routine.id}
+              isMenuOpen={openMenuId === entry.routine.id}
+              isConfirmingDelete={confirmDeleteId === entry.routine.id}
+              isDraggingThis={draggingIdx === entry.visualIdx}
+              isHoldingThis={holdingIdx === entry.visualIdx}
+              isDropTargetThis={dropTargetIdx === entry.visualIdx && draggingIdx !== entry.visualIdx}
+              canReorder={canReorder}
+              hasEditHandler={hasEditHandler}
+              hasDeleteHandler={hasDeleteHandler}
+              onToggleMenu={handleToggleMenu}
+              onCloseMenu={handleCloseMenu}
+              onRequestDeleteConfirm={setConfirmDeleteId}
+              onConfirmDelete={handleConfirmDelete}
+              onStartWorkout={onStartWorkout}
+              onEditRoutine={onEditRoutine}
+              onShareRoutineClick={handleShareClick}
+              onPointerDownGrip={handlePointerDownRoutineHandle}
+              onCardDragStart={handleCardDragStart}
+              onCardDragOver={handleCardDragOver}
+              onCardDrop={handleCardDrop}
+              onCardDragEnd={handleCardDragEnd}
+            />
+          ))}
+        </div>
       ) : (
         /* Carrossel Horizontal Virtualizado de Treinos (react-window com layout="horizontal") */
         <div className="space-y-2.5">

@@ -6,17 +6,25 @@
       "type": "object",
       "properties": {
         "userId": { "type": "string", "description": "Auth UID of the user" },
+        "id": { "type": "string", "description": "Profile identifier" },
+        "username": { "type": "string", "description": "Account username" },
         "email": { "type": "string", "format": "email", "description": "Email address of the user" },
         "name": { "type": "string", "description": "Display name of the athlete" },
         "weightKg": { "type": "number", "description": "Current body weight in kilograms" },
         "heightM": { "type": "number", "description": "Height in meters" },
+        "age": { "type": "number", "description": "Age of the user in years" },
+        "bodyFatPercent": { "type": "number", "description": "Estimated body fat percentage" },
         "gender": { "type": "string", "enum": ["male", "female"], "description": "Biological sex" },
         "level": { "type": "string", "enum": ["beginner", "intermediate", "advanced"], "description": "Experience level" },
         "focus": { "type": "string", "enum": ["glutes", "strength", "v_taper", "balanced"], "description": "Target training focus" },
         "frequency": { "type": "number", "description": "Weekly workout frequency (1 to 6)" },
         "preferredSplit": { "type": "string", "description": "Preferred muscle split" },
+        "exercisesPerMuscle": { "type": "number", "description": "Exercises allocated per muscle group (1 or 2)" },
         "weeklyBudget": { "type": "number", "description": "Total weekly sets target" },
+        "muscleBudgets": { "type": "object", "description": "Sets allocated per muscle group" },
         "periodizationStrategy": { "type": "string", "enum": ["hypertrophy", "strength", "metabolic"], "description": "Current periodization phase" },
+        "nutritionPlan": { "type": "object", "description": "Nutritional and caloric targets" },
+        "isVisitor": { "type": "boolean", "description": "Whether user is a guest visitor" },
         "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
       },
@@ -33,10 +41,15 @@
         "name": { "type": "string", "description": "Title of the workout routine" },
         "subtitle": { "type": "string", "description": "Subtitle describing the target muscles" },
         "split": { "type": "string", "description": "Workout split category" },
+        "muscleGroups": { "type": "array", "items": { "type": "string" }, "description": "Target muscle groups" },
+        "items": { "type": "array", "description": "Exercises and prescription items in routine" },
         "totalSets": { "type": "number", "description": "Total sets in the routine" },
         "estimatedMinutes": { "type": "number", "description": "Estimated duration in minutes" },
+        "isCustom": { "type": "boolean", "description": "Whether routine was custom edited" },
+        "periodizationStrategy": { "type": "string", "enum": ["hypertrophy", "strength", "metabolic"], "description": "Associated periodization phase" },
         "version": { "type": "number", "description": "Version number of the routine" },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when routine was created" }
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when routine was created" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp of last update" }
       },
       "required": ["id", "userId", "name", "letter"]
     },
@@ -51,8 +64,10 @@
         "splitName": { "type": "string", "description": "Name or split of the session" },
         "totalSets": { "type": "number", "description": "Number of completed sets" },
         "totalVolumeLoadKg": { "type": "number", "description": "Total tonnage lifted (kg)" },
+        "completedExercises": { "type": "array", "description": "Completed exercise details and sets" },
         "notes": { "type": "string", "description": "Optional athlete notes" },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of session completion" }
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp of session completion" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp of last update" }
       },
       "required": ["id", "userId", "date", "totalSets"]
     },
@@ -72,7 +87,11 @@
         "calvesCm": { "type": "number", "description": "Calves circumference in cm" },
         "hipsCm": { "type": "number", "description": "Hips circumference in cm" },
         "bodyFatPercent": { "type": "number", "description": "Body fat percentage" },
-        "notes": { "type": "string", "description": "Additional notes" }
+        "photoFront": { "type": "string", "description": "Front progress photo in base64" },
+        "photoBack": { "type": "string", "description": "Back progress photo in base64" },
+        "photoSide": { "type": "string", "description": "Side progress photo in base64" },
+        "notes": { "type": "string", "description": "Additional notes" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp of last update" }
       },
       "required": ["id", "userId", "date", "weightKg"]
     }

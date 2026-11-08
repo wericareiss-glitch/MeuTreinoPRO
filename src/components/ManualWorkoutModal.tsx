@@ -218,7 +218,6 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
       exercise: ex,
       sets: 3,
       reps: '8 a 10',
-      rir: 'RIR 1-2',
       rest: 60,
     };
     setItems((prev) => [...prev, newItem]);
@@ -265,7 +264,6 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
       exercise: newEx,
       sets: 3,
       reps: '8 a 10',
-      rir: 'RIR 1-2',
       rest: 60,
     };
 

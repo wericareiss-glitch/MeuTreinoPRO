@@ -21,6 +21,7 @@ import {
   setDoc, 
   getDoc, 
   getDocs, 
+  deleteDoc,
   collection, 
   query, 
   getDocFromServer,
@@ -167,6 +168,40 @@ export async function logoutFirebase(): Promise<void> {
 // SINCRONIZAÇÃO EM NUVEM (FIRESTORE)
 // ==========================================
 
+/**
+ * Remove recursivamente todas as chaves com valor `undefined` de um objeto ou array
+ * para prevenir o erro fatal do Firestore SDK:
+ * "FirebaseError: Function setDoc() called with invalid data. Unsupported field value: undefined"
+ */
+export function deepCleanForFirestore<T>(val: T): T {
+  if (val === null || val === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(val)) {
+    return val
+      .filter((item) => item !== undefined)
+      .map((item) => deepCleanForFirestore(item)) as any;
+  }
+  if (typeof val === 'object') {
+    // Preserva instâncias especiais como Date ou FieldValue (serverTimestamp)
+    if (
+      val instanceof Date ||
+      (val as any)?._methodName ||
+      (val as any)?.constructor?.name === 'FieldValue'
+    ) {
+      return val;
+    }
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(val as Record<string, any>)) {
+      if (value !== undefined) {
+        cleaned[key] = deepCleanForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return val;
+}
+
 export function isFirebaseCloudSyncAvailable(userId?: string): boolean {
   if (!auth.currentUser) return false;
   if (userId && (userId.startsWith('user_guest_') || userId.startsWith('alex_guest_'))) {
@@ -182,14 +217,16 @@ export async function syncUserProfileToCloud(profile: UserProfile): Promise<bool
   const currentUid = auth.currentUser.uid;
   const path = `users/${currentUid}`;
   try {
-    const sanitized = { ...profile, id: currentUid, userId: currentUid };
-    delete (sanitized as any).password;
-    await setDoc(doc(db, 'users', currentUid), {
-      ...sanitized,
+    const rawData = {
+      ...profile,
+      id: currentUid,
       userId: currentUid,
       updatedAt: new Date().toISOString(),
       serverTimestamp: serverTimestamp(),
-    }, { merge: true });
+    };
+    delete (rawData as any).password;
+    const sanitized = deepCleanForFirestore(rawData);
+    await setDoc(doc(db, 'users', currentUid), sanitized, { merge: true });
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -204,11 +241,12 @@ export async function syncRoutineToCloud(userId: string, routine: GeneratedWorko
   const currentUid = auth.currentUser.uid;
   const path = `users/${currentUid}/routines/${routine.id}`;
   try {
-    await setDoc(doc(db, 'users', currentUid, 'routines', routine.id), {
+    const sanitized = deepCleanForFirestore({
       ...routine,
       userId: currentUid,
       updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    });
+    await setDoc(doc(db, 'users', currentUid, 'routines', routine.id), sanitized, { merge: true });
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -232,6 +270,21 @@ export async function syncRoutinesToCloud(userId: string, routines: GeneratedWor
   }
 }
 
+export async function deleteRoutineFromCloud(userId: string, routineId: string): Promise<boolean> {
+  if (!auth.currentUser || userId.startsWith('user_guest_')) {
+    return false;
+  }
+  const currentUid = auth.currentUser.uid;
+  const path = `users/${currentUid}/routines/${routineId}`;
+  try {
+    await deleteDoc(doc(db, 'users', currentUid, 'routines', routineId));
+    return true;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+    return false;
+  }
+}
+
 export async function syncSessionToCloud(userId: string, session: WorkoutSessionSummary): Promise<boolean> {
   if (!auth.currentUser || userId.startsWith('user_guest_')) {
     return false;
@@ -239,14 +292,30 @@ export async function syncSessionToCloud(userId: string, session: WorkoutSession
   const currentUid = auth.currentUser.uid;
   const path = `users/${currentUid}/sessions/${session.id}`;
   try {
-    await setDoc(doc(db, 'users', currentUid, 'sessions', session.id), {
+    const sanitized = deepCleanForFirestore({
       ...session,
       userId: currentUid,
       updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    });
+    await setDoc(doc(db, 'users', currentUid, 'sessions', session.id), sanitized, { merge: true });
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
+    return false;
+  }
+}
+
+export async function deleteSessionFromCloud(userId: string, sessionId: string): Promise<boolean> {
+  if (!auth.currentUser || userId.startsWith('user_guest_')) {
+    return false;
+  }
+  const currentUid = auth.currentUser.uid;
+  const path = `users/${currentUid}/sessions/${sessionId}`;
+  try {
+    await deleteDoc(doc(db, 'users', currentUid, 'sessions', sessionId));
+    return true;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
     return false;
   }
 }
@@ -258,14 +327,30 @@ export async function syncMeasurementToCloud(userId: string, measurement: BodyMe
   const currentUid = auth.currentUser.uid;
   const path = `users/${currentUid}/measurements/${measurement.id}`;
   try {
-    await setDoc(doc(db, 'users', currentUid, 'measurements', measurement.id), {
+    const sanitized = deepCleanForFirestore({
       ...measurement,
       userId: currentUid,
       updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    });
+    await setDoc(doc(db, 'users', currentUid, 'measurements', measurement.id), sanitized, { merge: true });
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
+    return false;
+  }
+}
+
+export async function deleteMeasurementFromCloud(userId: string, measurementId: string): Promise<boolean> {
+  if (!auth.currentUser || userId.startsWith('user_guest_')) {
+    return false;
+  }
+  const currentUid = auth.currentUser.uid;
+  const path = `users/${currentUid}/measurements/${measurementId}`;
+  try {
+    await deleteDoc(doc(db, 'users', currentUid, 'measurements', measurementId));
+    return true;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
     return false;
   }
 }

@@ -33,6 +33,7 @@ import { AuthModal } from './components/AuthModal';
 import { NavigationTabs } from './components/NavigationTabs';
 import { HomeView } from './components/HomeView';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { PWAUpdateToast } from './components/PWAUpdateToast';
 import { BiometricLockScreen } from './components/BiometricLockScreen';
 import { SectionErrorBoundary } from './components/SectionErrorBoundary';
 
@@ -342,6 +343,9 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
 
       {/* Offline Connectivity Notification */}
       <OfflineIndicator />
+
+      {/* PWA Version Update Notification */}
+      <PWAUpdateToast />
 
       {/* Header with Navigation and Fast Tools */}
       <Header

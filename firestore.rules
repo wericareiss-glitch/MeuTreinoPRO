@@ -11,7 +11,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.:]+$');
     }
 
     // Default deny all
@@ -28,8 +28,19 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if isOwner(userId) && isValidId(userId);
 
-      match /{allSubcollections=**} {
-        allow read, write: if isOwner(userId);
+      // Subcollection: routines
+      match /routines/{routineId} {
+        allow read, write: if isOwner(userId) && isValidId(routineId);
+      }
+
+      // Subcollection: sessions
+      match /sessions/{sessionId} {
+        allow read, write: if isOwner(userId) && isValidId(sessionId);
+      }
+
+      // Subcollection: measurements
+      match /measurements/{measurementId} {
+        allow read, write: if isOwner(userId) && isValidId(measurementId);
       }
     }
   }

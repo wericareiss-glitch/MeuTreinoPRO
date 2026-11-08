@@ -622,10 +622,16 @@ export const WorkoutProvider: React.FC<{
       const copy = [...prev];
       const [moved] = copy.splice(fromIndex, 1);
       copy.splice(toIndex, 0, moved);
+      if (uid) {
+        safeStorage.set(`alex_u_${uid}_routines`, copy);
+        if (currentUser && !currentUser.isVisitor) {
+          syncRoutinesToCloud(uid, copy).catch(() => {});
+        }
+      }
       return copy;
     });
     onShowToast('Ordem dos treinos atualizada!');
-  }, [onShowToast]);
+  }, [uid, currentUser, onShowToast]);
 
   const handleDeleteExercise = useCallback((index: number) => {
     setWorkoutItems((prev) => {

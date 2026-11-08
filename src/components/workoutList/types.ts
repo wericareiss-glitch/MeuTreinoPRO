@@ -43,6 +43,7 @@ export interface WorkoutListViewProps {
   periodizationStrategy?: PeriodizationStrategy;
   setPeriodizationStrategy?: (p: PeriodizationStrategy) => void;
   onOpenVolumeBudget?: () => void;
+  initialViewMode?: RoutineViewMode;
 }
 
 export interface RoutineVisualEntry {
@@ -51,6 +52,7 @@ export interface RoutineVisualEntry {
 }
 
 export type VersionFilterMode = 'all' | 'latest' | 'custom';
+export type RoutineViewMode = 'carousel' | 'grid';
 
 export interface RoutineCardProps {
   entry: RoutineVisualEntry;

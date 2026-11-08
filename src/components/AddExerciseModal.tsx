@@ -58,7 +58,6 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
       exercise: ex,
       sets: 3,
       reps: '8 a 10',
-      rir: 'RIR 1-2',
       rest: 90,
       tagRole: 'Personalizado',
     };
@@ -89,7 +88,6 @@ export const AddExerciseModal: React.FC<AddExerciseModalProps> = ({
       exercise: customEx,
       sets: customSets,
       reps: customReps,
-      rir: 'RIR 1-2',
       rest: customRest,
       tagRole: 'Atleta Custom',
     };

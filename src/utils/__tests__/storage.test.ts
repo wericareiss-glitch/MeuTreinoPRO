@@ -92,27 +92,25 @@ describe('storage utility', () => {
       expect(calculate1RM('invalid', 10)).toBeNull();
     });
 
-    it('calculates 1RM accurately adjusted for reps and RPE', () => {
-      // 100kg x 1 rep at RPE 10 (RIR 0) -> 100kg
-      expect(calculate1RM(100, 1, '10')).toBe(100);
+    it('calculates 1RM accurately adjusted for reps', () => {
+      // 100kg x 1 rep -> 100kg
+      expect(calculate1RM(100, 1)).toBe(100);
 
-      // 100kg x 5 reps at RPE 10 (RIR 0) -> 100 * (1 + 5/30) = 116.7
-      expect(calculate1RM(100, 5, '10')).toBe(116.7);
+      // 100kg x 5 reps -> 100 * (1 + 5/30) = 116.7
+      expect(calculate1RM(100, 5)).toBe(116.7);
     });
 
     it('calculates 6RM (~85% of 1RM) accurately', () => {
       // 1RM of 120 -> 120 / (1 + 6/30) = 120 / 1.2 = 100
-      const sixRm = calculate6RM(120, 1, '10');
+      const sixRm = calculate6RM(120, 1);
       expect(sixRm).toBe(100);
     });
 
-    it('estimates next set weight based on target RPE and reps', () => {
-      // current 100kg x 8 reps at RPE 9 (RIR 1, effective = 9 reps)
-      // 1RM = 100 * (1 + 9/30) = 130
-      // target 8 reps at RPE 8 (RIR 2, effective = 10 reps)
-      // next = 130 / (1 + 10/30) = 130 / 1.3333 = 97.5
-      const nextWeight = estimateNextSetWeight(100, 8, 9, 8, 8);
-      expect(nextWeight).toBe(97.5);
+    it('estimates next set weight based on target reps', () => {
+      // current 100kg x 8 reps -> 1RM = 100 * (1 + 8/30) = 126.67
+      // target 10 reps -> 126.67 / (1 + 10/30) = 95
+      const nextWeight = estimateNextSetWeight(100, 8, 10);
+      expect(nextWeight).toBe(95);
     });
   });
 });
