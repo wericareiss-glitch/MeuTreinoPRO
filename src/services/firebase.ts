@@ -31,11 +31,38 @@ import firebaseConfig from '../../firebase-applet-config.json';
 import { UserProfile, GeneratedWorkoutRoutine, WorkoutSessionSummary, BodyMeasurement } from '../types/workout';
 import { safeStorage } from '../utils/storage';
 
-// Inicialização do Firebase App
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// Configuração padrão de fallback garantida para deploy (Vercel ou local)
+const DEFAULT_FIREBASE_CONFIG = {
+  projectId: "gen-lang-client-0990478631",
+  appId: "1:1052704553147:web:79ca7c8e7e376d3d88d19e",
+  apiKey: "AIzaSyDeJL9oASD2pi0n6QZDeC7scwoFPL70mus",
+  authDomain: "gen-lang-client-0990478631.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-meutreinopro-9e757c82-c0c5-4f9b-a123-67e3b74f2876",
+  storageBucket: "gen-lang-client-0990478631.firebasestorage.app",
+  messagingSenderId: "1052704553147",
+  measurementId: "",
+};
+
+// Inicialização do Firebase App com suporte a variáveis de ambiente da Vercel ou config local
+const resolvedFirebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig?.apiKey || DEFAULT_FIREBASE_CONFIG.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig?.authDomain || DEFAULT_FIREBASE_CONFIG.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig?.projectId || DEFAULT_FIREBASE_CONFIG.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig?.storageBucket || DEFAULT_FIREBASE_CONFIG.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig?.messagingSenderId || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfig?.appId || DEFAULT_FIREBASE_CONFIG.appId,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfig?.measurementId || DEFAULT_FIREBASE_CONFIG.measurementId,
+};
+
+const resolvedDatabaseId =
+  import.meta.env.VITE_FIREBASE_DATABASE_ID ||
+  firebaseConfig?.firestoreDatabaseId ||
+  DEFAULT_FIREBASE_CONFIG.firestoreDatabaseId;
+
+const app = getApps().length > 0 ? getApp() : initializeApp(resolvedFirebaseConfig);
 
 // CRITICAL: Firestore com databaseId explícito conforme provisionado
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, resolvedDatabaseId);
 export const auth = getAuth(app);
 
 // Provider Google
