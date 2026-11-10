@@ -20,6 +20,7 @@ import {
 } from './types/workout';
 import { MUSCLE_NAMES } from './data/exerciseDatabase';
 import { safeStorage } from './utils/storage';
+import { authStorage } from './utils/auth';
 import { TabType } from './types/navigation';
 import { useI18n } from './utils/i18n';
 import { useTheme } from './utils/theme';
@@ -43,7 +44,6 @@ import { ProfileView } from './components/ProfileView';
 import { WarmupModal } from './components/WarmupModal';
 import { HistoryModal } from './components/HistoryModal';
 import { SwapExerciseModal } from './components/SwapExerciseModal';
-import { ProfileModal } from './components/ProfileModal';
 import { VolumeBudgetModal } from './components/VolumeBudgetModal';
 import { AddExerciseModal } from './components/AddExerciseModal';
 import { WorkoutSummaryModal } from './components/WorkoutSummaryModal';
@@ -67,8 +67,6 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
   const {
     currentUser,
     isAuthOpen,
-    isProfileOpen,
-    setIsProfileOpen,
     isBudgetOpen,
     setIsBudgetOpen,
     isBiometricLocked,
@@ -317,22 +315,10 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
       {/* Offline Connectivity Notification */}
       <OfflineIndicator />
 
-      {/* Header with Navigation and Fast Tools */}
+      {/* Clean Header */}
       <Header
-        user={currentUser}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onOpenProfile={() => setActiveTab('perfil')}
-        onOpenHistory={() => setIsHistoryOpen(true)}
-        onOpenAnalytics={() => handleOpenAnalytics()}
-        onOpenMeasurements={() => setIsMeasurementsOpen(true)}
-        onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-        onShare={handleShare}
-        isMuted={isMuted}
-        onToggleMute={() => setIsMuted(!isMuted)}
-        activeSetsCount={totalSetsInWorkout}
-        completedSetsCount={totalCompletedSetsInWorkout}
-        hasActiveWorkout={!!activeRoutineId}
       />
 
       {/* Responsive Navigation Tabs (Subheader on Desktop, Dock on Mobile) */}
@@ -340,6 +326,8 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
         <NavigationTabs
           activeTab={activeTab}
           onSelectTab={setActiveTab}
+          currentUser={currentUser}
+          onLogout={handleLogout}
           activeSetsCount={totalSetsInWorkout}
           completedSetsCount={totalCompletedSetsInWorkout}
           sessionsCount={sessions.length}
@@ -495,6 +483,17 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
                     periodizationStrategy={periodizationStrategy}
                     userFocus={currentUser?.focus}
                     onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
+                    deepWorkMode={Boolean(currentUser?.deepWorkMode)}
+                    onToggleDeepWork={() => {
+                      if (currentUser) {
+                        const updated = authStorage.updateProfile(currentUser.id, {
+                          deepWorkMode: !currentUser.deepWorkMode,
+                        });
+                        if (updated) {
+                          updateUser(updated);
+                        }
+                      }
+                    }}
                     onFinishSession={() => finishAndSaveSession(() => setActiveTab('inicio'))}
                     onDiscardSession={() => handleDiscardActiveWorkout(() => setActiveTab('treino'))}
                     onBackToList={() => setActiveTab('treino')}
@@ -550,17 +549,6 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
       )}
 
       <React.Suspense fallback={null}>
-        {currentUser && isProfileOpen && (
-          <ProfileModal
-            isOpen={isProfileOpen}
-            onClose={() => setIsProfileOpen(false)}
-            user={currentUser}
-            onUpdateUser={updateUser}
-            onLogout={handleLogout}
-            onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-          />
-        )}
-
         {currentUser && isBudgetOpen && (
           <VolumeBudgetModal
             isOpen={isBudgetOpen}

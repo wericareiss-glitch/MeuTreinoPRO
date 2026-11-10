@@ -19,7 +19,6 @@ import {
 } from '../utils/auth';
 import { useI18n } from '../utils/i18n';
 import { loginWithGoogle, syncUserProfileToCloud } from '../services/firebase';
-import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { DonationModal } from './DonationModal';
 import { 
   ProfileViewProps,
@@ -220,12 +219,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       <CollapsiblePreferences
         user={user}
         sessions={sessions}
-      />
-
-      {/* Calendário de Consistência & Histórico de Dias Treinados */}
-      <ConsistencyCalendar
-        sessions={sessions}
-        weeklyFrequencyGoal={user.frequency || 4}
+        onUpdateUser={onUpdateUser}
       />
 
       {/* Apoio ao Projeto (Discreto e Elegante) */}

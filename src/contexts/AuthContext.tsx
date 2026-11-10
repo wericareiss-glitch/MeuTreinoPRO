@@ -24,8 +24,6 @@ export interface AuthContextType {
   currentUser: UserProfile | null;
   isAuthOpen: boolean;
   setIsAuthOpen: (open: boolean) => void;
-  isProfileOpen: boolean;
-  setIsProfileOpen: (open: boolean) => void;
   isBudgetOpen: boolean;
   setIsBudgetOpen: (open: boolean) => void;
   isBiometricLocked: boolean;
@@ -46,7 +44,6 @@ export const AuthProvider: React.FC<{
 }> = ({ children, onShowToast }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authStorage.getActiveUser());
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(() => !authStorage.getActiveUser());
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [isBiometricLocked, setIsBiometricLocked] = useState<boolean>(() => {
     const u = authStorage.getActiveUser();
@@ -116,7 +113,6 @@ export const AuthProvider: React.FC<{
   const handleLogout = useCallback(() => {
     authStorage.logout();
     setCurrentUser(null);
-    setIsProfileOpen(false);
     setIsAuthOpen(true);
     onShowToast('Sessão encerrada.');
   }, [onShowToast]);
@@ -125,7 +121,6 @@ export const AuthProvider: React.FC<{
     authStorage.deleteUser(userId);
     authStorage.logout();
     setCurrentUser(null);
-    setIsProfileOpen(false);
     setIsAuthOpen(true);
     onShowToast('Perfil excluído e sessão encerrada com segurança.');
   }, [onShowToast]);
@@ -133,7 +128,6 @@ export const AuthProvider: React.FC<{
   const handleSwitchProfile = useCallback(() => {
     authStorage.logout();
     setCurrentUser(null);
-    setIsProfileOpen(false);
     setIsAuthOpen(true);
     onShowToast('Sessão bloqueada. Faça login para acessar outro perfil.');
   }, [onShowToast]);
@@ -170,8 +164,6 @@ export const AuthProvider: React.FC<{
         currentUser,
         isAuthOpen,
         setIsAuthOpen,
-        isProfileOpen,
-        setIsProfileOpen,
         isBudgetOpen,
         setIsBudgetOpen,
         isBiometricLocked,

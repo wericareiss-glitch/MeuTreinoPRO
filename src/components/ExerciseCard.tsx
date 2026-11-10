@@ -57,7 +57,8 @@ export function areExerciseCardPropsEqual(
     prev.dragOffsetY !== next.dragOffsetY ||
     prev.isHoldingDrag !== next.isHoldingDrag ||
     prev.isDropTarget !== next.isDropTarget ||
-    prev.sessions !== next.sessions
+    prev.sessions !== next.sessions ||
+    prev.deepWorkMode !== next.deepWorkMode
   ) {
     return false;
   }
@@ -116,6 +117,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   onDropCard,
   onDragEndCard,
   onPointerDownDragHandle,
+  deepWorkMode = false,
 }) => {
   const [expandedSets, setExpandedSets] = useState<Record<string, boolean>>({});
   const [isCardCollapsed, setIsCardCollapsed] = useState<boolean>(false);
@@ -588,38 +590,46 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
         ) : (
           <div className="p-2.5 sm:p-4 landscape:p-3 space-y-2.5 sm:space-y-3">
             {/* Barra Superior da Seção de Séries: Recorde (PR) Histórico & Replicação Rápida */}
-            <div className="flex items-center justify-between gap-2 px-1 text-xs flex-wrap pb-1.5 border-b border-slate-800/60">
-              <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-                <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                {historicalPR.maxWeight > 0 ? (
-                  <span className="inline-flex items-center gap-1 flex-wrap">
-                    <SmartTermTooltip term="PR" align="left">
-                      <span>Recorde Pessoal (PR):</span>
-                    </SmartTermTooltip>{' '}
-                    <strong className="text-amber-300 font-mono">{historicalPR.maxWeight}kg</strong>
-                    {historicalPR.best1RM > 0 && (
-                      <SmartTermTooltip term="1RM" align="left" showIcon={false}>
-                        <span className="text-sky-300/90 hover:text-sky-200">(1RM ~{historicalPR.best1RM}kg)</span>
-                      </SmartTermTooltip>
+            {(!deepWorkMode || item.sets > 1) && (
+              <div className="flex items-center justify-between gap-2 px-1 text-xs flex-wrap pb-1.5 border-b border-slate-800/60">
+                {!deepWorkMode ? (
+                  <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                    <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    {historicalPR.maxWeight > 0 ? (
+                      <span className="inline-flex items-center gap-1 flex-wrap">
+                        <SmartTermTooltip term="PR" align="left">
+                          <span>Recorde Pessoal (PR):</span>
+                        </SmartTermTooltip>{' '}
+                        <strong className="text-amber-300 font-mono">{historicalPR.maxWeight}kg</strong>
+                        {historicalPR.best1RM > 0 && (
+                          <SmartTermTooltip term="1RM" align="left" showIcon={false}>
+                            <span className="text-sky-300/90 hover:text-sky-200">(1RM ~{historicalPR.best1RM}kg)</span>
+                          </SmartTermTooltip>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 italic">Primeiro registro deste exercício</span>
                     )}
-                  </span>
+                  </div>
                 ) : (
-                  <span className="text-slate-500 italic">Primeiro registro deste exercício</span>
+                  <div className="text-[10px] text-slate-500 font-mono font-medium">
+                    Séries & Cargas
+                  </div>
+                )}
+
+                {item.sets > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleReplicateFirstSetToAll}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/25 transition-all cursor-pointer active:scale-95"
+                    title="Preenche todas as séries pendentes com o peso e reps da Série #1"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>Preencher restantes com Série #1</span>
+                  </button>
                 )}
               </div>
-
-              {item.sets > 1 && (
-                <button
-                  type="button"
-                  onClick={handleReplicateFirstSetToAll}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/25 transition-all cursor-pointer active:scale-95"
-                  title="Preenche todas as séries pendentes com o peso e reps da Série #1"
-                >
-                  <Copy className="w-3 h-3" />
-                  <span>Preencher restantes com Série #1</span>
-                </button>
-              )}
-            </div>
+            )}
 
             {/* CARD ÚNICO UNIFICADO COM TODAS AS SÉRIES DO EXERCÍCIO */}
             <div className="set-table-container bg-[#080d19] border border-slate-800/90 rounded-2xl overflow-hidden shadow-xl">

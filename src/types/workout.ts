@@ -194,6 +194,7 @@ export interface UserProfile {
   weeklyBudget: number; // e.g. 80, 96, 120, 144, 160, 192 sets
   muscleBudgets: Record<MuscleGroup, number>; // sets allocated per muscle group
   nutritionPlan?: NutritionPlan;
+  deepWorkMode?: boolean; // Modo Deep Work para foco total durante o treino
   isVisitor?: boolean; // Se o atleta entrou como visitante
   createdAt: string;
   updatedAt?: string;

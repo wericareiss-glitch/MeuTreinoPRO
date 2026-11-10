@@ -34,6 +34,8 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   periodizationStrategy,
   userFocus,
   onSelectPeriodizationStrategy,
+  deepWorkMode = false,
+  onToggleDeepWork,
   onOpenAddExercise,
   onMoveUp,
   onMoveDown,
@@ -428,14 +430,18 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
         mobilityTotalExercises={mobilityRoutine.totalExercises}
         mobilityTotalMinutes={mobilityRoutine.totalDurationMinutes}
         onFinishSession={onFinishSession}
+        deepWorkMode={deepWorkMode}
+        onToggleDeepWork={onToggleDeepWork}
       />
 
-      {/* 2. Barra Limpa de Ações Rápidas (Mobilidade & Adicionar Exercício) */}
-      <WorkoutToolbar
-        workoutItemsCount={workoutItems.length}
-        onOpenMobility={() => setIsMobilityOpen(true)}
-        onOpenAddExercise={onOpenAddExercise}
-      />
+      {/* 2. Barra de Ações Rápidas (Oculta temporariamente no Modo Deep Work) */}
+      {!deepWorkMode && (
+        <WorkoutToolbar
+          workoutItemsCount={workoutItems.length}
+          onOpenMobility={() => setIsMobilityOpen(true)}
+          onOpenAddExercise={onOpenAddExercise}
+        />
+      )}
 
       {/* 3. Lista de Exercícios Ativos */}
       <div className="space-y-3">
@@ -468,6 +474,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             onDropCard={handleDropCard}
             onDragEndCard={handleDragEndCard}
             onPointerDownDragHandle={handlePointerDownDragHandle}
+            deepWorkMode={deepWorkMode}
           />
         ))}
       </div>

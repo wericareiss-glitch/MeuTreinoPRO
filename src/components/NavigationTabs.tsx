@@ -3,16 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Home, Dumbbell, User, Zap, Heart } from 'lucide-react';
+import { Home, Dumbbell, User, Zap, LogOut, X } from 'lucide-react';
 import { TabType } from '../types/navigation';
+import { UserProfile } from '../types/workout';
 import { useI18n } from '../utils/i18n';
 import { soundManager } from '../utils/audio';
 
 interface NavigationTabsProps {
   activeTab: TabType;
   onSelectTab: (tab: TabType) => void;
+  currentUser?: UserProfile | null;
+  onLogout?: () => void;
   activeSetsCount?: number;
   completedSetsCount?: number;
   sessionsCount?: number;
@@ -22,12 +25,63 @@ interface NavigationTabsProps {
 export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   activeTab,
   onSelectTab,
+  currentUser = null,
+  onLogout,
   activeSetsCount = 0,
   completedSetsCount = 0,
   sessionsCount = 0,
   hasActiveWorkout = false,
 }) => {
   const { t } = useI18n();
+
+  // Estado para o menu discreto ao segurar a aba Perfil por 0.8s
+  const [showDisconnectMenu, setShowDisconnectMenu] = useState(false);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressTriggered = useRef(false);
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
+
+  const startPerfilLongPress = (e?: React.TouchEvent | React.MouseEvent) => {
+    isLongPressTriggered.current = false;
+    if (e && 'touches' in e && e.touches[0]) {
+      touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else {
+      touchStartPos.current = null;
+    }
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressTriggered.current = true;
+      soundManager.vibrate([30, 50, 30]);
+      setShowDisconnectMenu(true);
+    }, 800); // Exatos 0.8s conforme solicitado
+  };
+
+  const cancelPerfilLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handlePerfilTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartPos.current || !e.touches[0]) return;
+    const moveX = Math.abs(e.touches[0].clientX - touchStartPos.current.x);
+    const moveY = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
+    if (moveX > 10 || moveY > 10) {
+      cancelPerfilLongPress();
+    }
+  };
+
+  const handlePerfilClick = (e: React.MouseEvent) => {
+    if (isLongPressTriggered.current) {
+      isLongPressTriggered.current = false;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    handleTabClick('perfil');
+  };
 
   const handleTabClick = (tabId: TabType) => {
     soundManager.vibrate(10);
@@ -73,7 +127,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
     icon: User,
   });
 
-  // Mobile Tabs (Clean, large touch targets)
+  // Mobile Tabs
   const mobileTabs = hasActiveWorkout
     ? [
         { id: 'inicio' as TabType, label: t.tabHome, icon: Home, badge: null },
@@ -96,7 +150,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   const workoutProgressPct =
     activeSetsCount > 0 ? Math.min(100, Math.round((completedSetsCount / activeSetsCount) * 100)) : 0;
 
-  // Na aba treino ativo, todos os menus e abas de navegação ficam ocultos para foco total
+  // Na aba treino ativo, menus ficam ocultos para foco total
   if (activeTab === 'treino_ativo') {
     return null;
   }
@@ -111,12 +165,28 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               const isHighlight = tab.isHighlight;
+              const isPerfilTab = tab.id === 'perfil';
+
+              const perfilProps = isPerfilTab
+                ? {
+                    onTouchStart: (e: React.TouchEvent) => startPerfilLongPress(e),
+                    onTouchEnd: () => cancelPerfilLongPress(),
+                    onTouchCancel: () => cancelPerfilLongPress(),
+                    onTouchMove: handlePerfilTouchMove,
+                    onMouseDown: (e: React.MouseEvent) => startPerfilLongPress(e),
+                    onMouseUp: () => cancelPerfilLongPress(),
+                    onMouseLeave: () => cancelPerfilLongPress(),
+                    onClick: handlePerfilClick,
+                  }
+                : {
+                    onClick: () => handleTabClick(tab.id),
+                  };
 
               return (
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => handleTabClick(tab.id)}
+                  {...perfilProps}
                   className={`flex items-center gap-2 px-3.5 lg:px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-colors relative cursor-pointer ${
                     isActive
                       ? 'text-slate-950 font-black'
@@ -124,6 +194,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                       ? 'text-emerald-300 hover:text-emerald-200'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
                   }`}
+                  title={isPerfilTab ? 'Perfil (segure 0.8s para desconectar)' : undefined}
                 >
                   {isActive && (
                     <motion.div
@@ -180,12 +251,28 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             const isHighlight = 'isHighlight' in tab && tab.isHighlight;
+            const isPerfilTab = tab.id === 'perfil';
+
+            const perfilProps = isPerfilTab
+              ? {
+                  onTouchStart: (e: React.TouchEvent) => startPerfilLongPress(e),
+                  onTouchEnd: () => cancelPerfilLongPress(),
+                  onTouchCancel: () => cancelPerfilLongPress(),
+                  onTouchMove: handlePerfilTouchMove,
+                  onMouseDown: (e: React.MouseEvent) => startPerfilLongPress(e),
+                  onMouseUp: () => cancelPerfilLongPress(),
+                  onMouseLeave: () => cancelPerfilLongPress(),
+                  onClick: handlePerfilClick,
+                }
+              : {
+                  onClick: () => handleTabClick(tab.id),
+                };
 
             return (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => handleTabClick(tab.id)}
+                {...perfilProps}
                 className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-2xl transition-colors relative overflow-hidden cursor-pointer touch-manipulation min-h-[50px] ${
                   isActive
                     ? 'text-emerald-300'
@@ -193,6 +280,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                     ? 'text-amber-300'
                     : 'text-slate-400 hover:text-slate-200 active:scale-95'
                 }`}
+                title={isPerfilTab ? 'Perfil (segure 0.8s para desconectar)' : undefined}
               >
                 {/* Top Active Indicator Pill & Background with layoutId */}
                 {isActive && (
@@ -259,6 +347,75 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
           })}
         </div>
       </nav>
+
+      {/* Menu Discreto para Desconectar Conta (Acionado após segurar Perfil por 2s) */}
+      {showDisconnectMenu && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          {/* Backdrop para fechar ao tocar fora */}
+          <div
+            className="fixed inset-0"
+            onClick={() => setShowDisconnectMenu(false)}
+            aria-hidden="true"
+          />
+
+          {/* Card Pequeno e Discreto */}
+          <div
+            className="relative z-10 w-full max-w-xs bg-[#0f172a] border border-[#1e293b] rounded-2xl p-4 shadow-2xl space-y-3 animate-scaleUp mb-16 md:mb-0"
+            style={{ overscrollBehavior: 'contain' }}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 font-black text-xs flex items-center justify-center shrink-0 border border-emerald-500/30">
+                  {currentUser?.name?.charAt(0).toUpperCase() || 'U'}
+                </div>
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-white block truncate">
+                    {currentUser?.name || 'Atleta'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono block truncate">
+                    @{currentUser?.username || 'perfil'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDisconnectMenu(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDisconnectMenu(false);
+                  if (onLogout) {
+                    onLogout();
+                  }
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98] shadow-sm"
+              >
+                <LogOut className="w-4 h-4 text-rose-400" />
+                <span>Desconectar Conta</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDisconnectMenu(false);
+                  handleTabClick('perfil');
+                }}
+                className="w-full py-1.5 px-3 rounded-xl text-slate-400 hover:text-slate-200 font-medium text-[11px] text-center transition-colors cursor-pointer"
+              >
+                Abrir Perfil
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

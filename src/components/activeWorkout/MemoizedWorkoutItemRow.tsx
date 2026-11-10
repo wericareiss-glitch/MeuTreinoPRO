@@ -35,6 +35,7 @@ export const MemoizedWorkoutItemRow: React.FC<WorkoutItemRowProps> = React.memo(
     onDropCard,
     onDragEndCard,
     onPointerDownDragHandle,
+    deepWorkMode,
   }) => {
     return (
       <ExerciseCard
@@ -65,6 +66,7 @@ export const MemoizedWorkoutItemRow: React.FC<WorkoutItemRowProps> = React.memo(
         onDropCard={onDropCard}
         onDragEndCard={onDragEndCard}
         onPointerDownDragHandle={onPointerDownDragHandle}
+        deepWorkMode={deepWorkMode}
       />
     );
   },

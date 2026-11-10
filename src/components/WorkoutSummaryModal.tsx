@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { WorkoutSessionSummary } from '../types/workout';
 import { generateWorkoutCardImage } from '../utils/generateWorkoutCardImage';
-import { extractSessionPRs } from '../utils/prEngine';
+import { extractSessionPRs, estimate1RM } from '../utils/prEngine';
 import { exportCompletedSessionToPDF } from '../utils/pdfExport';
 import { WorkoutPdfExportModal } from './WorkoutPdfExportModal';
 
@@ -192,7 +192,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         const w = Number(st.weight) || 0;
         const r = Number(st.reps) || 0;
         volumeLoadKg += w * r;
-        const est1RM = r > 0 ? Math.round(w * (1 + r / 30)) : w;
+        const est1RM = estimate1RM(w, r);
         if (w > topWeight || (w === topWeight && r > topReps)) {
           topWeight = w;
           topReps = r;

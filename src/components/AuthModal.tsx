@@ -20,7 +20,8 @@ import {
   Fingerprint,
   ScanFace,
   Cloud,
-  Copy
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { UserProfile, GenderOption, LevelOption, FocusOption, SplitOption } from '../types/workout';
 import { authStorage, calculateDefaultBudget, createDefaultBudgets } from '../utils/auth';
@@ -46,8 +47,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
     return authStorage.hasRegisteredUsers() ? 'login' : 'register';
   });
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [errorRaw, setErrorRaw] = useState<string | null>(null);
   const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
   const [copiedDomain, setCopiedDomain] = useState(false);
+  const [copiedDiagnostic, setCopiedDiagnostic] = useState(false);
 
   // Login form
   const [loginUsername, setLoginUsername] = useState('');
@@ -117,6 +121,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
   const handleGoogleSignIn = async () => {
     setError(null);
+    setErrorCode(null);
+    setErrorRaw(null);
     setUnauthorizedDomain(null);
     setIsGoogleLoading(true);
     const res = await loginWithGoogle();
@@ -124,6 +130,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
     if (res.error || !res.user) {
       setError(res.error || 'Falha ao autenticar com o Google.');
+      setErrorCode(res.code || null);
+      setErrorRaw(res.rawMessage || null);
       if (res.unauthorizedDomain) {
         setUnauthorizedDomain(res.unauthorizedDomain);
       }
@@ -311,6 +319,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
         {/* Google One-Click Login & Online Cloud Storage Banner */}
         <div className="mb-4 space-y-2">
+          {typeof window !== 'undefined' && window.self !== window.top && (
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-[11px] flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <span className="font-bold text-amber-300 block">Modo Prévia (iFrame)</span>
+                <span className="text-[10px] text-amber-200/80">O Google bloqueia popup dentro do editor.</span>
+              </div>
+              <a
+                href={typeof window !== 'undefined' ? window.location.href : '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-1 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] shrink-0 inline-flex items-center gap-1 shadow"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>Abrir Nova Aba</span>
+              </a>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={handleGoogleSignIn}
@@ -383,17 +409,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
             <div className="flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <span className="font-semibold block text-rose-200">{error}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-rose-200">{error}</span>
+                  {errorCode && (
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/50 text-rose-300 border border-rose-800/60">
+                      {errorCode}
+                    </span>
+                  )}
+                </div>
+
                 {unauthorizedDomain && (
-                  <p className="text-[11px] text-rose-300/80 mt-1 leading-relaxed">
-                    Para habilitar o login com Google neste endereço, adicione o domínio <strong className="text-white font-mono">{unauthorizedDomain}</strong> no Firebase Console em <em>Authentication &gt; Configurações &gt; Domínios autorizados</em>.
+                  <p className="text-[11px] text-rose-300/80 mt-1.5 leading-relaxed">
+                    Certifique-se de adicionar <strong>apenas o domínio puro</strong> (sem <code>https://</code> e sem barra <code>/</code>):{' '}
+                    <strong className="text-white font-mono bg-black/40 px-1.5 py-0.5 rounded border border-rose-800/40">{unauthorizedDomain}</strong>{' '}
+                    no Firebase Console em <em>Authentication &gt; Configurações &gt; Domínios autorizados</em>.
                   </p>
                 )}
               </div>
             </div>
 
-            {unauthorizedDomain && (
-              <div className="pt-1 flex flex-wrap gap-2">
+            <div className="pt-1 flex flex-wrap gap-2">
+              {unauthorizedDomain && (
                 <button
                   type="button"
                   onClick={() => {
@@ -408,16 +444,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
                   <Copy className="w-3.5 h-3.5" />
                   <span>{copiedDomain ? 'Domínio Copiado!' : 'Copiar Domínio'}</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleQuickGuest}
-                  className="py-1.5 px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+              )}
+
+              {typeof window !== 'undefined' && window.self !== window.top && (
+                <a
+                  href={typeof window !== 'undefined' ? window.location.href : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-1.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer shadow"
                 >
-                  <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Continuar como Visitante</span>
-                </button>
-              </div>
-            )}
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Abrir em Nova Aba</span>
+                </a>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.clipboard) {
+                    const diag = JSON.stringify({
+                      error,
+                      code: errorCode,
+                      rawMessage: errorRaw,
+                      domain: typeof window !== 'undefined' ? window.location.hostname : '',
+                      isIframe: typeof window !== 'undefined' && window.self !== window.top,
+                      timestamp: new Date().toISOString()
+                    }, null, 2);
+                    navigator.clipboard.writeText(diag);
+                    setCopiedDiagnostic(true);
+                    setTimeout(() => setCopiedDiagnostic(false), 2000);
+                  }
+                }}
+                className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>{copiedDiagnostic ? 'Diagnóstico Copiado!' : 'Copiar Detalhes'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleQuickGuest}
+                className="py-1.5 px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Continuar como Visitante</span>
+              </button>
+            </div>
           </div>
         )}
 

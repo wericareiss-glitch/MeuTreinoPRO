@@ -10,30 +10,89 @@ import {
   ChevronUp, 
   Fingerprint, 
   Cloud, 
-  Bell 
+  Bell,
+  Zap
 } from 'lucide-react';
 import { UserProfile, WorkoutSessionSummary } from '../../types/workout';
 import { ThemeToggle } from '../ThemeToggle';
 import { BiometricSettingsCard } from '../BiometricSettingsCard';
 import { FirebaseSyncCard } from '../FirebaseSyncCard';
 import { ProfilePushNotificationManager } from '../ProfilePushNotificationManager';
+import { authStorage } from '../../utils/auth';
+import { syncUserProfileToCloud } from '../../services/firebase';
+import { soundManager } from '../../utils/audio';
 
 export interface CollapsiblePreferencesProps {
   user: UserProfile;
   sessions: WorkoutSessionSummary[];
+  onUpdateUser?: (updated: UserProfile) => void;
 }
 
 export const CollapsiblePreferences: React.FC<CollapsiblePreferencesProps> = ({
   user,
   sessions,
+  onUpdateUser,
 }) => {
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [isBiometricOpen, setIsBiometricOpen] = useState(false);
   const [isCloudOpen, setIsCloudOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
+  const handleToggleDeepWork = () => {
+    const nextVal = !user.deepWorkMode;
+    const updated = authStorage.updateProfile(user.id, {
+      deepWorkMode: nextVal,
+    });
+    if (updated) {
+      syncUserProfileToCloud(updated);
+      onUpdateUser?.(updated);
+    }
+    soundManager.vibrate(30);
+  };
+
   return (
     <div className="space-y-6">
+      {/* ⚡ Modo Deep Work (Foco Total no Treino Ativo) */}
+      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl shadow-2xl p-5 sm:p-6 transition-all hover:border-amber-500/30">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className={`p-2.5 rounded-xl shrink-0 transition-colors ${
+              user.deepWorkMode 
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)]' 
+                : 'bg-slate-800 text-slate-400 border border-slate-700/60'
+            }`}>
+              <Zap className="w-5 h-5 fill-current" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-extrabold text-white">
+                  Modo Deep Work (Foco Total)
+                </h2>
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                  user.deepWorkMode 
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' 
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  {user.deepWorkMode ? 'ATIVO' : 'DESATIVADO'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1 max-w-lg leading-relaxed">
+                Remove temporariamente barras de ações secundárias, notas vazias e alertas durante o treino ativo, proporcionando foco absoluto nas séries, cargas e descanso.
+              </p>
+            </div>
+          </div>
+
+          <label className="relative inline-flex items-center cursor-pointer shrink-0 select-none">
+            <input
+              type="checkbox"
+              checked={Boolean(user.deepWorkMode)}
+              onChange={handleToggleDeepWork}
+              className="sr-only peer"
+            />
+            <div className="w-12 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500 border border-slate-700 peer-checked:border-amber-400 shadow-inner" />
+          </label>
+        </div>
+      </div>
       {/* 1. 🎨 Aparência & Tema Visual (Minimizado por padrão) */}
       <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl shadow-2xl overflow-hidden transition-all">
         <button
@@ -65,12 +124,10 @@ export const CollapsiblePreferences: React.FC<CollapsiblePreferencesProps> = ({
         </button>
 
         {isThemeOpen && (
-          <div className="p-5 sm:p-6 pt-0 border-t border-slate-800 space-y-4 animate-fadeIn">
-            <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <span className="text-xs font-bold text-slate-300">Seleção Rápida de Tema:</span>
-              <ThemeToggle variant="segmented" />
+          <div className="p-5 sm:p-6 pt-0 border-t border-slate-800 animate-fadeIn">
+            <div className="pt-4">
+              <ThemeToggle variant="profile-card" />
             </div>
-            <ThemeToggle variant="profile-card" />
           </div>
         )}
       </div>

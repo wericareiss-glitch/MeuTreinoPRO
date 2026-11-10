@@ -671,6 +671,7 @@ export const authStorage = {
         | 'muscleBudgets'
         | 'nutritionPlan'
         | 'periodizationStrategy'
+        | 'deepWorkMode'
       >
     >
   ): UserProfile | null {
