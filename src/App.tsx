@@ -306,7 +306,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
   };
 
   return (
-    <div className="min-h-screen bg-theme-app text-theme-body pb-32 transition-colors duration-200">
+    <div className="min-h-screen max-w-full w-full bg-theme-app text-theme-body pb-32 transition-colors duration-200 touch-pan-y">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 font-extrabold text-xs sm:text-sm px-5 py-2.5 rounded-full shadow-2xl shadow-emerald-500/40 animate-bounce">
@@ -348,7 +348,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
       )}
 
       {/* Main Container - Renders the selected Tab View */}
-      <main className="max-w-6xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6">
+      <main className="w-full max-w-6xl mx-auto min-w-0 px-3 sm:px-6 pt-4 sm:pt-6 touch-pan-y">
         {/* Banner Flutuante Rápido de Retorno ao Treino Ativo */}
         {activeRoutine && activeTab !== 'treino_ativo' && (
           <div className="mb-4 p-3 rounded-2xl bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-teal-500/20 border border-amber-400/50 shadow-lg flex items-center justify-between gap-3 animate-fadeIn">
@@ -390,7 +390,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-            className="w-full"
+            className="w-full min-w-0 touch-pan-y"
           >
             {/* ABA 1: INÍCIO */}
             {activeTab === 'inicio' && (

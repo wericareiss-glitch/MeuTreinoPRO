@@ -235,6 +235,12 @@ export async function verifyAndMergeDatabase(
     report.firestoreConnected = false;
   }
 
+  if (!report.firestoreConnected) {
+    report.status = 'offline';
+    report.summaryMessage = 'Serviço do Firestore temporariamente offline. Os dados locais do safeStorage estão intactos.';
+    return report;
+  }
+
   try {
     // ========================================================
     // A. CARREGAR AS CHAVES LOCAIS DO SAFESTORAGE

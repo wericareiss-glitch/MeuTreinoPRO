@@ -27,8 +27,8 @@ export const RoutineCarouselNav: React.FC<RoutineCarouselNavProps> = ({
   if (entries.length <= 1) return null;
 
   return (
-    <div className="flex items-center justify-between gap-2 px-1">
-      <div className="flex items-center gap-1.5 overflow-x-auto theme-scrollbar py-1 pr-2">
+    <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 px-1 w-full max-w-full">
+      <div className="flex flex-wrap items-center gap-1.5 py-1 min-w-0 flex-1">
         {entries.map((entry, idx) => {
           const isCurrent = idx === currentVisibleIdx;
           const isActiveRoutine = entry.routine.id === activeRoutineId;

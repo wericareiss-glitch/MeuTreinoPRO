@@ -629,7 +629,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
               {chartData.length > 0 ? (
                 <div className="space-y-4">
                   {/* Container Recharts de Carga */}
-                  <div className="h-64 sm:h-72 w-full">
+                  <div className="h-64 sm:h-72 w-full min-w-0 overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart 
                         data={chartData} 
@@ -828,7 +828,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
 
                 {chartData.length > 0 ? (
                   <div className="space-y-4">
-                    <div className="h-64 sm:h-72 w-full">
+                    <div className="h-64 sm:h-72 w-full min-w-0 overflow-hidden">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={chartData} margin={{ top: 15, right: 20, left: -10, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#1f2d47" opacity={0.6} />
@@ -972,7 +972,7 @@ export const ExerciseAnalyticsModal: React.FC<ExerciseAnalyticsModalProps> = ({
               </div>
 
               {chartData.length > 0 ? (
-                <div className="h-64 sm:h-72 w-full">
+                <div className="h-64 sm:h-72 w-full min-w-0 overflow-hidden">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} margin={{ top: 10, right: 15, left: -10, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1f2d47" opacity={0.6} />

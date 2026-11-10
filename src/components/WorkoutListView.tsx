@@ -517,7 +517,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   }, []);
 
   return (
-    <div className="space-y-4 animate-fadeIn pb-[max(6.5rem,calc(5.5rem+env(safe-area-inset-bottom)))] sm:pb-24 max-w-4xl mx-auto relative">
+    <div className="space-y-4 animate-fadeIn pb-[max(6.5rem,calc(5.5rem+env(safe-area-inset-bottom)))] sm:pb-24 w-full max-w-4xl mx-auto min-w-0 touch-pan-y relative">
       {copiedToast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-emerald-500 text-slate-950 font-black text-xs shadow-2xl flex items-center gap-1.5 animate-fadeIn border border-emerald-400">
           <span>✓</span>
@@ -623,7 +623,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
           />
 
           {/* Container Medido para o FixedSizeList Horizontal */}
-          <div ref={carouselContainerRef} className="w-full overflow-hidden">
+          <div ref={carouselContainerRef} className="w-full min-w-0 overflow-hidden">
             <List
               ref={listRef}
               outerRef={outerListRef}

@@ -378,7 +378,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
 
   // 2. MODO PADRÃO COMPACTO & RESPONSIVO (Capsule Moderna)
   return (
-    <div className={`fixed ${bottomPositionClass} left-1/2 -translate-x-1/2 z-30 w-auto min-w-[300px] max-w-[94vw] sm:max-w-md animate-fadeIn transition-all duration-200`}>
+    <div className={`fixed ${bottomPositionClass} left-1/2 -translate-x-1/2 z-30 w-[calc(100vw-1.5rem)] max-w-md animate-fadeIn transition-all duration-200`}>
       <div className="bg-[#0b1220]/95 backdrop-blur-xl border border-sky-500/30 rounded-2xl p-2.5 sm:p-3 shadow-2xl shadow-black/80 ring-1 ring-sky-400/20 transition-all">
         {/* Barra de Progresso Fina no Topo */}
         <div className="w-full h-1 bg-slate-800/90 rounded-full overflow-hidden mb-2">

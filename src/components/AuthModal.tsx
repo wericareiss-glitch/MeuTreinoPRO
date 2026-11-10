@@ -19,7 +19,8 @@ import {
   Upload,
   Fingerprint,
   ScanFace,
-  Cloud
+  Cloud,
+  Copy
 } from 'lucide-react';
 import { UserProfile, GenderOption, LevelOption, FocusOption, SplitOption } from '../types/workout';
 import { authStorage, calculateDefaultBudget, createDefaultBudgets } from '../utils/auth';
@@ -45,6 +46,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
     return authStorage.hasRegisteredUsers() ? 'login' : 'register';
   });
   const [error, setError] = useState<string | null>(null);
+  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   // Login form
   const [loginUsername, setLoginUsername] = useState('');
@@ -114,12 +117,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
   const handleGoogleSignIn = async () => {
     setError(null);
+    setUnauthorizedDomain(null);
     setIsGoogleLoading(true);
     const res = await loginWithGoogle();
     setIsGoogleLoading(false);
 
     if (res.error || !res.user) {
       setError(res.error || 'Falha ao autenticar com o Google.');
+      if (res.unauthorizedDomain) {
+        setUnauthorizedDomain(res.unauthorizedDomain);
+      }
       return;
     }
 
@@ -370,11 +377,47 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
           </button>
         </div>
 
-        {/* Error message */}
+        {/* Error message / Unauthorized Domain Banner */}
         {error && (
-          <div className="p-3 mb-4 rounded-xl bg-rose-950/40 border border-rose-900/60 text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-            <span>{error}</span>
+          <div className="p-3.5 mb-4 rounded-2xl bg-rose-950/40 border border-rose-900/60 text-rose-300 text-xs space-y-2.5">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <span className="font-semibold block text-rose-200">{error}</span>
+                {unauthorizedDomain && (
+                  <p className="text-[11px] text-rose-300/80 mt-1 leading-relaxed">
+                    Para habilitar o login com Google neste endereço, adicione o domínio <strong className="text-white font-mono">{unauthorizedDomain}</strong> no Firebase Console em <em>Authentication &gt; Configurações &gt; Domínios autorizados</em>.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {unauthorizedDomain && (
+              <div className="pt-1 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(unauthorizedDomain);
+                      setCopiedDomain(true);
+                      setTimeout(() => setCopiedDomain(false), 2000);
+                    }
+                  }}
+                  className="py-1.5 px-3 rounded-lg bg-rose-900/50 hover:bg-rose-900/70 border border-rose-700/60 text-white font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{copiedDomain ? 'Domínio Copiado!' : 'Copiar Domínio'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickGuest}
+                  className="py-1.5 px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Continuar como Visitante</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
 

@@ -69,13 +69,30 @@ export const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
+// Helper para identificar erros transitórios de rede / modo offline
+export function isOfflineError(err: unknown): boolean {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return true;
+  if (!err) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  const code = (err as any)?.code || '';
+  return (
+    code === 'unavailable' ||
+    msg.includes('client is offline') ||
+    msg.includes('the client is offline') ||
+    msg.includes('Failed to get document because the client is offline')
+  );
+}
+
 // Teste de conexão mandatório com Firestore
 export async function testConnection(): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return false;
+  }
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
     return true;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
+    if (isOfflineError(error)) {
       console.warn('Firebase Firestore: cliente offline ou aguardando conexão.');
     }
     return false;
@@ -135,13 +152,36 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // AUTENTICAÇÃO COM FIREBASE
 // ==========================================
 
-export async function loginWithGoogle(): Promise<{ user?: FirebaseUser; error?: string }> {
+export async function loginWithGoogle(): Promise<{ 
+  user?: FirebaseUser; 
+  error?: string; 
+  code?: string; 
+  unauthorizedDomain?: string 
+}> {
   try {
     const cred = await signInWithPopup(auth, googleProvider);
     return { user: cred.user };
   } catch (err: any) {
     console.error('Erro no login com Google:', err);
-    return { error: err?.message || 'Falha ao entrar com Google.' };
+    const code = err?.code || '';
+    if (code === 'auth/unauthorized-domain' || err?.message?.includes('auth/unauthorized-domain')) {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+      return { 
+        error: `O domínio "${currentHost}" não está na lista de domínios autorizados do Firebase Authentication.`,
+        code: 'auth/unauthorized-domain',
+        unauthorizedDomain: currentHost
+      };
+    }
+    if (code === 'auth/popup-closed-by-user') {
+      return { error: 'O popup de autenticação do Google foi fechado antes de concluir.', code };
+    }
+    if (code === 'auth/cancelled-popup-request') {
+      return { error: 'A solicitação de login com Google foi cancelada.', code };
+    }
+    if (code === 'auth/popup-blocked') {
+      return { error: 'O popup de login foi bloqueado pelo navegador. Por favor, permita popups para este site.', code };
+    }
+    return { error: err?.message || 'Falha ao entrar com Google.', code };
   }
 }
 
@@ -230,6 +270,7 @@ export function deepCleanForFirestore<T>(val: T): T {
 }
 
 export function isFirebaseCloudSyncAvailable(userId?: string): boolean {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser) return false;
   if (userId && (userId.startsWith('user_guest_') || userId.startsWith('alex_guest_'))) {
     return false;
@@ -238,6 +279,7 @@ export function isFirebaseCloudSyncAvailable(userId?: string): boolean {
 }
 
 export async function syncUserProfileToCloud(profile: UserProfile): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser || !profile.id || profile.isVisitor || profile.id.startsWith('user_guest_')) {
     return false;
   }
@@ -256,12 +298,17 @@ export async function syncUserProfileToCloud(profile: UserProfile): Promise<bool
     await setDoc(doc(db, 'users', currentUid), sanitized, { merge: true });
     return true;
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline: perfil salvo apenas localmente.');
+      return false;
+    }
     handleFirestoreError(err, OperationType.WRITE, path);
     return false;
   }
 }
 
 export async function syncRoutineToCloud(userId: string, routine: GeneratedWorkoutRoutine): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser || userId.startsWith('user_guest_')) {
     return false;
   }
@@ -276,12 +323,17 @@ export async function syncRoutineToCloud(userId: string, routine: GeneratedWorko
     await setDoc(doc(db, 'users', currentUid, 'routines', routine.id), sanitized, { merge: true });
     return true;
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline: rotina salva apenas localmente.');
+      return false;
+    }
     handleFirestoreError(err, OperationType.WRITE, path);
     return false;
   }
 }
 
 export async function syncRoutinesToCloud(userId: string, routines: GeneratedWorkoutRoutine[]): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser || userId.startsWith('user_guest_')) {
     return false;
   }
@@ -292,12 +344,17 @@ export async function syncRoutinesToCloud(userId: string, routines: GeneratedWor
     }
     return true;
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline: sincronização de rotinas adiada.');
+      return false;
+    }
     console.error('Erro ao sincronizar rotinas com o Firestore:', err);
     return false;
   }
 }
 
 export async function deleteRoutineFromCloud(userId: string, routineId: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser || userId.startsWith('user_guest_')) {
     return false;
   }
@@ -307,12 +364,17 @@ export async function deleteRoutineFromCloud(userId: string, routineId: string):
     await deleteDoc(doc(db, 'users', currentUid, 'routines', routineId));
     return true;
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline: exclusão da rotina será sincronizada mais tarde.');
+      return false;
+    }
     handleFirestoreError(err, OperationType.DELETE, path);
     return false;
   }
 }
 
 export async function syncSessionToCloud(userId: string, session: WorkoutSessionSummary): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser || userId.startsWith('user_guest_')) {
     return false;
   }
@@ -327,12 +389,17 @@ export async function syncSessionToCloud(userId: string, session: WorkoutSession
     await setDoc(doc(db, 'users', currentUid, 'sessions', session.id), sanitized, { merge: true });
     return true;
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline: sessão salva apenas localmente.');
+      return false;
+    }
     handleFirestoreError(err, OperationType.WRITE, path);
     return false;
   }
 }
 
 export async function deleteSessionFromCloud(userId: string, sessionId: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser || userId.startsWith('user_guest_')) {
     return false;
   }
@@ -342,12 +409,17 @@ export async function deleteSessionFromCloud(userId: string, sessionId: string):
     await deleteDoc(doc(db, 'users', currentUid, 'sessions', sessionId));
     return true;
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline: exclusão da sessão será sincronizada mais tarde.');
+      return false;
+    }
     handleFirestoreError(err, OperationType.DELETE, path);
     return false;
   }
 }
 
 export async function syncMeasurementToCloud(userId: string, measurement: BodyMeasurement): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser || userId.startsWith('user_guest_')) {
     return false;
   }
@@ -362,12 +434,17 @@ export async function syncMeasurementToCloud(userId: string, measurement: BodyMe
     await setDoc(doc(db, 'users', currentUid, 'measurements', measurement.id), sanitized, { merge: true });
     return true;
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline: medida salva apenas localmente.');
+      return false;
+    }
     handleFirestoreError(err, OperationType.WRITE, path);
     return false;
   }
 }
 
 export async function deleteMeasurementFromCloud(userId: string, measurementId: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser || userId.startsWith('user_guest_')) {
     return false;
   }
@@ -377,6 +454,10 @@ export async function deleteMeasurementFromCloud(userId: string, measurementId: 
     await deleteDoc(doc(db, 'users', currentUid, 'measurements', measurementId));
     return true;
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline: exclusão da medida será sincronizada mais tarde.');
+      return false;
+    }
     handleFirestoreError(err, OperationType.DELETE, path);
     return false;
   }
@@ -386,6 +467,7 @@ export async function deleteMeasurementFromCloud(userId: string, measurementId: 
  * Envia todos os dados locais do atleta para o Firestore de uma só vez
  */
 export async function syncAllToFirebase(userId: string, userProfile: UserProfile): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
   if (!auth.currentUser || userProfile.isVisitor || userId.startsWith('user_guest_')) {
     return false;
   }
@@ -411,6 +493,10 @@ export async function syncAllToFirebase(userId: string, userProfile: UserProfile
     safeStorage.set(`firebase_last_sync_${currentUid}`, new Date().toISOString());
     return true;
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline: sincronização completa adiada.');
+      return false;
+    }
     console.error('Erro na sincronização completa para o Firestore:', err);
     return false;
   }
@@ -425,7 +511,10 @@ export async function fetchUserDataFromFirebase(userId: string): Promise<{
   sessions?: WorkoutSessionSummary[];
   measurements?: BodyMeasurement[];
 } | null> {
-  if (!auth.currentUser || userId.startsWith('user_guest_')) {
+  if (!auth.currentUser || userId.startsWith('user_guest_') || userId.startsWith('alex_guest_')) {
+    return null;
+  }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return null;
   }
   const currentUid = auth.currentUser.uid;
@@ -461,6 +550,10 @@ export async function fetchUserDataFromFirebase(userId: string): Promise<{
 
     return { profile, routines, sessions, measurements };
   } catch (err) {
+    if (isOfflineError(err)) {
+      console.warn('Firebase Firestore offline ou sem conexão: mantendo dados locais do dispositivo.');
+      return null;
+    }
     console.error('Erro ao baixar dados do Firestore:', err);
     return null;
   }

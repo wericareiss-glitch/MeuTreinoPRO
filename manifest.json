@@ -55,24 +55,10 @@
       "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
-      "name": "Iniciar Treino Rápido",
-      "short_name": "Treinar",
-      "description": "Ir direto para o treino do dia",
-      "url": "/?action=start-workout",
-      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "Cardio & Esteira",
-      "short_name": "Cardio",
-      "description": "Cronômetro e monitor de cardio",
-      "url": "/?tab=cardio",
-      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "Check-in Corporal",
-      "short_name": "Medidas",
-      "description": "Registrar peso e medidas corporais",
-      "url": "/?action=measurements",
+      "name": "Meu Perfil",
+      "short_name": "Perfil",
+      "description": "Ver perfil e metas de hipertrofia",
+      "url": "/?tab=perfil",
       "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]

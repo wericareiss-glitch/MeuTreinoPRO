@@ -624,11 +624,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             {/* CARD ÚNICO UNIFICADO COM TODAS AS SÉRIES DO EXERCÍCIO */}
             <div className="set-table-container bg-[#080d19] border border-slate-800/90 rounded-2xl overflow-hidden shadow-xl">
               {/* Cabeçalho Único da Tabela de Séries */}
-              <div className="grid grid-cols-12 gap-1 px-2.5 sm:px-3 py-2 bg-[#0c1426] border-b border-slate-800 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-400 items-center text-center select-none">
+              <div className="grid grid-cols-12 gap-1 px-2 sm:px-3 py-2 bg-[#0c1426] border-b border-slate-800 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-400 items-center text-center select-none w-full max-w-full">
                 <div className="hidden sm:block sm:col-span-3 text-slate-500">Anterior</div>
-                <div className="col-span-6 sm:col-span-4">Carga (kg)</div>
+                <div className="col-span-5 sm:col-span-4">Carga (kg)</div>
                 <div className="col-span-4 sm:col-span-3">Reps</div>
-                <div className="col-span-2 sm:col-span-2">Status</div>
+                <div className="col-span-3 sm:col-span-2">Ação</div>
               </div>
 
               {/* Linhas das Séries */}

@@ -563,7 +563,7 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
               </span>
             </div>
 
-            <div className="h-72 sm:h-80 w-full">
+            <div className="h-72 sm:h-80 w-full min-w-0 overflow-hidden">
               {activeChartType === 'progression' ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={progressionData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>

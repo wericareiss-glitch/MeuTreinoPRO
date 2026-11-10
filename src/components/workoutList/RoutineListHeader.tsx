@@ -102,7 +102,7 @@ export const RoutineListHeader: React.FC<RoutineListHeaderProps> = ({
   genSuccess,
 }) => {
   return (
-    <div className="p-4 sm:p-5 rounded-3xl bg-[#101828] border border-[#1e2c45] shadow-xl relative overflow-hidden">
+    <div className="p-4 sm:p-5 rounded-3xl bg-[#101828] border border-[#1e2c45] shadow-xl relative overflow-hidden w-full max-w-full min-w-0">
       <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

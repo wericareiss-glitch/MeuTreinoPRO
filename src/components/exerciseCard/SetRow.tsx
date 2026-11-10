@@ -122,34 +122,41 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
   };
 
   // Segurar e arrastar pro lado esquerdo para excluir a série individualmente
-  // Isolamento estrito de eventos com stopPropagation para nunca mover o card pai
+  // Permite rolagem vertical nativa sem bloqueio no touch
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('input, button, select, a')) {
       return;
     }
-    e.stopPropagation();
     pointerStartRef.current = { x: e.clientX, y: e.clientY };
     setIsSwiping(false);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!pointerStartRef.current) return;
-    e.stopPropagation();
     const diffX = e.clientX - pointerStartRef.current.x;
     const diffY = e.clientY - pointerStartRef.current.y;
 
-    // Exige intenção horizontal nítida e movimento mínimo para não ativar ao rolar verticalmente
-    if (diffX < -25 && Math.abs(diffX) > Math.abs(diffY) * 1.8) {
+    // Se o usuário estiver deslizando verticalmente, libera imediatamente para o scroll nativo
+    if (Math.abs(diffY) > 8 && Math.abs(diffY) > Math.abs(diffX)) {
+      pointerStartRef.current = null;
+      setIsSwiping(false);
+      setSwipeOffset(0);
+      return;
+    }
+
+    // Exige intenção horizontal nítida e movimento mínimo para ativar o swipe de exclusão
+    if (diffX < -25 && Math.abs(diffX) > Math.abs(diffY) * 2) {
+      e.stopPropagation();
       setIsSwiping(true);
       setSwipeOffset(Math.max(-100, Math.min(0, diffX)));
-    } else if (!isSwiping && Math.abs(diffY) > 15) {
+    } else if (!isSwiping && Math.abs(diffY) > 12) {
       pointerStartRef.current = null;
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.stopPropagation();
     if (pointerStartRef.current && isSwiping) {
+      e.stopPropagation();
       if (swipeOffset <= -75 && onDeleteSet) {
         soundManager.vibrate(30);
         onDeleteSet(setNum);
@@ -160,8 +167,7 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
     setSwipeOffset(0);
   };
 
-  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.stopPropagation();
+  const handlePointerCancel = () => {
     pointerStartRef.current = null;
     setIsSwiping(false);
     setSwipeOffset(0);
@@ -208,38 +214,38 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
               </div>
 
               {/* 2. Carga */}
-              <div className="col-span-6 sm:col-span-4 text-center">
-                <span className="font-mono font-black text-emerald-300 text-sm sm:text-base">
+              <div className="col-span-5 sm:col-span-4 text-center min-w-0">
+                <span className="font-mono font-black text-emerald-300 text-xs sm:text-base truncate block">
                   {currWeightVal || '0'} kg
                 </span>
               </div>
 
               {/* 3. Reps */}
-              <div className="col-span-4 sm:col-span-3 text-center">
-                <span className="font-mono font-bold text-white text-xs sm:text-sm">
+              <div className="col-span-4 sm:col-span-3 text-center min-w-0">
+                <span className="font-mono font-bold text-white text-xs sm:text-sm truncate block">
                   {currRepsVal || '0'} reps
                 </span>
               </div>
 
               {/* 4. Ações */}
-              <div className="col-span-2 flex items-center justify-end gap-1.5">
+              <div className="col-span-3 sm:col-span-2 flex items-center justify-end gap-1 sm:gap-1.5">
                 <button
                   type="button"
                   onClick={() => onToggleExpand(logKey, true)}
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer active:scale-95 touch-manipulation"
+                  className="w-8 h-8 sm:w-9 sm:h-9 min-w-[32px] rounded-xl bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer active:scale-95 touch-manipulation"
                   title="Editar série"
                   aria-label="Editar série"
                 >
-                  <Pencil className="w-4 h-4" />
+                  <Pencil className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
                 <button
                   type="button"
                   onClick={handleFinishSetClick}
-                  className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl bg-emerald-500 text-slate-950 font-bold flex items-center justify-center cursor-pointer shadow-sm active:scale-90 transition-transform touch-manipulation"
+                  className="w-9 h-9 sm:w-10 sm:h-10 min-w-[36px] min-h-[36px] rounded-xl bg-emerald-500 text-slate-950 font-bold flex items-center justify-center cursor-pointer shadow-sm active:scale-90 transition-transform touch-manipulation"
                   title="Desmarcar série"
                   aria-label="Desmarcar série"
                 >
-                  <Check className="w-5 h-5 stroke-[3]" />
+                  <Check className="w-4 h-4 sm:w-5 sm:h-5 stroke-[3]" />
                 </button>
               </div>
             </div>
@@ -259,7 +265,7 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
               MODO B: SÉRIE PENDENTE / EXPANDIDA
               ========================================== */
           <div
-            className={`p-2.5 sm:p-3 transition-colors ${
+            className={`p-2 sm:p-2.5 transition-colors ${
               setLog.done ? 'bg-emerald-950/20' : 'bg-transparent hover:bg-slate-900/30'
             }`}
           >
@@ -285,17 +291,17 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
               </div>
 
               {/* 2. Carga (kg) */}
-              <div className="col-span-6 sm:col-span-4 flex items-center justify-center gap-1 sm:gap-1.5">
+              <div className="col-span-5 sm:col-span-4 flex items-center justify-center gap-0.5 sm:gap-1.5 min-w-0">
                 <button
                   type="button"
                   onClick={() => adjustWeightByStep(-2.5)}
-                  className="w-8 sm:w-9 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
+                  className="w-7 sm:w-8 h-9 sm:h-10 min-w-[28px] rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
                   title="Diminuir carga (-2.5 kg)"
                   aria-label="Diminuir carga em 2.5 kg"
                 >
-                  <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <Minus className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
                 </button>
-                <div className="relative flex items-center justify-center flex-1 max-w-[76px] sm:max-w-[88px]">
+                <div className="relative flex items-center justify-center flex-1 max-w-[56px] sm:max-w-[80px] min-w-0">
                   <input
                     type="text"
                     inputMode="decimal"
@@ -310,33 +316,33 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
                       const sanitized = e.target.value.replace(/,/g, '.');
                       onInputChange(logKey, 'weight', sanitized);
                     }}
-                    className="w-full h-10 bg-[#060a12] border border-slate-700 focus:border-emerald-500 rounded-xl px-1 text-center font-mono font-black text-sm sm:text-base text-white focus:outline-none transition-colors"
+                    className="w-full h-9 sm:h-10 bg-[#060a12] border border-slate-700 focus:border-emerald-500 rounded-xl px-1 text-center font-mono font-black text-xs sm:text-base text-white focus:outline-none transition-colors"
                   />
-                  <span className="absolute right-1 text-[9px] text-slate-500 pointer-events-none font-mono">kg</span>
+                  <span className="absolute right-0.5 sm:right-1 text-[8px] sm:text-[9px] text-slate-500 pointer-events-none font-mono">kg</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => adjustWeightByStep(2.5)}
-                  className="w-8 sm:w-9 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
+                  className="w-7 sm:w-8 h-9 sm:h-10 min-w-[28px] rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
                   title="Aumentar carga (+2.5 kg)"
                   aria-label="Aumentar carga em 2.5 kg"
                 >
-                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
                 </button>
               </div>
 
               {/* 3. Repetições */}
-              <div className="col-span-4 sm:col-span-3 flex items-center justify-center gap-1 sm:gap-1.5">
+              <div className="col-span-4 sm:col-span-3 flex items-center justify-center gap-0.5 sm:gap-1.5 min-w-0">
                 <button
                   type="button"
                   onClick={() => adjustRepsByStep(-1)}
-                  className="w-7 sm:w-8 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
+                  className="w-6 sm:w-7 h-9 sm:h-10 min-w-[24px] rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
                   title="Diminuir 1 repetição"
                   aria-label="Diminuir 1 repetição"
                 >
-                  <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <Minus className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
                 </button>
-                <div className="relative flex items-center justify-center flex-1 max-w-[50px] sm:max-w-[58px]">
+                <div className="relative flex items-center justify-center flex-1 max-w-[42px] sm:max-w-[54px] min-w-0">
                   <input
                     type="text"
                     inputMode="numeric"
@@ -351,26 +357,26 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
                       const sanitized = e.target.value.replace(/[^0-9]/g, '');
                       onInputChange(logKey, 'reps', sanitized);
                     }}
-                    className="w-full h-10 bg-[#060a12] border border-slate-700 focus:border-emerald-500 rounded-xl px-1 text-center font-mono font-bold text-sm sm:text-base text-white focus:outline-none transition-colors"
+                    className="w-full h-9 sm:h-10 bg-[#060a12] border border-slate-700 focus:border-emerald-500 rounded-xl px-1 text-center font-mono font-bold text-xs sm:text-base text-white focus:outline-none transition-colors"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => adjustRepsByStep(1)}
-                  className="w-7 sm:w-8 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
+                  className="w-6 sm:w-7 h-9 sm:h-10 min-w-[24px] rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
                   title="Aumentar 1 repetição"
                   aria-label="Aumentar 1 repetição"
                 >
-                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
                 </button>
               </div>
 
               {/* 4. Concluir / Desmarcar */}
-              <div className="col-span-2 flex items-center justify-end">
+              <div className="col-span-3 sm:col-span-2 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={handleFinishSetClick}
-                  className={`w-10 h-10 sm:w-11 sm:h-10 min-w-[40px] min-h-[40px] rounded-xl font-black text-xs flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-90 touch-manipulation ${
+                  className={`w-9 h-9 sm:w-10 sm:h-10 min-w-[36px] min-h-[36px] rounded-xl font-black text-xs flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-90 touch-manipulation ${
                     setLog.done
                       ? 'bg-emerald-500 text-slate-950'
                       : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25 active:bg-emerald-500/35'
@@ -378,7 +384,7 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
                   title={setLog.done ? 'Desmarcar série' : 'Concluir série'}
                   aria-label={setLog.done ? 'Desmarcar série' : 'Concluir série'}
                 >
-                  <Check className="w-5 h-5 stroke-[3]" />
+                  <Check className="w-4 h-4 sm:w-5 sm:h-5 stroke-[3]" />
                 </button>
               </div>
             </div>

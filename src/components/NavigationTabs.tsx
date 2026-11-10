@@ -104,7 +104,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   return (
     <>
       {/* Desktop / Tablet Subheader Tab Switcher */}
-      <div className="w-full bg-[#0b101c] border-b border-[#1c273e] px-4 py-2 hidden md:block">
+      <div className="w-full max-w-full overflow-x-clip bg-[#0b101c] border-b border-[#1c273e] px-4 py-2 hidden md:block">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-1.5 p-1 bg-[#101726] rounded-2xl border border-slate-800">
             {desktopTabs.map((tab) => {
@@ -173,7 +173,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
       {/* Mobile Sticky Bottom Navigation Dock (Native App Style, Thumb-Optimized) */}
       <nav
         aria-label="Navegação Principal Mobile"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#090f1d]/95 backdrop-blur-xl border-t border-[#1d2942] pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1.5 px-2 shadow-2xl"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 max-w-full overflow-x-clip bg-[#090f1d]/95 backdrop-blur-xl border-t border-[#1d2942] pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1.5 px-2 shadow-2xl touch-manipulation"
       >
         <div className={`grid ${hasActiveWorkout ? 'grid-cols-4' : 'grid-cols-3'} gap-1 max-w-md mx-auto`}>
           {mobileTabs.map((tab) => {

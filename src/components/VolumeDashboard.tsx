@@ -326,7 +326,7 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
       {viewMode === 'chart' ? (
         <div className="space-y-4">
           {/* Recharts Bar Chart Container */}
-          <div className="w-full h-[260px] sm:h-[280px] bg-[#0c1220] rounded-xl p-3 border border-slate-800/80">
+          <div className="w-full min-w-0 overflow-hidden h-[260px] sm:h-[280px] bg-[#0c1220] rounded-xl p-3 border border-slate-800/80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={chartData}

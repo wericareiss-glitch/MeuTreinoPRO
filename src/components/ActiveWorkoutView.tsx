@@ -409,7 +409,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   const progressPercent = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
 
   return (
-    <div className="space-y-4 animate-fadeIn pb-[max(8rem,calc(6.5rem+env(safe-area-inset-bottom)))] sm:pb-32 max-w-4xl mx-auto">
+    <div className="space-y-4 animate-fadeIn pb-[max(8rem,calc(6.5rem+env(safe-area-inset-bottom)))] sm:pb-32 w-full max-w-4xl mx-auto min-w-0 touch-pan-y">
       {/* 1. Header do Treino Ativo */}
       <WorkoutHeaderBar
         routine={routine}

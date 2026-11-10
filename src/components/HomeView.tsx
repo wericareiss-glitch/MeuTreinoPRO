@@ -297,7 +297,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   }, [sessions, completedSetsByMuscle, user?.weeklyBudget]);
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-[max(6.5rem,calc(5rem+env(safe-area-inset-bottom)))] sm:pb-16">
+    <div className="space-y-6 animate-fadeIn pb-[max(6.5rem,calc(5rem+env(safe-area-inset-bottom)))] sm:pb-16 w-full max-w-full min-w-0 touch-pan-y">
       {/* Welcome Banner Card */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#121c32] via-[#0e1628] to-[#0a101f] border border-[#213252] p-5 sm:p-7 shadow-2xl">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />

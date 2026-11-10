@@ -134,8 +134,8 @@ export const Header: React.FC<HeaderProps> = ({
 
 
   return (
-    <header className="sticky top-0 z-50 bg-[#0d1424]/95 backdrop-blur-md border-b border-[#1f2d47]">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
+    <header className="sticky top-0 z-50 w-full max-w-full overflow-x-clip bg-[#0d1424]/95 backdrop-blur-md border-b border-[#1f2d47]">
+      <div className="max-w-6xl mx-auto w-full min-w-0 px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
         {/* Lado Esquerdo: Marca / Logo */}
         <div 
           onClick={() => {
