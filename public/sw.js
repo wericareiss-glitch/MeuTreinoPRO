@@ -6,7 +6,7 @@
  */
 
 // Identificador único da versão do Service Worker e dos Caches
-const SW_VERSION = 'meutreino-sw-v5.0';
+const SW_VERSION = 'meutreino-sw-v6.0';
 const ASSETS_CACHE_NAME = `${SW_VERSION}-assets`;
 const APP_SHELL_CACHE_NAME = `${SW_VERSION}-shell`;
 const RUNTIME_CACHE_NAME = `${SW_VERSION}-runtime`;
@@ -122,9 +122,20 @@ function shouldIgnoreRequest(request, url) {
     return true;
   }
 
-  // Ignora chamadas de hot-reload do Vite
-  if (url.searchParams.has('v') || url.searchParams.has('t')) {
-    return false; // Permite passar, mas será tratado
+  // IGNORA COMPLETAMENTE requisições do ambiente de desenvolvimento do Vite (módulos, HMR, deps)
+  if (
+    url.pathname.includes('/node_modules/') ||
+    url.pathname.includes('@vite') ||
+    url.pathname.includes('__vite') ||
+    url.pathname.startsWith('/src/') ||
+    url.searchParams.has('v') ||
+    url.searchParams.has('t') ||
+    url.hostname.includes('ais-dev') ||
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.port === '3000'
+  ) {
+    return true;
   }
 
   return false;
@@ -319,14 +330,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // B. Assets Estáticos (JS, CSS, Fontes, Ícones, Imagens, Manifest) -> Stale-While-Revalidate
+  // B. Assets Estáticos de Produção (JS, CSS, Fontes, Ícones, Imagens, Manifest) -> Stale-While-Revalidate
   if (isStaticAssetRequest(request, url)) {
     event.respondWith(staleWhileRevalidate(request, event));
     return;
   }
 
-  // C. Demais requisições com Stale-While-Revalidate padrão
-  event.respondWith(staleWhileRevalidate(request, event));
+  // Demais requisições não são interceptadas, passando diretamente para a rede
 });
 
 // ============================================================================

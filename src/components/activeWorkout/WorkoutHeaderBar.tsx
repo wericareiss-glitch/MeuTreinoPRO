@@ -186,7 +186,14 @@ export const WorkoutHeaderBar: React.FC<WorkoutHeaderBarProps> = ({
           </div>
           <button
             type="button"
-            onClick={onFinishSession}
+            onClick={() => {
+              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                try {
+                  navigator.vibrate([60, 40, 120]);
+                } catch {}
+              }
+              onFinishSession();
+            }}
             className="w-full sm:w-auto landscape:w-auto px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95 shrink-0"
           >
             <Check className="w-4 h-4 stroke-[3]" />

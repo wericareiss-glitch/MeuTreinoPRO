@@ -12,7 +12,6 @@ export type TechnicalTermKey =
   | 'REPS'
   | '1RM'
   | '6RM'
-  | 'SET_TYPES'
   | 'BISET'
   | 'PR';
 
@@ -81,23 +80,6 @@ export const TECHNICAL_TERMS_DICTIONARY: Record<TechnicalTermKey, TermMetadata> 
       'Use o 6RM sugerido quando quiser fazer uma série mais pesada (Top Set) de 6 reps.',
     ],
     accentColor: 'text-amber-400 border-amber-500/40',
-  },
-  SET_TYPES: {
-    code: 'SET_TYPES',
-    title: 'Tipos de Série (W · T · F · D · RP)',
-    shortSubtitle: 'Classificação biomecânica de intensidade da série',
-    conciseExplanation:
-      'Permite diferenciar séries preparatórias de séries principais e técnicas avançadas de intensificação.',
-    technicalFailureGuide:
-      'Como sentir o limite em técnicas avançadas: Em séries de Falha (F), Drop-set (D) ou Rest-Pause (RP), pare no exato segundo em que a técnica quebrar (ex: cotovelos abrindo demais ou coluna saindo do banco).',
-    practicalExamples: [
-      'W (Warm-up / Aquecimento): 50% a 70% da carga, para lubrificar as articulações.',
-      'T (Trabalho): Série principal pesada mantendo boa velocidade e cadência.',
-      'F (Falha): Série levada até a última repetição completa com postura estrita.',
-      'D (Drop-set): Atingiu a falha técnica ➔ reduza 20–30% do peso e faça mais reps imediatamente.',
-      'RP (Rest-Pause): Atingiu a falha técnica ➔ respire 15s e faça +3 a 5 reps.',
-    ],
-    accentColor: 'text-rose-400 border-rose-500/40',
   },
   BISET: {
     code: 'BISET',

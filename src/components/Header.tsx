@@ -14,14 +14,14 @@ import {
   Zap, 
   TrendingUp, 
   Activity, 
-  MoreVertical, 
   X, 
   Menu,
   Sliders,
   ChevronRight,
   Sparkles,
   Calendar,
-  ArrowLeft
+  ArrowLeft,
+  Heart,
 } from 'lucide-react';
 import { UserProfile } from '../types/workout';
 import { TabType } from '../types/navigation';
@@ -295,39 +295,39 @@ export const Header: React.FC<HeaderProps> = ({
                   }}
                   className={`flex items-center gap-2 py-1.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer shrink-0 ${
                     profileMenuOpen
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/60 shadow-md'
-                      : 'bg-[#141f36] hover:bg-[#1a2947] text-emerald-300 border-emerald-500/35'
+                      ? 'bg-slate-700 text-white border-slate-500 shadow-md'
+                      : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 hover:text-white border-slate-750'
                   }`}
                   title="Menu do Perfil"
                   aria-label="Menu do Perfil"
                 >
-                  <div className="w-5 h-5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-black text-[10px] shrink-0">
+                  <div className="w-5 h-5 rounded-lg bg-slate-700 text-slate-200 border border-slate-600 flex items-center justify-center font-black text-[10px] shrink-0">
                     {user.name.charAt(0).toUpperCase()}
                   </div>
                   <span className="truncate max-w-[100px]">{user.name.split(' ')[0]}</span>
-                  <ChevronRight className={`w-3 h-3 text-emerald-400 transition-transform ${profileMenuOpen ? 'rotate-90' : ''}`} />
+                  <ChevronRight className={`w-3 h-3 text-slate-400 transition-transform ${profileMenuOpen ? 'rotate-90' : ''}`} />
                 </button>
 
                 {profileMenuOpen && (
                   <div 
-                    className="absolute top-full mt-2 right-0 w-80 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-3 z-50 animate-fadeIn space-y-3"
+                    className="absolute top-full mt-2 right-0 w-80 menu-dropdown-surface border border-theme-menu rounded-2xl shadow-2xl p-3 z-50 animate-fadeIn space-y-3"
                     style={{ overscrollBehavior: 'contain' }}
                   >
                     {/* Header do Perfil */}
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <div className="flex items-center justify-between pb-2 border-b border-theme-menu-subtle">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-black text-sm">
+                        <div className="w-9 h-9 rounded-xl bg-theme-surface-secondary text-theme-heading border border-theme-subtle flex items-center justify-center font-black text-sm">
                           {user.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-extrabold text-xs text-white truncate">{user.name}</h4>
-                          <p className="text-[10px] text-slate-400 font-mono truncate">@{user.username}</p>
+                          <h4 className="font-extrabold text-xs text-theme-heading truncate">{user.name}</h4>
+                          <p className="text-[10px] text-theme-menu-muted font-mono truncate">@{user.username}</p>
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setProfileMenuOpen(false)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                        className="p-1 rounded-lg menu-item-btn"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -335,59 +335,59 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {/* Dados do Perfil */}
                     <div className="space-y-1.5">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider block">
                         Dados do Perfil
                       </span>
                       <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                        <div className="p-2 rounded-xl bg-[#121c32] border border-slate-800">
-                          <span className="text-[9px] text-slate-400 block">Sexo Biológico</span>
-                          <span className="font-bold text-white">
+                        <div className="p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle">
+                          <span className="text-[9px] text-theme-menu-muted block">Sexo Biológico</span>
+                          <span className="font-bold text-theme-heading">
                             {user.gender === 'male' ? '👨 Masculino' : '👩 Feminino'}
                           </span>
                         </div>
-                        <div className="p-2 rounded-xl bg-[#121c32] border border-slate-800">
-                          <span className="text-[9px] text-slate-400 block">Nível</span>
-                          <span className="font-bold text-white capitalize">
+                        <div className="p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle">
+                          <span className="text-[9px] text-theme-menu-muted block">Nível</span>
+                          <span className="font-bold text-theme-heading capitalize">
                             {user.level === 'beginner' ? 'Iniciante' : user.level === 'intermediate' ? 'Intermediário' : 'Avançado'}
                           </span>
                         </div>
-                        <div className="p-2 rounded-xl bg-[#121c32] border border-slate-800">
-                          <span className="text-[9px] text-slate-400 block">Foco de Treino</span>
-                          <span className="font-bold text-white truncate block">
+                        <div className="p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle">
+                          <span className="text-[9px] text-theme-menu-muted block">Foco de Treino</span>
+                          <span className="font-bold text-theme-heading truncate block">
                             {user.focus === 'glutes' ? '🍑 Glúteos' : user.focus === 'strength' ? '🏋️ Força' : user.focus === 'v_taper' ? '🔱 Shape V' : '⚖️ Equilíbrio'}
                           </span>
                         </div>
-                        <div className="p-2 rounded-xl bg-[#121c32] border border-slate-800">
-                          <span className="text-[9px] text-slate-400 block">Frequência</span>
-                          <span className="font-bold text-white">
+                        <div className="p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle">
+                          <span className="text-[9px] text-theme-menu-muted block">Frequência</span>
+                          <span className="font-bold text-theme-heading">
                             {user.frequency || 4}x / semana
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between p-2 rounded-xl bg-[#121c32] border border-slate-800 text-xs">
-                        <span className="text-slate-400">Peso & Altura:</span>
-                        <span className="font-mono font-bold text-emerald-400">
+                      <div className="flex items-center justify-between p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle text-xs">
+                        <span className="text-theme-menu-muted">Peso & Altura:</span>
+                        <span className="font-mono font-bold text-theme-heading">
                           {user.weightKg} kg · {user.heightM > 3 ? Math.round(user.heightM) : Math.round(user.heightM * 100)} cm
                         </span>
                       </div>
                     </div>
 
                     {/* Ações do Menu de Perfil */}
-                    <div className="pt-2 border-t border-slate-800 space-y-1">
+                    <div className="pt-2 border-t border-theme-menu-subtle space-y-1">
                       <button
                         type="button"
                         onClick={() => {
                           setProfileMenuOpen(false);
                           onSelectTab('perfil');
                         }}
-                        className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-emerald-300 hover:bg-emerald-950/40 transition-colors text-left cursor-pointer"
+                        className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold menu-item-btn text-left cursor-pointer group"
                       >
                         <div className="flex items-center gap-2">
-                          <User className="w-3.5 h-3.5 text-emerald-400" />
+                          <User className="w-3.5 h-3.5 menu-item-icon" />
                           <span>Ver Tela Completa do Perfil</span>
                         </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                        <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
 
                       <button
@@ -396,13 +396,13 @@ export const Header: React.FC<HeaderProps> = ({
                           setProfileMenuOpen(false);
                           onOpenProfile();
                         }}
-                        className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-sky-300 hover:bg-sky-950/40 transition-colors text-left cursor-pointer"
+                        className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold menu-item-btn text-left cursor-pointer group"
                       >
                         <div className="flex items-center gap-2">
-                          <Sliders className="w-3.5 h-3.5 text-sky-400" />
+                          <Sliders className="w-3.5 h-3.5 menu-item-icon" />
                           <span>Editar Dados do Perfil</span>
                         </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                        <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
 
                       <button
@@ -411,13 +411,13 @@ export const Header: React.FC<HeaderProps> = ({
                           setProfileMenuOpen(false);
                           onOpenVolumeBudget();
                         }}
-                        className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-amber-300 hover:bg-amber-950/40 transition-colors text-left cursor-pointer"
+                        className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold menu-item-btn text-left cursor-pointer group"
                       >
                         <div className="flex items-center gap-2">
-                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <Sparkles className="w-3.5 h-3.5 menu-item-icon" />
                           <span>Metas de Séries ({user.weeklyBudget}s)</span>
                         </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                        <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
                     </div>
                   </div>
@@ -438,21 +438,21 @@ export const Header: React.FC<HeaderProps> = ({
                 title="Menu de Ferramentas e Configurações"
                 aria-label="Menu de Ferramentas e Configurações"
               >
-                <Sliders className="w-3.5 h-3.5 text-sky-400" />
+                <Sliders className="w-3.5 h-3.5 text-slate-400" />
                 <span>Ferramentas</span>
               </button>
 
               {toolsMenuOpen && (
                 <div 
-                  className="absolute top-full mt-2 right-0 w-80 max-w-[calc(100vw-20px)] bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-2.5 z-50 animate-fadeIn space-y-2 max-h-[82vh] overflow-y-auto"
+                  className="absolute top-full mt-2 right-0 w-80 max-w-[calc(100vw-20px)] menu-dropdown-surface border border-theme-menu rounded-2xl shadow-2xl p-2.5 z-50 animate-fadeIn space-y-2 max-h-[82vh] overflow-y-auto"
                   style={{ overscrollBehavior: 'contain' }}
                 >
-                  <div className="px-2 py-1 border-b border-slate-800 flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="px-2 py-1 border-b border-theme-menu-subtle flex items-center justify-between text-xs font-bold text-theme-menu-muted uppercase tracking-wider">
                     <span>Ferramentas & Recursos</span>
                     <button
                       type="button"
                       onClick={() => setToolsMenuOpen(false)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                      className="p-1 rounded-lg menu-item-btn"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -460,7 +460,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                   {/* Análise & Acompanhamento */}
                   <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">
+                    <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider px-2">
                       Análise & Acompanhamento
                     </span>
 
@@ -471,14 +471,14 @@ export const Header: React.FC<HeaderProps> = ({
                           setToolsMenuOpen(false);
                           onOpenAnalytics();
                         }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-emerald-300 hover:bg-emerald-950/40 transition-colors text-left cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold menu-item-btn text-left cursor-pointer group"
                       >
-                        <TrendingUp className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <TrendingUp className="w-4 h-4 menu-item-icon shrink-0" />
                         <div className="flex-1">
                           <span className="block font-bold">Gráficos de Evolução</span>
-                          <span className="block text-[10px] text-slate-400">Progresso de cargas e 1RM</span>
+                          <span className="block text-[10px] text-theme-menu-muted">Progresso de cargas e 1RM</span>
                         </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                        <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
                     )}
 
@@ -489,21 +489,21 @@ export const Header: React.FC<HeaderProps> = ({
                           setToolsMenuOpen(false);
                           onOpenMeasurements();
                         }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-pink-300 hover:bg-pink-950/40 transition-colors text-left cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold menu-item-btn text-left cursor-pointer group"
                       >
-                        <Activity className="w-4 h-4 text-pink-400 shrink-0" />
+                        <Activity className="w-4 h-4 menu-item-icon shrink-0" />
                         <div className="flex-1">
                           <span className="block font-bold">Medições Corporais</span>
-                          <span className="block text-[10px] text-slate-400">Peso, dobras e circunferências</span>
+                          <span className="block text-[10px] text-theme-menu-muted">Peso, dobras e circunferências</span>
                         </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                        <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
                     )}
                   </div>
 
                   {/* Treino & Utilitários */}
-                  <div className="pt-1.5 border-t border-slate-800 space-y-1">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">
+                  <div className="pt-1.5 border-t border-theme-menu-subtle space-y-1">
+                    <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider px-2">
                       Treino & Cargas
                     </span>
 
@@ -514,22 +514,21 @@ export const Header: React.FC<HeaderProps> = ({
                           setToolsMenuOpen(false);
                           onOpenHistory();
                         }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors text-left cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold menu-item-btn text-left cursor-pointer group"
                       >
-                        <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
+                        <Calendar className="w-4 h-4 menu-item-icon shrink-0" />
                         <div className="flex-1">
                           <span className="block font-bold">Histórico de Treinos</span>
-                          <span className="block text-[10px] text-slate-400">Registros e anotações passadas</span>
+                          <span className="block text-[10px] text-theme-menu-muted">Registros e anotações passadas</span>
                         </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                        <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
                     )}
                   </div>
 
-
                   {/* Preferências */}
-                  <div className="pt-1.5 border-t border-slate-800 space-y-1">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">
+                  <div className="pt-1.5 border-t border-theme-menu-subtle space-y-1">
+                    <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider px-2">
                       Preferências
                     </span>
 
@@ -538,13 +537,13 @@ export const Header: React.FC<HeaderProps> = ({
                     <button
                       type="button"
                       onClick={() => onToggleMute()}
-                      className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
+                      className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold menu-item-btn text-left cursor-pointer group"
                     >
                       <div className="flex items-center gap-2.5">
-                        {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                        {isMuted ? <VolumeX className="w-4 h-4 menu-item-icon" /> : <Volume2 className="w-4 h-4 menu-item-icon" />}
                         <span>Efeitos Sonoros</span>
                       </div>
-                      <span className="text-[10px] font-mono font-bold text-slate-400">
+                      <span className="text-[10px] font-mono font-bold text-theme-menu-muted">
                         {isMuted ? 'Mudo' : 'Ligado'}
                       </span>
                     </button>
@@ -555,14 +554,14 @@ export const Header: React.FC<HeaderProps> = ({
                         setToolsMenuOpen(false);
                         onShare();
                       }}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800/60 transition-colors text-left cursor-pointer"
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold menu-item-btn text-left cursor-pointer group"
                     >
-                      <Share2 className="w-4 h-4 text-sky-400 shrink-0" />
+                      <Share2 className="w-4 h-4 menu-item-icon shrink-0" />
                       <span>Compartilhar Aplicativo</span>
                     </button>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-800">
+                  <div className="pt-2 border-t border-theme-menu-subtle">
                     <PWAInstallButton variant="full" className="w-full py-2 text-xs" />
                   </div>
                 </div>
@@ -612,34 +611,34 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Conteúdo do Menu Dropdown que desce */}
           <div 
             ref={mobileMenuRef}
-            className="absolute top-full left-0 right-0 w-full bg-[#0c1424] border-b border-slate-700/80 shadow-2xl z-50 md:hidden animate-slideDown max-h-[calc(100vh-56px)] overflow-y-auto px-4 py-4 space-y-4"
+            className="absolute top-full left-0 right-0 w-full menu-dropdown-surface border-b border-theme-menu shadow-2xl z-50 md:hidden animate-slideDown max-h-[calc(100vh-56px)] overflow-y-auto px-4 py-4 space-y-4"
             style={{ overscrollBehavior: 'contain' }}
           >
             {/* Card do Atleta (se logado) */}
             {user && (
               <div 
                 onClick={() => handleMobileNavigate('perfil')}
-                className="p-3.5 rounded-2xl bg-gradient-to-r from-[#111c34] to-[#0f172a] border border-emerald-500/30 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"
+                className="p-3.5 rounded-2xl bg-theme-surface-secondary border border-theme-menu-subtle flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-black text-sm shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-theme-menu text-theme-menu-item border border-theme-menu flex items-center justify-center font-black text-sm shrink-0">
                     {user.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">
+                    <span className="text-[10px] text-theme-menu-muted font-bold uppercase tracking-wider block">
                       Atleta Cadastrado
                     </span>
-                    <h3 className="font-extrabold text-sm text-white truncate">
+                    <h3 className="font-extrabold text-sm text-theme-menu-heading truncate">
                       {user.name}
                     </h3>
-                    <p className="text-[11px] text-slate-400 truncate">
+                    <p className="text-[11px] text-theme-menu-muted truncate">
                       {`${user.focus === 'glutes' ? '🍑 Glúteos' : user.focus === 'strength' ? '🏋️ Força' : user.focus === 'v_taper' ? '🔱 Shape V' : '⚖️ Equilíbrio'} · ${user.frequency || 4}x/sem`}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 text-xs font-bold text-emerald-400 shrink-0">
+                <div className="flex items-center gap-1 text-xs font-bold text-theme-menu-item shrink-0">
                   <span>Perfil</span>
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-4 h-4 text-theme-menu-muted" />
                 </div>
               </div>
             )}
@@ -657,13 +656,13 @@ export const Header: React.FC<HeaderProps> = ({
                   className={`p-3 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer min-h-[48px] ${
                     activeTab === 'inicio'
                       ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-md shadow-emerald-500/25'
-                      : 'bg-[#121c33] text-slate-200 border-slate-750 hover:bg-[#16233f]'
+                      : 'bg-theme-surface-secondary text-theme-menu-item border-theme-menu-subtle hover:bg-white/5'
                   }`}
                 >
-                  <Home className={`w-5 h-5 shrink-0 ${activeTab === 'inicio' ? 'text-slate-950' : 'text-emerald-400'}`} />
+                  <Home className={`w-5 h-5 shrink-0 ${activeTab === 'inicio' ? 'text-slate-950' : 'text-theme-menu-muted'}`} />
                   <div>
                     <span className="block text-xs font-bold">Início</span>
-                    <span className={`block text-[10px] ${activeTab === 'inicio' ? 'text-slate-900/80' : 'text-slate-400'}`}>
+                    <span className={`block text-[10px] ${activeTab === 'inicio' ? 'text-slate-900/80' : 'text-theme-menu-muted'}`}>
                       Dashboard & KPIs
                     </span>
                   </div>
@@ -676,13 +675,13 @@ export const Header: React.FC<HeaderProps> = ({
                   className={`p-3 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer min-h-[48px] ${
                     activeTab === 'treino'
                       ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-md shadow-emerald-500/25'
-                      : 'bg-[#121c33] text-slate-200 border-slate-750 hover:bg-[#16233f]'
+                      : 'bg-theme-surface-secondary text-theme-menu-item border-theme-menu-subtle hover:bg-white/5'
                   }`}
                 >
-                  <Dumbbell className={`w-5 h-5 shrink-0 ${activeTab === 'treino' ? 'text-slate-950' : 'text-teal-400'}`} />
+                  <Dumbbell className={`w-5 h-5 shrink-0 ${activeTab === 'treino' ? 'text-slate-950' : 'text-theme-menu-muted'}`} />
                   <div>
                     <span className="block text-xs font-bold">Meus Treinos</span>
-                    <span className={`block text-[10px] ${activeTab === 'treino' ? 'text-slate-900/80' : 'text-slate-400'}`}>
+                    <span className={`block text-[10px] ${activeTab === 'treino' ? 'text-slate-900/80' : 'text-theme-menu-muted'}`}>
                       Fichas da semana
                     </span>
                   </div>
@@ -717,13 +716,13 @@ export const Header: React.FC<HeaderProps> = ({
                   className={`p-3 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer min-h-[48px] ${
                     activeTab === 'perfil'
                       ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-md shadow-emerald-500/25'
-                      : 'bg-[#121c33] text-slate-200 border-slate-750 hover:bg-[#16233f]'
+                      : 'bg-theme-surface-secondary text-theme-menu-item border-theme-menu-subtle hover:bg-white/5'
                   }`}
                 >
-                  <User className={`w-5 h-5 shrink-0 ${activeTab === 'perfil' ? 'text-slate-950' : 'text-emerald-400'}`} />
+                  <User className={`w-5 h-5 shrink-0 ${activeTab === 'perfil' ? 'text-slate-950' : 'text-theme-menu-muted'}`} />
                   <div>
                     <span className="block text-xs font-bold">Perfil</span>
-                    <span className={`block text-[10px] ${activeTab === 'perfil' ? 'text-slate-900/80' : 'text-slate-400'}`}>
+                    <span className={`block text-[10px] ${activeTab === 'perfil' ? 'text-slate-900/80' : 'text-theme-menu-muted'}`}>
                       Periodização do Treino
                     </span>
                   </div>
@@ -733,7 +732,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* 2. SEÇÃO DE FERRAMENTAS & HISTÓRICO */}
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2 px-1">
+              <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider block mb-2 px-1">
                 Ferramentas & Histórico
               </span>
               <div className="space-y-1.5">
@@ -744,16 +743,16 @@ export const Header: React.FC<HeaderProps> = ({
                       setMobileMenuOpen(false);
                       onOpenAnalytics();
                     }}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-[#121c33] hover:bg-[#16233f] border border-slate-750 text-left transition-colors cursor-pointer min-h-[48px]"
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-theme-surface-secondary hover:bg-white/5 border border-theme-menu-subtle text-left transition-colors cursor-pointer min-h-[48px]"
                   >
-                    <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 shrink-0">
+                    <div className="p-2 rounded-xl bg-theme-menu text-theme-menu-item border border-theme-menu shrink-0">
                       <TrendingUp className="w-4 h-4" />
                     </div>
                     <div className="flex-1">
-                      <span className="block text-xs font-bold text-white">Gráficos de Evolução</span>
-                      <span className="block text-[10px] text-slate-400">Progresso de cargas e 1RM</span>
+                      <span className="block text-xs font-bold text-theme-menu-heading">Gráficos de Evolução</span>
+                      <span className="block text-[10px] text-theme-menu-muted">Progresso de cargas e 1RM</span>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
+                    <ChevronRight className="w-4 h-4 text-theme-menu-muted" />
                   </button>
                 )}
 
@@ -764,16 +763,16 @@ export const Header: React.FC<HeaderProps> = ({
                       setMobileMenuOpen(false);
                       onOpenMeasurements();
                     }}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-[#121c33] hover:bg-[#16233f] border border-slate-750 text-left transition-colors cursor-pointer min-h-[48px]"
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-theme-surface-secondary hover:bg-white/5 border border-theme-menu-subtle text-left transition-colors cursor-pointer min-h-[48px]"
                   >
-                    <div className="p-2 rounded-xl bg-pink-500/15 text-pink-400 shrink-0">
+                    <div className="p-2 rounded-xl bg-theme-menu text-theme-menu-item border border-theme-menu shrink-0">
                       <Activity className="w-4 h-4" />
                     </div>
                     <div className="flex-1">
-                      <span className="block text-xs font-bold text-white">Medições Corporais</span>
-                      <span className="block text-[10px] text-slate-400">Peso, dobras e circunferências</span>
+                      <span className="block text-xs font-bold text-theme-menu-heading">Medições Corporais</span>
+                      <span className="block text-[10px] text-theme-menu-muted">Peso, dobras e circunferências</span>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
+                    <ChevronRight className="w-4 h-4 text-theme-menu-muted" />
                   </button>
                 )}
 
@@ -784,29 +783,29 @@ export const Header: React.FC<HeaderProps> = ({
                       setMobileMenuOpen(false);
                       onOpenHistory();
                     }}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-[#121c33] hover:bg-[#16233f] border border-slate-750 text-left transition-colors cursor-pointer min-h-[48px]"
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-theme-surface-secondary hover:bg-white/5 border border-theme-menu-subtle text-left transition-colors cursor-pointer min-h-[48px]"
                   >
-                    <div className="p-2 rounded-xl bg-slate-700/40 text-slate-300 shrink-0">
+                    <div className="p-2 rounded-xl bg-theme-menu text-theme-menu-item border border-theme-menu shrink-0">
                       <Calendar className="w-4 h-4" />
                     </div>
                     <div className="flex-1">
-                      <span className="block text-xs font-bold text-white">Histórico Geral</span>
-                      <span className="block text-[10px] text-slate-400">Todos os treinos e séries passadas</span>
+                      <span className="block text-xs font-bold text-theme-menu-heading">Histórico Geral</span>
+                      <span className="block text-[10px] text-theme-menu-muted">Todos os treinos e séries passadas</span>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
+                    <ChevronRight className="w-4 h-4 text-theme-menu-muted" />
                   </button>
                 )}
               </div>
             </div>
 
             {/* 4. PREFERÊNCIAS & SISTEMA */}
-            <div className="pt-2 border-t border-slate-800 space-y-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-1">
+            <div className="pt-2 border-t border-theme-menu-subtle space-y-2">
+              <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider block px-1">
                 Preferências & Aplicativo
               </span>
 
               {/* Tema Visual (Claro / Escuro) */}
-              <div className="p-1 rounded-2xl bg-[#121c33] border border-slate-750">
+              <div className="p-1 rounded-2xl bg-theme-surface-secondary border border-theme-menu-subtle">
                 <ThemeToggle variant="full" />
               </div>
 
@@ -814,18 +813,18 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={onToggleMute}
-                className="w-full flex items-center justify-between p-3 rounded-2xl bg-[#121c33] hover:bg-[#16233f] border border-slate-750 text-left transition-colors cursor-pointer min-h-[48px]"
+                className="w-full flex items-center justify-between p-3 rounded-2xl bg-theme-surface-secondary hover:bg-white/5 border border-theme-menu-subtle text-left transition-colors cursor-pointer min-h-[48px]"
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-slate-800 text-slate-300 shrink-0">
-                    {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                  <div className="p-2 rounded-xl bg-theme-menu text-theme-menu-item border border-theme-menu shrink-0">
+                    {isMuted ? <VolumeX className="w-4 h-4 text-theme-menu-muted" /> : <Volume2 className="w-4 h-4 text-theme-menu-muted" />}
                   </div>
                   <div>
-                    <span className="block text-xs font-bold text-white">Efeitos Sonoros</span>
-                    <span className="block text-[10px] text-slate-400">Sons de bip e finalização de descanso</span>
+                    <span className="block text-xs font-bold text-theme-menu-heading">Efeitos Sonoros</span>
+                    <span className="block text-[10px] text-theme-menu-muted">Sons de bip e finalização de descanso</span>
                   </div>
                 </div>
-                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md border bg-slate-800 text-slate-300 border-slate-700">
+                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md border bg-theme-menu text-theme-menu-item border-theme-menu">
                   {isMuted ? 'Mudo' : 'Ligado'}
                 </span>
               </button>
@@ -837,16 +836,16 @@ export const Header: React.FC<HeaderProps> = ({
                   setMobileMenuOpen(false);
                   onShare();
                 }}
-                className="w-full flex items-center gap-3 p-3 rounded-2xl bg-[#121c33] hover:bg-[#16233f] border border-slate-750 text-left transition-colors cursor-pointer min-h-[48px]"
+                className="w-full flex items-center gap-3 p-3 rounded-2xl bg-theme-surface-secondary hover:bg-white/5 border border-theme-menu-subtle text-left transition-colors cursor-pointer min-h-[48px]"
               >
-                <div className="p-2 rounded-xl bg-sky-500/15 text-sky-400 shrink-0">
+                <div className="p-2 rounded-xl bg-theme-menu text-theme-menu-item border border-theme-menu shrink-0">
                   <Share2 className="w-4 h-4" />
                 </div>
                 <div className="flex-1">
-                  <span className="block text-xs font-bold text-white">Compartilhar Aplicativo</span>
-                  <span className="block text-[10px] text-slate-400">Enviar link para colegas de treino</span>
+                  <span className="block text-xs font-bold text-theme-menu-heading">Compartilhar Aplicativo</span>
+                  <span className="block text-[10px] text-theme-menu-muted">Enviar link para colegas de treino</span>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-600" />
+                <ChevronRight className="w-4 h-4 text-theme-menu-muted" />
               </button>
 
               {/* Instalar App (PWA) */}

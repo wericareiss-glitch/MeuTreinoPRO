@@ -54,7 +54,7 @@ interface WorkoutViewProps {
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onDeleteExercise: (index: number) => void;
-  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'setType', val: string) => void;
+  onUpdateLog: (key: string, field: 'weight' | 'reps', val: string) => void;
   onToggleSet: (key: string, restSec: number) => void;
   onUpdateRest: (index: number, newRest: number) => void;
   onOpenWarmup: (name: string, weight: string) => void;
@@ -222,7 +222,14 @@ export const WorkoutView: React.FC<WorkoutViewProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <button
             type="button"
-            onClick={onFinishSession}
+            onClick={() => {
+              if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                try {
+                  navigator.vibrate([60, 40, 120]);
+                } catch {}
+              }
+              onFinishSession();
+            }}
             className="py-3.5 px-4 rounded-xl font-extrabold text-xs bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 transition-all cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />

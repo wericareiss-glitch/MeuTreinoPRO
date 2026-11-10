@@ -14,7 +14,6 @@ import {
   Zap,
   Trash2,
 } from 'lucide-react';
-import { SetIntensityType, SET_INTENSITY_TYPES } from '../../types/workout';
 import { calculate1RM } from '../../utils/storage';
 import { checkSetPR, ExercisePRData } from '../../utils/prEngine';
 import { soundManager } from '../../utils/audio';
@@ -36,7 +35,6 @@ interface SetRowProps {
   targetMaxReps: number;
   prevSessionSet: { weight?: string; reps?: string } | null;
   onInputChange: (logKey: string, field: 'weight' | 'reps', val: string) => void;
-  onUpdateSetType: (logKey: string, type: SetIntensityType) => void;
   onCompleteSet: (logKey: string, finalWeight: string, finalReps: string) => void;
   onReplicateSet?: (targetSetNum: number, sourceSetNum: number) => void;
   onDeleteSet?: (setNum: number) => void;
@@ -57,7 +55,6 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
   targetMaxReps,
   prevSessionSet,
   onInputChange,
-  onUpdateSetType,
   onCompleteSet,
   onReplicateSet,
   onDeleteSet,
@@ -68,8 +65,6 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
 
   const currWeightVal = localLog.weight !== undefined ? localLog.weight : setLog.weight;
   const currRepsVal = localLog.reps !== undefined ? localLog.reps : setLog.reps;
-  const currentSetType: SetIntensityType = setLog.setType || 'T';
-  const setTypeMeta = SET_INTENSITY_TYPES.find((t) => t.code === currentSetType) || SET_INTENSITY_TYPES[1];
 
   // 1RM Estimado puro
   const est1RM = calculate1RM(currWeightVal, currRepsVal);
@@ -104,15 +99,16 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
     soundManager.vibrate(15);
   };
 
-  const cycleSetType = () => {
-    const types: SetIntensityType[] = ['T', 'W', 'F', 'D', 'RP'];
-    const curIdx = types.indexOf(currentSetType);
-    const nextType = types[(curIdx + 1) % types.length];
-    onUpdateSetType(logKey, nextType);
-    soundManager.vibrate(15);
-  };
-
   const handleFinishSetClick = () => {
+    // Feedback tátil discreto e imediato via Vibration API no celular
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(setLog.done ? 20 : [35, 25, 45]);
+      } catch {}
+    } else {
+      soundManager.vibrate(setLog.done ? 20 : [35, 25, 45]);
+    }
+
     const finalWeight =
       currWeightVal && parseFloat(currWeightVal) > 0
         ? currWeightVal
@@ -206,56 +202,44 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
         {setLog.done && !isExpanded ? (
           <div className="p-2 sm:p-2.5 bg-emerald-950/15 transition-colors">
             <div className="grid grid-cols-12 gap-1 items-center">
-              {/* 1. # Série */}
-              <div className="col-span-1 flex items-center justify-center">
-                <span className="w-6 h-6 rounded-md font-mono font-black text-xs flex items-center justify-center bg-emerald-500 text-slate-950 shadow-sm">
-                  {setNum}
-                </span>
+              {/* 1. Anterior */}
+              <div className="hidden sm:flex sm:col-span-3 items-center justify-center text-center font-mono text-[11px] text-slate-500 truncate">
+                {prevSetRecord ? `${prevSetRecord.weight}k × ${prevSetRecord.reps}` : '-'}
               </div>
 
-              {/* 2. Tipo */}
-              <div className="col-span-1 flex items-center justify-center">
-                <span className={`px-1 py-0.5 rounded text-[9px] sm:text-[10px] font-black border ${setTypeMeta.badgeClass}`}>
-                  {currentSetType}
-                </span>
-              </div>
-
-              {/* 3. Anterior */}
-              <div className="hidden sm:flex sm:col-span-2 items-center justify-center text-center font-mono text-[11px] text-slate-500 truncate">
-                {prevSetRecord ? `${prevSetRecord.weight}k×${prevSetRecord.reps}` : '-'}
-              </div>
-
-              {/* 4. Carga */}
-              <div className="col-span-5 sm:col-span-4 text-center">
-                <span className="font-mono font-black text-emerald-300 text-sm sm:base">
+              {/* 2. Carga */}
+              <div className="col-span-6 sm:col-span-4 text-center">
+                <span className="font-mono font-black text-emerald-300 text-sm sm:text-base">
                   {currWeightVal || '0'} kg
                 </span>
               </div>
 
-              {/* 5. Reps */}
-              <div className="col-span-3 sm:col-span-2 text-center">
+              {/* 3. Reps */}
+              <div className="col-span-4 sm:col-span-3 text-center">
                 <span className="font-mono font-bold text-white text-xs sm:text-sm">
                   {currRepsVal || '0'} reps
                 </span>
               </div>
 
-              {/* 6. Ações */}
-              <div className="col-span-2 flex items-center justify-end gap-1">
+              {/* 4. Ações */}
+              <div className="col-span-2 flex items-center justify-end gap-1.5">
                 <button
                   type="button"
                   onClick={() => onToggleExpand(logKey, true)}
-                  className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer active:scale-95 touch-manipulation"
                   title="Editar série"
+                  aria-label="Editar série"
                 >
-                  <Pencil className="w-3.5 h-3.5" />
+                  <Pencil className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
                   onClick={handleFinishSetClick}
-                  className="w-8 h-8 rounded-xl bg-emerald-500 text-slate-950 font-bold flex items-center justify-center cursor-pointer shadow-sm active:scale-90 transition-transform"
+                  className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl bg-emerald-500 text-slate-950 font-bold flex items-center justify-center cursor-pointer shadow-sm active:scale-90 transition-transform touch-manipulation"
                   title="Desmarcar série"
+                  aria-label="Desmarcar série"
                 >
-                  <Check className="w-4 h-4 stroke-[3]" />
+                  <Check className="w-5 h-5 stroke-[3]" />
                 </button>
               </div>
             </div>
@@ -280,33 +264,8 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
             }`}
           >
             <div className="grid grid-cols-12 gap-1 items-center">
-              {/* 1. # Série */}
-              <div className="col-span-1 flex items-center justify-center">
-                <span
-                  className={`w-6 h-6 rounded-md font-mono font-black text-xs flex items-center justify-center ${
-                    setLog.done
-                      ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                      : 'bg-slate-900 text-slate-300 border border-slate-700'
-                  }`}
-                >
-                  {setNum}
-                </span>
-              </div>
-
-              {/* 2. Tipo */}
-              <div className="col-span-1 flex items-center justify-center">
-                <button
-                  type="button"
-                  onClick={cycleSetType}
-                  title={`${setTypeMeta.label}: ${setTypeMeta.description}. Toque para alternar.`}
-                  className={`px-1 py-0.5 rounded text-[9px] sm:text-[10px] font-black border transition-all cursor-pointer ${setTypeMeta.badgeClass}`}
-                >
-                  {currentSetType}
-                </button>
-              </div>
-
-              {/* 3. Anterior */}
-              <div className="hidden sm:flex sm:col-span-2 items-center justify-center text-center">
+              {/* 1. Anterior */}
+              <div className="hidden sm:flex sm:col-span-3 items-center justify-center text-center">
                 {prevSetRecord ? (
                   <button
                     type="button"
@@ -318,81 +277,108 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
                     className="font-mono text-[11px] text-slate-400 hover:text-sky-300 transition-colors cursor-pointer truncate"
                     title="Toque para preencher com o treino anterior"
                   >
-                    {prevSetRecord.weight}k×{prevSetRecord.reps}
+                    {prevSetRecord.weight}k × {prevSetRecord.reps}
                   </button>
                 ) : (
                   <span className="font-mono text-[11px] text-slate-600">-</span>
                 )}
               </div>
 
-              {/* 4. Carga (kg) */}
-              <div className="col-span-5 sm:col-span-4 flex items-center justify-center gap-1">
+              {/* 2. Carga (kg) */}
+              <div className="col-span-6 sm:col-span-4 flex items-center justify-center gap-1 sm:gap-1.5">
                 <button
                   type="button"
                   onClick={() => adjustWeightByStep(-2.5)}
-                  className="w-7 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-95"
+                  className="w-8 sm:w-9 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
+                  title="Diminuir carga (-2.5 kg)"
+                  aria-label="Diminuir carga em 2.5 kg"
                 >
-                  <Minus className="w-3 h-3" />
+                  <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
-                <div className="relative flex items-center justify-center">
+                <div className="relative flex items-center justify-center flex-1 max-w-[76px] sm:max-w-[88px]">
                   <input
-                    type="number"
-                    step="0.5"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck="false"
                     placeholder={smartFallbackWeight || '0'}
                     value={currWeightVal}
-                    onChange={(e) => onInputChange(logKey, 'weight', e.target.value)}
-                    className="w-16 sm:w-20 bg-[#060a12] border border-slate-700 focus:border-emerald-500 rounded-lg px-1.5 py-1 text-center font-mono font-black text-xs sm:text-sm text-white focus:outline-none"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const sanitized = e.target.value.replace(/,/g, '.');
+                      onInputChange(logKey, 'weight', sanitized);
+                    }}
+                    className="w-full h-10 bg-[#060a12] border border-slate-700 focus:border-emerald-500 rounded-xl px-1 text-center font-mono font-black text-sm sm:text-base text-white focus:outline-none transition-colors"
                   />
                   <span className="absolute right-1 text-[9px] text-slate-500 pointer-events-none font-mono">kg</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => adjustWeightByStep(2.5)}
-                  className="w-7 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-95"
+                  className="w-8 sm:w-9 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
+                  title="Aumentar carga (+2.5 kg)"
+                  aria-label="Aumentar carga em 2.5 kg"
                 >
-                  <Plus className="w-3 h-3" />
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
               </div>
 
-              {/* 5. Repetições */}
-              <div className="col-span-3 sm:col-span-2 flex items-center justify-center gap-1">
+              {/* 3. Repetições */}
+              <div className="col-span-4 sm:col-span-3 flex items-center justify-center gap-1 sm:gap-1.5">
                 <button
                   type="button"
                   onClick={() => adjustRepsByStep(-1)}
-                  className="w-6 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-95"
+                  className="w-7 sm:w-8 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
+                  title="Diminuir 1 repetição"
+                  aria-label="Diminuir 1 repetição"
                 >
-                  <Minus className="w-3 h-3" />
+                  <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
-                <input
-                  type="number"
-                  step="1"
-                  placeholder={smartFallbackReps || targetMaxReps.toString()}
-                  value={currRepsVal}
-                  onChange={(e) => onInputChange(logKey, 'reps', e.target.value)}
-                  className="w-10 sm:w-12 bg-[#060a12] border border-slate-700 focus:border-emerald-500 rounded-lg px-1 py-1 text-center font-mono font-bold text-xs sm:text-sm text-white focus:outline-none"
-                />
+                <div className="relative flex items-center justify-center flex-1 max-w-[50px] sm:max-w-[58px]">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck="false"
+                    placeholder={smartFallbackReps || targetMaxReps.toString()}
+                    value={currRepsVal}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const sanitized = e.target.value.replace(/[^0-9]/g, '');
+                      onInputChange(logKey, 'reps', sanitized);
+                    }}
+                    className="w-full h-10 bg-[#060a12] border border-slate-700 focus:border-emerald-500 rounded-xl px-1 text-center font-mono font-bold text-sm sm:text-base text-white focus:outline-none transition-colors"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => adjustRepsByStep(1)}
-                  className="w-6 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-95"
+                  className="w-7 sm:w-8 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 flex items-center justify-center text-xs font-bold cursor-pointer transition-colors active:scale-90 touch-manipulation shadow-sm shrink-0"
+                  title="Aumentar 1 repetição"
+                  aria-label="Aumentar 1 repetição"
                 >
-                  <Plus className="w-3 h-3" />
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
               </div>
 
-              {/* 6. Concluir / Desmarcar */}
+              {/* 4. Concluir / Desmarcar */}
               <div className="col-span-2 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={handleFinishSetClick}
-                  className={`w-9 h-8 rounded-xl font-black text-xs flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-95 ${
+                  className={`w-10 h-10 sm:w-11 sm:h-10 min-w-[40px] min-h-[40px] rounded-xl font-black text-xs flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-90 touch-manipulation ${
                     setLog.done
                       ? 'bg-emerald-500 text-slate-950'
-                      : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25'
+                      : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/25 active:bg-emerald-500/35'
                   }`}
                   title={setLog.done ? 'Desmarcar série' : 'Concluir série'}
+                  aria-label={setLog.done ? 'Desmarcar série' : 'Concluir série'}
                 >
-                  <Check className="w-4 h-4 stroke-[3]" />
+                  <Check className="w-5 h-5 stroke-[3]" />
                 </button>
               </div>
             </div>
@@ -451,7 +437,7 @@ export const SetRow: React.FC<SetRowProps> = React.memo(({
                     title="Copiar carga e repetições da série imediatamente anterior"
                   >
                     <Copy className="w-3 h-3 text-emerald-400" />
-                    <span>Copiar #{setNum - 1} ({prevSessionSet.weight}kg×{prevSessionSet.reps || '0'})</span>
+                    <span>Copiar anterior ({prevSessionSet.weight}kg × {prevSessionSet.reps || '0'})</span>
                   </button>
                 )}
                 {est1RM && est1RM > 0 && (

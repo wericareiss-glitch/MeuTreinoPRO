@@ -22,12 +22,13 @@ export interface WorkoutItemRowProps {
   history: WorkoutLogs;
   sessions: WorkoutSessionSummary[];
   isDragging: boolean;
+  dragOffsetY?: number;
   isHoldingDrag: boolean;
   isDropTarget: boolean;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onDeleteExercise: (index: number) => void;
-  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'setType', val: string) => void;
+  onUpdateLog: (key: string, field: 'weight' | 'reps', val: string) => void;
   onToggleSet: (key: string, restSec: number) => void;
   onUpdateRest: (index: number, newRest: number) => void;
   onOpenWarmup: (name: string, weight: string) => void;
@@ -47,6 +48,7 @@ export function areWorkoutItemRowEqual(prev: WorkoutItemRowProps, next: WorkoutI
     prev.index !== next.index ||
     prev.totalItems !== next.totalItems ||
     prev.isDragging !== next.isDragging ||
+    prev.dragOffsetY !== next.dragOffsetY ||
     prev.isHoldingDrag !== next.isHoldingDrag ||
     prev.isDropTarget !== next.isDropTarget ||
     prev.sessions !== next.sessions
@@ -97,7 +99,7 @@ export interface ActiveWorkoutViewProps {
   onMoveDown: (index: number) => void;
   onReorderExercises?: (fromIndex: number, toIndex: number) => void;
   onDeleteExercise: (index: number) => void;
-  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'setType', val: string) => void;
+  onUpdateLog: (key: string, field: 'weight' | 'reps', val: string) => void;
   onToggleSet: (key: string, restSec: number) => void;
   onUpdateRest: (index: number, newRest: number) => void;
   onOpenWarmup: (name: string, weight: string) => void;

@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Lock, Cloud } from 'lucide-react';
+import { Lock, Cloud, Heart } from 'lucide-react';
 import { 
   UserProfile, 
   GenderOption, 
@@ -20,6 +20,7 @@ import {
 import { useI18n } from '../utils/i18n';
 import { loginWithGoogle, syncUserProfileToCloud } from '../services/firebase';
 import { ConsistencyCalendar } from './ConsistencyCalendar';
+import { DonationModal } from './DonationModal';
 import { 
   ProfileViewProps,
   ProfileHeaderCard,
@@ -57,6 +58,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [linkGoogleError, setLinkGoogleError] = useState<string | null>(null);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [isDonationOpen, setIsDonationOpen] = useState(false);
 
   // IMC (BMI) calculation
   const heightMeters = heightCm > 0 ? (heightCm > 3 ? heightCm / 100 : heightCm) : 0;
@@ -130,7 +132,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-16">
+    <div className="space-y-6 animate-fadeIn pb-[max(6.5rem,calc(5.5rem+env(safe-area-inset-bottom)))] sm:pb-20">
       {/* Top Profile Header Card */}
       <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
         <ProfileHeaderCard
@@ -138,6 +140,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           onSwitchProfile={onSwitchProfile}
           onLogout={onLogout}
           onRequestDelete={onDeleteProfile ? () => setShowDeleteConfirmModal(true) : undefined}
+          onOpenDonation={() => setIsDonationOpen(true)}
           isLinkingGoogle={isLinkingGoogle}
           linkGoogleError={linkGoogleError}
           onConnectGoogle={handleConnectGoogle}
@@ -223,6 +226,41 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       <ConsistencyCalendar
         sessions={sessions}
         weeklyFrequencyGoal={user.frequency || 4}
+      />
+
+      {/* Apoio ao Projeto (Discreto e Elegante) */}
+      <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/40 border border-slate-800/80 hover:border-pink-500/20 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-2xl bg-pink-500/10 text-pink-400 border border-pink-500/20 flex items-center justify-center shrink-0 shadow-sm">
+            <Heart className="w-5 h-5 fill-pink-500/20" />
+          </div>
+          <div>
+            <h4 className="text-xs sm:text-sm font-bold text-slate-200 flex items-center gap-2">
+              <span>Apoiar o Projeto MeuTreino Pro</span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60">
+                Voluntário
+              </span>
+            </h4>
+            <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+              Ajude a manter os servidores e a evolução contínua do aplicativo com qualquer valor via PIX.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsDonationOpen(true)}
+          className="px-4 py-2.5 rounded-2xl text-xs font-bold text-pink-300 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/30 transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 active:scale-95 shadow-sm"
+        >
+          <Heart className="w-3.5 h-3.5 fill-pink-400/40" />
+          <span>Fazer Doação PIX</span>
+        </button>
+      </div>
+
+      {/* Modal Seguro de Doação com QR Code Dinâmico e Chave Oculta */}
+      <DonationModal
+        isOpen={isDonationOpen}
+        onClose={() => setIsDonationOpen(false)}
       />
 
       {/* Modal Seguro de Confirmação para Exclusão de Perfil */}

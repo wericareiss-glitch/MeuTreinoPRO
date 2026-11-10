@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 import {
   GripVertical,
   ChevronDown,
@@ -77,21 +77,6 @@ export const ExerciseCardHeader: React.FC<ExerciseCardHeaderProps> = ({
   onOpenAnalytics,
 }) => {
   const [showMenu, setShowMenu] = React.useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    if (showMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showMenu]);
 
   return (
     <div className="p-3 sm:p-4 landscape:p-3 bg-slate-900/90 border-b border-slate-800 space-y-2.5">
@@ -102,15 +87,15 @@ export const ExerciseCardHeader: React.FC<ExerciseCardHeaderProps> = ({
           <button
             type="button"
             onPointerDown={(e) => onPointerDownDragHandle?.(index, e)}
-            className={`drag-handle-touch p-1.5 -ml-1 rounded-xl border cursor-grab active:cursor-grabbing shrink-0 flex items-center gap-1 transition-all ${
+            className={`drag-handle-touch touch-none select-none p-1.5 -ml-1 rounded-xl border cursor-grab active:cursor-grabbing shrink-0 flex items-center gap-1 transition-all ${
               isDragging
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400 ring-2 ring-emerald-500/30 scale-105'
                 : isHoldingDrag
                 ? 'bg-amber-500/20 text-amber-300 border-amber-400/70 ring-2 ring-amber-400/30 animate-pulse'
                 : 'bg-slate-800/90 hover:bg-slate-700 text-slate-400 hover:text-emerald-400 border-slate-700/80 shadow-xs'
             }`}
-            title="Mantenha pressionado por 0,6s e arraste para reordenar este exercício"
-            aria-label={`Mantenha pressionado e arraste para mover ${exercise.name}`}
+            title="Segure e arraste para trocar a ordem deste exercício"
+            aria-label={`Segure e arraste para trocar a ordem de ${exercise.name}`}
           >
             <GripVertical className="w-4 h-4" />
             <span className="text-[10px] font-mono font-black text-slate-300 pr-0.5">
@@ -153,47 +138,18 @@ export const ExerciseCardHeader: React.FC<ExerciseCardHeaderProps> = ({
           )}
         </div>
 
-        {/* Lado Direito do Cabeçalho: Temporizador de Descanso no Topo + Menu de 3 Pontos */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Temporizador de Tempo de Descanso no topo do card */}
-          <div className="flex items-center gap-1 bg-[#090e1a] px-2 py-1 rounded-xl border border-slate-700/80 shadow-xs">
-            <Clock className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <button
-              type="button"
-              onClick={() => onAdjustRest(-15)}
-              className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-300 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation shadow-xs"
-              title="-15s descanso"
-              aria-label="Diminuir 15 segundos de descanso"
-            >
-              <Minus className="w-3 h-3 stroke-[2.5]" />
-            </button>
-            <span
-              className="text-white font-mono font-black text-xs min-w-[28px] sm:min-w-[32px] text-center"
-              title="Tempo de descanso configurado para este exercício"
-            >
-              {restSeconds}s
-            </span>
-            <button
-              type="button"
-              onClick={() => onAdjustRest(15)}
-              className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-sky-500/20 text-sky-300 hover:text-white border border-slate-700 flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation shadow-xs"
-              title="+15s descanso"
-              aria-label="Aumentar 15 segundos de descanso"
-            >
-              <Plus className="w-3 h-3 stroke-[2.5]" />
-            </button>
-          </div>
-
+        {/* Lado Direito do Cabeçalho: Menu de 3 Pontos */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
           {/* Menu de 3 Pontos */}
-          <div className="relative shrink-0" ref={menuRef}>
+          <div className="relative shrink-0">
             <button
               type="button"
               onClick={() => setShowMenu((prev) => !prev)}
-              className="w-8 h-8 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm"
+              className="w-9 h-9 rounded-xl bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-theme-muted hover:text-theme-heading flex items-center justify-center transition-colors cursor-pointer active:scale-95"
               title="Opções do exercício"
               aria-label="Opções do exercício"
             >
-              <MoreVertical className="w-4 h-4" />
+              <MoreVertical className="w-5 h-5" />
             </button>
 
             {showMenu && (
@@ -207,15 +163,43 @@ export const ExerciseCardHeader: React.FC<ExerciseCardHeaderProps> = ({
                 onRemoveSet={onRemoveSet}
                 onOpenSwap={onOpenSwap}
                 onOpenWarmup={onOpenWarmup}
-                canMoveUp={canMoveUp}
-                canMoveDown={canMoveDown}
-                onMoveUp={onMoveUp}
-                onMoveDown={onMoveDown}
                 onDeleteExercise={onDeleteExercise}
                 onOpenAnalytics={onOpenAnalytics}
               />
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Temporizador de Descanso Discreto e Compacto */}
+      <div className="flex items-center justify-center pt-0.5">
+        <div className="inline-flex items-center gap-1.5 bg-slate-950/70 px-2.5 py-0.5 rounded-full border border-slate-800 text-[11px] shadow-xs">
+          <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+          <span className="text-[10px] font-medium text-slate-400">Descanso:</span>
+          <button
+            type="button"
+            onClick={() => onAdjustRest(-15)}
+            className="w-5 h-5 rounded-md bg-slate-800/90 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation"
+            title="-15s descanso"
+            aria-label="Diminuir 15 segundos de descanso"
+          >
+            <Minus className="w-2.5 h-2.5 stroke-[2.5]" />
+          </button>
+          <span
+            className="text-slate-200 font-mono font-bold text-[11px] min-w-[24px] text-center"
+            title="Tempo de descanso configurado para este exercício"
+          >
+            {restSeconds}s
+          </span>
+          <button
+            type="button"
+            onClick={() => onAdjustRest(15)}
+            className="w-5 h-5 rounded-md bg-slate-800/90 hover:bg-slate-700 active:bg-slate-600 text-slate-300 hover:text-white flex items-center justify-center cursor-pointer font-bold active:scale-90 transition-all touch-manipulation"
+            title="+15s descanso"
+            aria-label="Aumentar 15 segundos de descanso"
+          >
+            <Plus className="w-2.5 h-2.5 stroke-[2.5]" />
+          </button>
         </div>
       </div>
 

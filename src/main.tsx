@@ -8,12 +8,28 @@ import './index.css';
 // Registra Service Worker (/sw.js) com escopo raiz para suporte PWA offline nativo e instalação WebAPK no Android
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    const isDevHost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.includes('ais-dev') ||
+      window.location.port === '3000';
+
+    if (isDevHost) {
+      if ('caches' in window) {
+        caches.keys().then((names) => names.forEach((name) => caches.delete(name))).catch(() => {});
+      }
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.unregister());
+      }).catch(() => {});
+      return;
+    }
+
     if ('caches' in window) {
       caches
         .keys()
         .then((names) => {
           names.forEach((name) => {
-            if (!name.includes('meutreino-sw-v5.0')) {
+            if (!name.includes('meutreino-sw-v6.0')) {
               caches.delete(name);
             }
           });

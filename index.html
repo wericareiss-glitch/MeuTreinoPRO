@@ -30,14 +30,24 @@
           window.dispatchEvent(new CustomEvent('meutreino:pwa-prompt-ready'));
         });
 
-        // Limpa caches obsoletos de versões antigas do Service Worker
+        // Limpa caches obsoletos e previne cache de módulos Vite em ambiente de desenvolvimento
+        var isDevEnv = window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1' ||
+          window.location.hostname.indexOf('ais-dev') !== -1 ||
+          window.location.port === '3000';
+
         if ('caches' in window) {
           caches.keys().then(function(names) {
             names.forEach(function(name) {
-              if (name.indexOf('meutreino-sw-v5.0') === -1) {
+              if (isDevEnv || name.indexOf('meutreino-sw-v6.0') === -1) {
                 caches.delete(name);
               }
             });
+          }).catch(function() {});
+        }
+        if (isDevEnv && 'serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(regs) {
+            regs.forEach(function(r) { r.unregister(); });
           }).catch(function() {});
         }
 

@@ -7,8 +7,7 @@ import React from 'react';
 import { 
   WorkoutItem, 
   WorkoutLogs, 
-  WorkoutSessionSummary, 
-  SetIntensityType 
+  WorkoutSessionSummary 
 } from '../../types/workout';
 
 export interface ExerciseCardProps {
@@ -17,7 +16,7 @@ export interface ExerciseCardProps {
   logs: WorkoutLogs;
   history: WorkoutLogs;
   sessions?: WorkoutSessionSummary[];
-  onUpdateLog: (key: string, field: 'weight' | 'reps' | 'setType', val: string) => void;
+  onUpdateLog: (key: string, field: 'weight' | 'reps', val: string) => void;
   onToggleSet: (key: string, restSec: number) => void;
   onOpenWarmup: (name: string, targetWeight: string) => void;
   onOpenSwap: (index: number) => void;
@@ -32,6 +31,7 @@ export interface ExerciseCardProps {
   onMoveDown?: (index: number) => void;
   onDeleteExercise?: (index: number) => void;
   isDragging?: boolean;
+  dragOffsetY?: number;
   isHoldingDrag?: boolean;
   isDropTarget?: boolean;
   onDragStartCard?: (index: number, e: React.DragEvent<HTMLDivElement>) => void;
@@ -44,7 +44,6 @@ export interface ExerciseCardProps {
 export interface SetLogData {
   weight: string;
   reps: string;
-  setType?: SetIntensityType;
   done: boolean;
 }
 

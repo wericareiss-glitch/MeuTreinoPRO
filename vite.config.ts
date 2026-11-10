@@ -10,9 +10,12 @@ export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
-      dedupe: ['react', 'react-dom'],
+      dedupe: ['react', 'react-dom', 'react-is'],
       alias: {
         '@': path.resolve(__dirname, '.'),
+        'react': path.resolve(__dirname, 'node_modules/react'),
+        'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+        'react-is': path.resolve(__dirname, 'node_modules/react-is'),
       },
     },
     build: {
@@ -28,7 +31,14 @@ export default defineConfig(() => {
               if (id.includes('motion')) return 'vendor-motion';
               if (id.includes('lottie-react')) return 'vendor-lottie';
               if (id.includes('react-window') || id.includes('react-virtuoso')) return 'vendor-virtual';
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-is')) return 'vendor-react';
+              if (
+                id.includes('/node_modules/react/') ||
+                id.includes('/node_modules/react-dom/') ||
+                id.includes('/node_modules/react-is/') ||
+                id.includes('/node_modules/scheduler/')
+              ) {
+                return 'vendor-react';
+              }
               return 'vendor-misc';
             }
           },
@@ -44,6 +54,14 @@ export default defineConfig(() => {
         'react/jsx-dev-runtime',
         'react-window',
         'react-virtuoso',
+        'recharts',
+        'lucide-react',
+        'firebase/app',
+        'firebase/auth',
+        'firebase/firestore',
+        'jspdf',
+        'lottie-react',
+        'motion',
       ],
     },
     server: {

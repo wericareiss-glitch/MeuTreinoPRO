@@ -20,9 +20,7 @@ import {
   WorkoutFooterActions
 } from './activeWorkout';
 
-const JointMobilityModal = React.lazy(() =>
-  import('./JointMobilityModal').then((m) => ({ default: m.JointMobilityModal }))
-);
+import { JointMobilityModal } from './JointMobilityModal';
 
 export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   routine,
@@ -56,6 +54,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   const [isMobilityOpen, setIsMobilityOpen] = useState(false);
   const [holdingIdx, setHoldingIdx] = useState<number | null>(null);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const [dragOffsetY, setDragOffsetY] = useState<number>(0);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
 
   const performReorder = useCallback(
@@ -76,6 +75,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   // HTML5 Drag & Drop Handlers
   const handleDragStartCard = useCallback((idx: number, e: React.DragEvent<HTMLDivElement>) => {
     setDraggingIdx(idx);
+    setDragOffsetY(0);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(idx));
   }, []);
@@ -95,6 +95,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
       }
       setHoldingIdx(null);
       setDraggingIdx(null);
+      setDragOffsetY(0);
       setDropTargetIdx(null);
     },
     [draggingIdx, performReorder]
@@ -103,12 +104,13 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   const handleDragEndCard = useCallback(() => {
     setHoldingIdx(null);
     setDraggingIdx(null);
+    setDragOffsetY(0);
     setDropTargetIdx(null);
   }, []);
 
-  // Pointer Long Press on Drag Handle (600ms hold delay)
-  const HOLD_TO_DRAG_DELAY_MS = 600;
-  const HOLD_MOVE_TOLERANCE_PX = 10;
+  // Pointer Long Press on Drag Handle (180ms hold delay para resposta ágil, imediata e suave)
+  const HOLD_TO_DRAG_DELAY_MS = 180;
+  const HOLD_MOVE_TOLERANCE_PX = 16;
 
   const handlePointerDownDragHandle = useCallback(
     (startIdx: number, e: React.PointerEvent<HTMLButtonElement>) => {
@@ -118,14 +120,16 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
       let dragUnlocked = false;
       let latestTarget = startIdx;
 
+      soundManager.vibrate(15);
       setHoldingIdx(startIdx);
+      setDragOffsetY(0);
 
       const holdTimer = window.setTimeout(() => {
         dragUnlocked = true;
         setHoldingIdx(null);
         setDraggingIdx(startIdx);
         setDropTargetIdx(startIdx);
-        soundManager.vibrate([20, 35, 25]);
+        soundManager.vibrate([25, 35]);
       }, HOLD_TO_DRAG_DELAY_MS);
 
       const cleanupListeners = () => {
@@ -141,6 +145,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
           if (dist > HOLD_MOVE_TOLERANCE_PX) {
             cleanupListeners();
             setHoldingIdx(null);
+            setDragOffsetY(0);
           }
           return;
         }
@@ -148,6 +153,10 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
         if (moveEvt.cancelable) {
           moveEvt.preventDefault();
         }
+
+        // Calcula deslocamento Y dinâmico para mover visualmente o card com o ponteiro
+        const deltaY = moveEvt.clientY - startY;
+        setDragOffsetY(deltaY);
 
         const viewportH = window.innerHeight;
         if (moveEvt.clientY < 90) {
@@ -171,6 +180,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
       const handlePointerUp = () => {
         cleanupListeners();
         setHoldingIdx(null);
+        setDragOffsetY(0);
         if (dragUnlocked && latestTarget !== startIdx) {
           performReorder(startIdx, latestTarget);
         }
@@ -399,7 +409,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   const progressPercent = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
 
   return (
-    <div className="space-y-4 animate-fadeIn pb-16 max-w-4xl mx-auto">
+    <div className="space-y-4 animate-fadeIn pb-[max(8rem,calc(6.5rem+env(safe-area-inset-bottom)))] sm:pb-32 max-w-4xl mx-auto">
       {/* 1. Header do Treino Ativo */}
       <WorkoutHeaderBar
         routine={routine}
@@ -439,6 +449,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             history={history}
             sessions={sessions}
             isDragging={draggingIdx === index}
+            dragOffsetY={draggingIdx === index ? dragOffsetY : 0}
             isHoldingDrag={holdingIdx === index}
             isDropTarget={dropTargetIdx === index && draggingIdx !== index}
             onMoveUp={onMoveUp}

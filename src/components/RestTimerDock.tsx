@@ -29,6 +29,7 @@ interface RestTimerDockProps {
   isMuted: boolean;
   onToggleMute: () => void;
   activeExerciseName?: string;
+  hasBottomNav?: boolean;
 }
 
 export const RestTimerDock: React.FC<RestTimerDockProps> = ({
@@ -37,6 +38,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
   isMuted,
   onToggleMute,
   activeExerciseName,
+  hasBottomNav = false,
 }) => {
   const [timeLeft, setTimeLeft] = useState(initialSeconds);
   const [totalTime, setTotalTime] = useState(initialSeconds);
@@ -310,10 +312,16 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
 
   const isMediaSessionSupported = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
 
+  // Posição vertical inteligente: se a barra inferior estiver presente, eleva o timer para não cobrir abas.
+  // Durante treino ativo (sem abas), ancora rente à área de segurança (safe area) do aparelho.
+  const bottomPositionClass = hasBottomNav
+    ? 'bottom-[max(4.75rem,calc(4.25rem+env(safe-area-inset-bottom)))] md:bottom-5'
+    : 'bottom-[max(1rem,env(safe-area-inset-bottom))] md:bottom-5';
+
   // 1. MODO ULTRA-COMPACTO DISCRETO (Mini Pill / Pip Flutuante)
   if (isPip) {
     return (
-      <div className="fixed bottom-[76px] md:bottom-5 left-1/2 -translate-x-1/2 z-30 animate-fadeIn">
+      <div className={`fixed ${bottomPositionClass} left-1/2 -translate-x-1/2 z-30 animate-fadeIn transition-all duration-200`}>
         <div className="bg-[#080d1a]/95 backdrop-blur-xl border border-sky-500/40 rounded-full px-3.5 py-1.5 shadow-2xl shadow-black/90 flex items-center gap-2.5 ring-1 ring-sky-400/20">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
@@ -370,7 +378,7 @@ export const RestTimerDock: React.FC<RestTimerDockProps> = ({
 
   // 2. MODO PADRÃO COMPACTO & RESPONSIVO (Capsule Moderna)
   return (
-    <div className="fixed bottom-[76px] md:bottom-5 left-1/2 -translate-x-1/2 z-30 w-auto min-w-[300px] max-w-[94vw] sm:max-w-md animate-fadeIn">
+    <div className={`fixed ${bottomPositionClass} left-1/2 -translate-x-1/2 z-30 w-auto min-w-[300px] max-w-[94vw] sm:max-w-md animate-fadeIn transition-all duration-200`}>
       <div className="bg-[#0b1220]/95 backdrop-blur-xl border border-sky-500/30 rounded-2xl p-2.5 sm:p-3 shadow-2xl shadow-black/80 ring-1 ring-sky-400/20 transition-all">
         {/* Barra de Progresso Fina no Topo */}
         <div className="w-full h-1 bg-slate-800/90 rounded-full overflow-hidden mb-2">

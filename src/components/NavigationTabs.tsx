@@ -4,7 +4,8 @@
  */
 
 import React from 'react';
-import { Home, Dumbbell, User, Zap } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Home, Dumbbell, User, Zap, Heart } from 'lucide-react';
 import { TabType } from '../types/navigation';
 import { useI18n } from '../utils/i18n';
 import { soundManager } from '../utils/audio';
@@ -116,21 +117,30 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => handleTabClick(tab.id)}
-                  className={`flex items-center gap-2 px-3.5 lg:px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all relative cursor-pointer ${
+                  className={`flex items-center gap-2 px-3.5 lg:px-4 py-2 rounded-xl font-bold text-xs sm:text-sm transition-colors relative cursor-pointer ${
                     isActive
-                      ? isHighlight
-                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 shadow-lg shadow-emerald-500/30 font-black ring-2 ring-emerald-400/50'
-                        : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-lg shadow-emerald-500/25 font-black'
+                      ? 'text-slate-950 font-black'
                       : isHighlight
-                      ? 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900/40 animate-pulse'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                      ? 'text-emerald-300 hover:text-emerald-200'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-slate-950 stroke-[2.5]' : isHighlight ? 'text-emerald-400' : 'text-slate-400'}`} />
-                  <span>{tab.label}</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="desktopActiveTabIndicator"
+                      className={`absolute inset-0 rounded-xl ${
+                        isHighlight
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-lg shadow-emerald-500/30'
+                          : 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/25'
+                      }`}
+                      transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                    />
+                  )}
+                  <Icon className={`w-4 h-4 relative z-10 ${isActive ? 'text-slate-950 stroke-[2.5]' : isHighlight ? 'text-emerald-400' : 'text-slate-400'}`} />
+                  <span className="relative z-10">{tab.label}</span>
                   {tab.badge !== null && tab.badge !== undefined && (
                     <span
-                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full font-extrabold ${
+                      className={`relative z-10 text-[10px] font-mono px-1.5 py-0.5 rounded-full font-extrabold ${
                         isActive
                           ? 'bg-slate-950/20 text-slate-950'
                           : tab.badge === '●'
@@ -176,20 +186,31 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => handleTabClick(tab.id)}
-                className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-2xl transition-all relative overflow-hidden cursor-pointer touch-manipulation min-h-[50px] ${
+                className={`flex flex-col items-center justify-center py-2 px-0.5 rounded-2xl transition-colors relative overflow-hidden cursor-pointer touch-manipulation min-h-[50px] ${
                   isActive
-                    ? 'text-emerald-400 bg-emerald-500/15 border border-emerald-500/40 shadow-inner'
+                    ? 'text-emerald-300'
                     : isHighlight
-                    ? 'text-amber-300 bg-amber-950/35 border border-amber-500/40'
+                    ? 'text-amber-300'
                     : 'text-slate-400 hover:text-slate-200 active:scale-95'
                 }`}
               >
-                {/* Top Active Indicator Pill */}
+                {/* Top Active Indicator Pill & Background with layoutId */}
                 {isActive && (
-                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-emerald-400" />
+                  <motion.div
+                    layoutId="mobileActiveTabBg"
+                    className="absolute inset-0 bg-emerald-500/15 border border-emerald-500/40 rounded-2xl shadow-inner"
+                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                  />
+                )}
+                {isActive && (
+                  <motion.div
+                    layoutId="mobileActiveTabPill"
+                    className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-emerald-400 z-10"
+                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                  />
                 )}
 
-                <div className="relative">
+                <div className="relative z-10">
                   <Icon
                     className={`w-5 h-5 ${
                       isActive
@@ -213,7 +234,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
                 </div>
 
                 <span
-                  className={`text-[10px] font-bold mt-1 tracking-tight truncate max-w-full ${
+                  className={`text-[10px] font-bold mt-1 tracking-tight truncate max-w-full relative z-10 ${
                     isActive
                       ? 'text-emerald-300 font-extrabold'
                       : isHighlight
@@ -226,7 +247,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
 
                 {/* Mini Progress Bar on Treino Ativo Tab */}
                 {tab.id === 'treino_ativo' && activeSetsCount > 0 && (
-                  <span className="absolute bottom-0 left-1 right-1 h-0.5 bg-slate-800 rounded-full overflow-hidden">
+                  <span className="absolute bottom-0 left-1 right-1 h-0.5 bg-slate-800 rounded-full overflow-hidden z-10">
                     <span
                       className="block h-full bg-emerald-400 transition-all duration-300"
                       style={{ width: `${workoutProgressPct}%` }}

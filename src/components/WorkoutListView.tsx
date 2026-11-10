@@ -65,6 +65,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   const [copiedToast, setCopiedToast] = useState(false);
   const [holdingIdx, setHoldingIdx] = useState<number | null>(null);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [versionFilter, setVersionFilter] = useState<VersionFilterMode>('all');
@@ -308,9 +309,9 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     [filteredEntries, routines, onReorderRoutines]
   );
 
-  // Pointer Hold-and-Drag on Routine Card Grip Handle (600ms hold delay)
-  const HOLD_TO_DRAG_DELAY_MS = 600;
-  const HOLD_MOVE_TOLERANCE_PX = 10;
+  // Pointer Hold-and-Drag on Routine Card Grip Handle (180ms hold delay for fast, responsive pickup)
+  const HOLD_TO_DRAG_DELAY_MS = 180;
+  const HOLD_MOVE_TOLERANCE_PX = 16;
 
   const handlePointerDownRoutineHandle = useCallback(
     (startVisualIdx: number, e: React.PointerEvent<HTMLButtonElement>) => {
@@ -327,6 +328,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
         setHoldingIdx(null);
         setDraggingIdx(startVisualIdx);
         setDropTargetIdx(startVisualIdx);
+        setDragOffset({ x: 0, y: 0 });
         soundManager.vibrate([20, 35, 25]);
       }, HOLD_TO_DRAG_DELAY_MS);
 
@@ -335,6 +337,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
         window.removeEventListener('pointermove', handlePointerMove);
         window.removeEventListener('pointerup', handlePointerUp);
         window.removeEventListener('pointercancel', handlePointerUp);
+        setDragOffset({ x: 0, y: 0 });
       };
 
       const handlePointerMove = (moveEvt: PointerEvent) => {
@@ -350,6 +353,11 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
         if (moveEvt.cancelable) {
           moveEvt.preventDefault();
         }
+
+        setDragOffset({
+          x: moveEvt.clientX - startX,
+          y: moveEvt.clientY - startY,
+        });
 
         const viewportW = window.innerWidth;
         if (moveEvt.clientX < 72) {
@@ -373,6 +381,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
       const handlePointerUp = () => {
         cleanupListeners();
         setHoldingIdx(null);
+        setDragOffset({ x: 0, y: 0 });
         if (dragUnlocked && latestTarget !== startVisualIdx) {
           handleReorderVisualCards(startVisualIdx, latestTarget);
         }
@@ -457,6 +466,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
       confirmDeleteId,
       holdingIdx,
       draggingIdx,
+      dragOffset,
       dropTargetIdx,
       canReorder,
       hasEditHandler,
@@ -481,6 +491,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
       confirmDeleteId,
       holdingIdx,
       draggingIdx,
+      dragOffset,
       dropTargetIdx,
       canReorder,
       hasEditHandler,
@@ -506,7 +517,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   }, []);
 
   return (
-    <div className="space-y-4 animate-fadeIn pb-24 max-w-4xl mx-auto relative">
+    <div className="space-y-4 animate-fadeIn pb-[max(6.5rem,calc(5.5rem+env(safe-area-inset-bottom)))] sm:pb-24 max-w-4xl mx-auto relative">
       {copiedToast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-emerald-500 text-slate-950 font-black text-xs shadow-2xl flex items-center gap-1.5 animate-fadeIn border border-emerald-400">
           <span>✓</span>
@@ -577,6 +588,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
               isMenuOpen={openMenuId === entry.routine.id}
               isConfirmingDelete={confirmDeleteId === entry.routine.id}
               isDraggingThis={draggingIdx === entry.visualIdx}
+              dragOffset={draggingIdx === entry.visualIdx ? dragOffset : undefined}
               isHoldingThis={holdingIdx === entry.visualIdx}
               isDropTargetThis={dropTargetIdx === entry.visualIdx && draggingIdx !== entry.visualIdx}
               canReorder={canReorder}

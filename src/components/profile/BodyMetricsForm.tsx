@@ -97,8 +97,10 @@ export const BodyMetricsForm: React.FC<BodyMetricsFormProps> = ({
           <div className="relative flex items-center">
             <input
               type="number"
+              inputMode="decimal"
               step="0.5"
               value={weightKg}
+              onFocus={(e) => e.target.select()}
               onChange={(e) => setWeightKg(parseFloat(e.target.value) || 0)}
               className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
             />
@@ -115,11 +117,13 @@ export const BodyMetricsForm: React.FC<BodyMetricsFormProps> = ({
           <div className="relative flex items-center">
             <input
               type="number"
+              inputMode="numeric"
               step="1"
               min="100"
               max="250"
               placeholder="Ex: 175"
               value={heightCm}
+              onFocus={(e) => e.target.select()}
               onChange={(e) => setHeightCm(parseInt(e.target.value, 10) || 0)}
               className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-9 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
             />
@@ -136,10 +140,12 @@ export const BodyMetricsForm: React.FC<BodyMetricsFormProps> = ({
           <div className="relative flex items-center">
             <input
               type="number"
+              inputMode="numeric"
               step="1"
               min="12"
               max="100"
               value={age}
+              onFocus={(e) => e.target.select()}
               onChange={(e) => setAge(parseInt(e.target.value, 10) || 25)}
               className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-10 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
             />
@@ -159,11 +165,13 @@ export const BodyMetricsForm: React.FC<BodyMetricsFormProps> = ({
           <div className="relative flex items-center">
             <input
               type="number"
+              inputMode="decimal"
               step="0.5"
               min="3"
               max="60"
               placeholder="Ex: 14"
               value={bodyFatPercent !== undefined ? bodyFatPercent : ''}
+              onFocus={(e) => e.target.select()}
               onChange={(e) => setBodyFatPercent(e.target.value ? parseFloat(e.target.value) : undefined)}
               className="w-full bg-[#0a101d] border border-slate-700/80 rounded-xl pl-3 pr-8 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-emerald-500"
             />

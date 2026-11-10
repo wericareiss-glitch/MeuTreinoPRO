@@ -84,7 +84,7 @@ export interface WorkoutContextType {
   handleStartWorkout: (routine: GeneratedWorkoutRoutine, onStartNav?: () => void) => void;
   handleDiscardActiveWorkout: (onCancelNav?: () => void) => void;
   finishAndSaveSession: (onFinishedNav?: () => void) => void;
-  handleUpdateLog: (key: string, field: 'weight' | 'reps' | 'setType', val: string) => void;
+  handleUpdateLog: (key: string, field: 'weight' | 'reps', val: string) => void;
   handleToggleSet: (key: string, restSec: number) => void;
   handleAddSet: (itemIndex: number) => void;
   handleRemoveSet: (itemIndex: number) => void;
@@ -459,6 +459,11 @@ export const WorkoutProvider: React.FC<{
 
     const completedKeys = Object.keys(finalLogs).filter((k) => finalLogs[k].done);
     if (completedKeys.length === 0) {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([80, 50, 80]);
+        } catch {}
+      }
       onShowToast('Preencha ao menos uma série com carga e repetições antes de salvar a sessão.');
       return;
     }
@@ -515,13 +520,19 @@ export const WorkoutProvider: React.FC<{
     safeStorage.remove(`alex_u_${uid}_workout_notes`);
 
     soundManager.playCelebration();
-    soundManager.vibrate([150, 100, 150, 100, 300]);
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([100, 60, 120, 60, 250]);
+      } catch {}
+    } else {
+      soundManager.vibrate([100, 60, 120, 60, 250]);
+    }
     onShowToast(`🏆 Parabéns! Sessão Concluída — Volume: ${totalVolumeLoad.toLocaleString()} kg.`);
 
     onFinishedNav?.();
   }, [uid, logs, workoutItems, activeRoutine, split, workoutNotes, history, completedSetsByMuscle, addCompletedSession, onShowToast]);
 
-  const handleUpdateLog = useCallback((key: string, field: 'weight' | 'reps' | 'setType', val: string) => {
+  const handleUpdateLog = useCallback((key: string, field: 'weight' | 'reps', val: string) => {
     setLogs((prev) => {
       const current = prev[key] || { weight: '', reps: '', done: false };
       const updated = { ...current, [field]: val };

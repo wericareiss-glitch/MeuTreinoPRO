@@ -17,11 +17,21 @@ export const WorkoutFooterActions: React.FC<WorkoutFooterActionsProps> = ({
 }) => {
   const [isConfirmingCancel, setIsConfirmingCancel] = useState(false);
 
+  const handleFinishSession = () => {
+    // Feedback tátil comemorativo discreto para confirmação de salvamento de treino
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([60, 40, 120]);
+      } catch {}
+    }
+    onFinishSession();
+  };
+
   return (
     <div className="p-3.5 sm:p-4 rounded-2xl bg-[#090d19] border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
       <button
         type="button"
-        onClick={onFinishSession}
+        onClick={handleFinishSession}
         className="w-full sm:flex-1 py-3.5 px-5 rounded-xl font-black text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all cursor-pointer"
       >
         <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />

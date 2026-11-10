@@ -91,54 +91,6 @@ export const PERIODIZATION_PHASES: Record<PeriodizationStrategy, PeriodizationPh
   },
 };
 
-export type SetIntensityType = 'W' | 'T' | 'F' | 'D' | 'RP';
-
-export interface SetIntensityOption {
-  code: SetIntensityType;
-  shortLabel: string;
-  label: string;
-  description: string;
-  badgeClass: string;
-}
-
-export const SET_INTENSITY_TYPES: SetIntensityOption[] = [
-  {
-    code: 'W',
-    shortLabel: 'W',
-    label: 'Aquecimento (W)',
-    description: 'Série preparatória de ativação articular/neural (não contabiliza como série de trabalho até a falha)',
-    badgeClass: 'bg-sky-500/20 text-sky-400 border-sky-500/40',
-  },
-  {
-    code: 'T',
-    shortLabel: 'T',
-    label: 'Série de Trabalho (T)',
-    description: 'Série principal de trabalho dentro da faixa alvo de repetições',
-    badgeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
-  },
-  {
-    code: 'F',
-    shortLabel: 'F',
-    label: 'Falha Concêntrica (F)',
-    description: 'Série levada até a falha muscular momentânea concêntrica',
-    badgeClass: 'bg-rose-500/20 text-rose-400 border-rose-500/40',
-  },
-  {
-    code: 'D',
-    shortLabel: 'D',
-    label: 'Drop-set (D)',
-    description: 'Redução imediata de 20-30% da carga sem descanso para prolongar o tempo sob tensão',
-    badgeClass: 'bg-purple-500/20 text-purple-400 border-purple-500/40',
-  },
-  {
-    code: 'RP',
-    shortLabel: 'RP',
-    label: 'Rest-Pause / Myo-Reps (RP)',
-    description: 'Pausa curta de 10-20s após a falha seguida de mini-séries extras com a mesma carga',
-    badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
-  },
-];
-
 export interface WorkoutItem {
   id: string;
   muscleKey: MuscleGroup;
@@ -168,7 +120,6 @@ export interface GeneratedWorkoutRoutine {
 export interface SetData {
   weight: string;
   reps: string;
-  setType?: SetIntensityType;
   done: boolean;
   timestamp?: number;
 }

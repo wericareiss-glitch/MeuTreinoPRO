@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Users, 
   LogOut, 
@@ -11,17 +11,21 @@ import {
   MoreVertical, 
   Sparkles, 
   Lock, 
-  Cloud 
+  Cloud,
+  User,
+  Heart
 } from 'lucide-react';
 import { UserProfile } from '../../types/workout';
 import { useI18n } from '../../utils/i18n';
 import { ThemeToggle } from '../ThemeToggle';
+import { ActionSheet, ActionSheetItem } from '../common/ActionSheet';
 
 export interface ProfileHeaderCardProps {
   user: UserProfile;
   onSwitchProfile?: () => void;
   onLogout: () => void;
   onRequestDelete?: () => void;
+  onOpenDonation?: () => void;
   isLinkingGoogle: boolean;
   linkGoogleError: string | null;
   onConnectGoogle: () => void;
@@ -32,146 +36,110 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   onSwitchProfile,
   onLogout,
   onRequestDelete,
+  onOpenDonation,
   isLinkingGoogle,
   linkGoogleError,
   onConnectGoogle,
 }) => {
   const { t } = useI18n();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
-        setShowProfileMenu(false);
-      }
-    };
-    if (showProfileMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showProfileMenu]);
 
   return (
-    <div className="pb-6 border-b border-slate-800">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="relative pb-6 border-b border-theme-subtle">
+      {/* Botão de 3 Pontos com Fundo Transparente no Topo à Direita */}
+      <div className="absolute top-0 right-0 z-30">
+        <button
+          type="button"
+          onClick={() => setShowProfileMenu(true)}
+          className="w-9 h-9 rounded-xl bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-theme-muted hover:text-theme-heading flex items-center justify-center transition-colors cursor-pointer active:scale-95"
+          title="Opções do perfil"
+          aria-label="Opções do perfil"
+        >
+          <MoreVertical className="w-5 h-5" />
+        </button>
+
+        {/* Página / Bottom Sheet com as Opções para Fácil Acesso com Uma Mão no Mobile */}
+        <ActionSheet
+          isOpen={showProfileMenu}
+          onClose={() => setShowProfileMenu(false)}
+          title="Opções do Perfil"
+          subtitle={`@${user.username} · ${user.name}`}
+          icon={<User className="w-5 h-5 text-emerald-400" />}
+        >
+          {onOpenDonation && (
+            <ActionSheetItem
+              onClick={() => {
+                setShowProfileMenu(false);
+                onOpenDonation();
+              }}
+              icon={<Heart className="w-5 h-5 text-pink-400" />}
+              title="Apoiar o Projeto (PIX)"
+              description="Contribuição voluntária para manter o app no ar e sem anúncios"
+            />
+          )}
+
+          {onSwitchProfile && (
+            <ActionSheetItem
+              onClick={() => {
+                setShowProfileMenu(false);
+                onSwitchProfile();
+              }}
+              icon={<Users className="w-5 h-5" />}
+              title="Trocar Perfil / Atleta"
+              description="Alternar para outra conta ou atleta cadastrado"
+            />
+          )}
+
+          <ActionSheetItem
+            onClick={() => {
+              setShowProfileMenu(false);
+              onLogout();
+            }}
+            icon={<LogOut className="w-5 h-5" />}
+            title="Desconectar"
+            description="Sair da sessão deste dispositivo com segurança"
+          />
+
+          {onRequestDelete && (
+            <div className="pt-2 mt-2 border-t border-theme-menu-subtle">
+              <ActionSheetItem
+                onClick={() => {
+                  setShowProfileMenu(false);
+                  onRequestDelete();
+                }}
+                icon={<Trash2 className="w-5 h-5" />}
+                title="Excluir Perfil"
+                description="Remover todos os dados e histórico permanentemente"
+                variant="danger"
+              />
+            </div>
+          )}
+        </ActionSheet>
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pr-11">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 text-slate-950 font-black text-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
             {user.name.charAt(0).toUpperCase()}
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-theme-heading tracking-tight">
                 {user.name}
               </h1>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                 {t.badgePro}
               </span>
             </div>
-            <p className="text-xs text-slate-400 font-mono mt-0.5">
+            <p className="text-xs text-theme-muted font-mono mt-0.5">
               @{user.username}
             </p>
           </div>
         </div>
 
-        {/* Action Zone: Theme Toggle & Options */}
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        {/* Action Zone: Theme Toggle */}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <ThemeToggle variant="segmented" />
-
-          {/* Desktop Quick Buttons */}
-          {onSwitchProfile && (
-            <button
-              type="button"
-              onClick={onSwitchProfile}
-              className="hidden sm:flex px-3.5 py-2 rounded-xl text-xs font-bold text-sky-300 bg-sky-950/20 hover:bg-sky-950/40 border border-sky-900/40 items-center gap-1.5 transition-all cursor-pointer"
-              title="Trocar de conta/atleta"
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Trocar Perfil</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onLogout}
-            className="hidden sm:flex px-3.5 py-2 rounded-xl text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Desconectar</span>
-          </button>
-
-          {onRequestDelete && (
-            <button
-              type="button"
-              onClick={onRequestDelete}
-              className="hidden sm:flex px-3.5 py-2 rounded-xl text-xs font-bold text-rose-400 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/40 items-center gap-1.5 transition-all cursor-pointer"
-              title="Excluir perfil permanentemente"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Excluir Perfil</span>
-            </button>
-          )}
-
-          {/* Mobile 3-Dots Menu Trigger */}
-          <div className="relative sm:hidden" ref={profileMenuRef}>
-            <button
-              type="button"
-              onClick={() => setShowProfileMenu((prev) => !prev)}
-              className="w-9 h-9 rounded-xl bg-slate-800 text-slate-200 hover:text-white border border-slate-700 flex items-center justify-center transition-colors cursor-pointer active:scale-95 shadow-sm"
-              title="Opções do perfil"
-              aria-label="Opções do perfil"
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
-
-            {showProfileMenu && (
-              <div className="absolute right-0 top-10 w-52 bg-[#0c1424] border border-slate-700 rounded-2xl shadow-2xl p-1.5 z-40 animate-fadeIn space-y-1">
-                {onSwitchProfile && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowProfileMenu(false);
-                      onSwitchProfile();
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-sky-300 hover:bg-sky-950/40 text-left transition-colors cursor-pointer"
-                  >
-                    <Users className="w-4 h-4 text-sky-400 shrink-0" />
-                    <span>Trocar Perfil / Atleta</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowProfileMenu(false);
-                    onLogout();
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800 text-left transition-colors cursor-pointer"
-                >
-                  <LogOut className="w-4 h-4 text-slate-400 shrink-0" />
-                  <span>Desconectar</span>
-                </button>
-
-                {onRequestDelete && (
-                  <div className="pt-1 border-t border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowProfileMenu(false);
-                        onRequestDelete();
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-950/40 text-left transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
-                      <span>Excluir Perfil</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

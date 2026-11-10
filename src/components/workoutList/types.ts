@@ -60,6 +60,7 @@ export interface RoutineCardProps {
   isMenuOpen: boolean;
   isConfirmingDelete: boolean;
   isDraggingThis: boolean;
+  dragOffset?: { x: number; y: number };
   isHoldingThis: boolean;
   isDropTargetThis: boolean;
   canReorder: boolean;
@@ -87,6 +88,8 @@ export function areRoutineCardPropsEqual(prev: RoutineCardProps, next: RoutineCa
     prev.isMenuOpen === next.isMenuOpen &&
     prev.isConfirmingDelete === next.isConfirmingDelete &&
     prev.isDraggingThis === next.isDraggingThis &&
+    prev.dragOffset?.x === next.dragOffset?.x &&
+    prev.dragOffset?.y === next.dragOffset?.y &&
     prev.isHoldingThis === next.isHoldingThis &&
     prev.isDropTargetThis === next.isDropTargetThis &&
     prev.canReorder === next.canReorder &&
@@ -102,6 +105,7 @@ export interface CarouselItemData {
   confirmDeleteId: string | null;
   holdingIdx: number | null;
   draggingIdx: number | null;
+  dragOffset?: { x: number; y: number };
   dropTargetIdx: number | null;
   canReorder: boolean;
   hasEditHandler: boolean;

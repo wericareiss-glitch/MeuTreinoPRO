@@ -30,9 +30,42 @@ export class SectionErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Section Error caught by SectionErrorBoundary:', error, errorInfo);
+    const msg = error?.message || '';
+    if (
+      typeof window !== 'undefined' &&
+      (msg.includes("reading 'useState'") ||
+        msg.includes("reading 'useRef'") ||
+        msg.includes("reading 'useEffect'") ||
+        msg.includes('Invalid hook call') ||
+        msg.includes('Failed to fetch dynamically imported module'))
+    ) {
+      if ('caches' in window) {
+        caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
+      }
+      const reloadKey = 'meutreino_section_reload';
+      const last = Number(sessionStorage.getItem(reloadKey) || '0');
+      if (Date.now() - last > 3000) {
+        sessionStorage.setItem(reloadKey, String(Date.now()));
+        window.location.reload();
+      }
+    }
   }
 
   private handleRetry = () => {
+    const msg = this.state.error?.message || '';
+    if (
+      msg.includes('Failed to fetch dynamically imported module') ||
+      msg.includes("reading 'useState'") ||
+      msg.includes("reading 'useRef'") ||
+      msg.includes("reading 'useEffect'") ||
+      msg.includes('Invalid hook call')
+    ) {
+      if ('caches' in window) {
+        caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).catch(() => {});
+      }
+      window.location.reload();
+      return;
+    }
     this.setState({ hasError: false, error: null });
     this.props.onReset?.();
   };

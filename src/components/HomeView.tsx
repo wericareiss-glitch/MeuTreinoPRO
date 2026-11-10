@@ -36,12 +36,8 @@ import { TopLoadProgressComponent } from './TopLoadProgressComponent';
 import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { useI18n } from '../utils/i18n';
 
-const VolumeDashboard = React.lazy(() =>
-  import('./VolumeDashboard').then((m) => ({ default: m.VolumeDashboard }))
-);
-const HomeAnalyticsDashboard = React.lazy(() =>
-  import('./HomeAnalyticsDashboard').then((m) => ({ default: m.HomeAnalyticsDashboard }))
-);
+import { VolumeDashboard } from './VolumeDashboard';
+import { HomeAnalyticsDashboard } from './HomeAnalyticsDashboard';
 import { 
   getWeeklyMicrocycleStatus, 
   requestNotificationPermission, 
@@ -63,8 +59,6 @@ interface HomeViewProps {
   activeWorkoutMuscles: MuscleGroup[];
   totalSetsInWorkout: number;
   totalCompletedSetsInWorkout: number;
-  workoutNotes: string;
-  onUpdateWorkoutNotes: (notes: string) => void;
   onOpenVolumeBudget: () => void;
   onGoToWorkout: () => void;
   onViewSummary: (session: WorkoutSessionSummary) => void;
@@ -79,8 +73,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
   activeWorkoutMuscles,
   totalSetsInWorkout,
   totalCompletedSetsInWorkout,
-  workoutNotes,
-  onUpdateWorkoutNotes,
   onOpenVolumeBudget,
   onGoToWorkout,
   onViewSummary,
@@ -305,7 +297,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   }, [sessions, completedSetsByMuscle, user?.weeklyBudget]);
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-12">
+    <div className="space-y-6 animate-fadeIn pb-[max(6.5rem,calc(5rem+env(safe-area-inset-bottom)))] sm:pb-16">
       {/* Welcome Banner Card */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#121c32] via-[#0e1628] to-[#0a101f] border border-[#213252] p-5 sm:p-7 shadow-2xl">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -823,33 +815,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
         weeklyFrequencyGoal={user?.frequency || 4}
       />
 
-      {/* 📈 DASHBOARD DE ANALYTICS (Curvas de 1RM, Carga e Volume Mensal Recharts - Lazy Loaded) */}
-      <React.Suspense
-        fallback={
-          <div className="h-64 rounded-3xl bg-[#0f172a]/60 border border-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-500">
-            Carregando painel analítico de 1RM...
-          </div>
-        }
-      >
-        <HomeAnalyticsDashboard
-          sessions={sessions}
-          onGoToWorkout={onGoToWorkout}
-          onOpenAnalyticsModal={onOpenAnalytics}
-        />
-      </React.Suspense>
+      {/* 📈 DASHBOARD DE ANALYTICS (Curvas de 1RM, Carga e Volume Mensal) */}
+      <HomeAnalyticsDashboard
+        sessions={sessions}
+        onGoToWorkout={onGoToWorkout}
+        onOpenAnalyticsModal={onOpenAnalytics}
+      />
 
       {/* Weekly Volume Tracking & Periodization Dashboard */}
-      <React.Suspense fallback={<div className="h-48 bg-[#0b1324] border border-slate-800 rounded-3xl animate-pulse" />}>
-        <VolumeDashboard
-          completedSetsByMuscle={completedSetsByMuscle}
-          activeWorkoutMuscles={activeWorkoutMuscles}
-          muscleBudgets={user?.muscleBudgets}
-          totalWeeklyBudget={user?.weeklyBudget}
-          workoutNotes={workoutNotes}
-          onUpdateWorkoutNotes={onUpdateWorkoutNotes}
-          onOpenVolumeBudget={onOpenVolumeBudget}
-        />
-      </React.Suspense>
+      <VolumeDashboard
+        completedSetsByMuscle={completedSetsByMuscle}
+        activeWorkoutMuscles={activeWorkoutMuscles}
+        muscleBudgets={user?.muscleBudgets}
+        totalWeeklyBudget={user?.weeklyBudget}
+        onOpenVolumeBudget={onOpenVolumeBudget}
+      />
 
       {/* Summarized Workout History Section */}
       <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl">

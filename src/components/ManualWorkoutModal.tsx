@@ -71,6 +71,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
   const [swappingIdx, setSwappingIdx] = useState<number | null>(null);
   const [holdingIdx, setHoldingIdx] = useState<number | null>(null);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
+  const [dragOffsetY, setDragOffsetY] = useState<number>(0);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -126,9 +127,9 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
     soundManager.vibrate(20);
   };
 
-  // Pointer Hold & Drag on Handle (Mobile Touch + Desktop Mouse) com tempo maior de pressão longa (600ms)
-  const HOLD_TO_DRAG_DELAY_MS = 600;
-  const HOLD_MOVE_TOLERANCE_PX = 10;
+  // Pointer Hold & Drag on Handle (180ms hold delay for fast, responsive pickup)
+  const HOLD_TO_DRAG_DELAY_MS = 180;
+  const HOLD_MOVE_TOLERANCE_PX = 16;
 
   const handlePointerDownItemHandle = (startIdx: number, e: React.PointerEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -144,6 +145,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
       setHoldingIdx(null);
       setDraggingIdx(startIdx);
       setDropTargetIdx(startIdx);
+      setDragOffsetY(0);
       soundManager.vibrate([20, 35, 25]);
     }, HOLD_TO_DRAG_DELAY_MS);
 
@@ -152,6 +154,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerUp);
+      setDragOffsetY(0);
     };
 
     const handlePointerMove = (moveEvt: PointerEvent) => {
@@ -168,6 +171,8 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
         moveEvt.preventDefault();
       }
 
+      setDragOffsetY(moveEvt.clientY - startY);
+
       const elUnder = document.elementFromPoint(moveEvt.clientX, moveEvt.clientY);
       const rowEl = elUnder?.closest('[data-manual-ex-index]') as HTMLElement | null;
       if (rowEl) {
@@ -183,6 +188,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
     const handlePointerUp = () => {
       cleanupListeners();
       setHoldingIdx(null);
+      setDragOffsetY(0);
       if (dragUnlocked && latestTarget !== startIdx) {
         handleReorderItems(startIdx, latestTarget);
       }
@@ -489,6 +495,15 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                         setDraggingIdx(null);
                         setDropTargetIdx(null);
                       }}
+                      style={{
+                        transform: isDraggingThis
+                          ? `translate3d(0, ${dragOffsetY}px, 0) scale(1.02) rotate(-0.5deg)`
+                          : undefined,
+                        transition: isDraggingThis
+                          ? 'none'
+                          : 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease',
+                        zIndex: isDraggingThis ? 50 : undefined,
+                      }}
                       className={`p-2.5 rounded-xl bg-[#0a101d] border transition-all flex flex-col gap-2 text-xs ${
                         isDraggingThis ? 'card-dragging' : ''
                       } ${isDropTargetThis ? 'card-drop-target' : ''} ${
@@ -503,14 +518,14 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                           <button
                             type="button"
                             onPointerDown={(e) => handlePointerDownItemHandle(idx, e)}
-                            className={`drag-handle-touch p-1.5 rounded-lg border cursor-grab active:cursor-grabbing flex items-center gap-0.5 shrink-0 transition-all ${
+                            className={`drag-handle-touch touch-none select-none p-1.5 rounded-lg border cursor-grab active:cursor-grabbing flex items-center gap-0.5 shrink-0 transition-all ${
                               isDraggingThis
                                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400 ring-2 ring-emerald-500/30 scale-105'
                                 : isHoldingThis
                                 ? 'bg-amber-500/20 text-amber-300 border-amber-400/70 ring-2 ring-amber-400/30 animate-pulse'
                                 : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-emerald-400 border-slate-800'
                             }`}
-                            title="Mantenha pressionado por 0,6s e arraste para mover este exercício"
+                            title="Mantenha pressionado e arraste para mover este exercício"
                           >
                             <GripVertical className="w-3.5 h-3.5" />
                             <span className="font-mono font-bold text-[11px] text-slate-300">

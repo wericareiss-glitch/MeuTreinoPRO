@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { ChevronDown, Trophy, Copy, Trash2 } from 'lucide-react';
-import { WorkoutItem, WorkoutLogs, WorkoutSessionSummary, SetIntensityType } from '../types/workout';
+import { WorkoutItem, WorkoutLogs, WorkoutSessionSummary } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { safeStorage } from '../utils/storage';
 import { authStorage } from '../utils/auth';
@@ -37,8 +37,7 @@ export function areExerciseLogsEqualForCard(
     if (
       a.weight !== b.weight ||
       a.reps !== b.reps ||
-      a.done !== b.done ||
-      a.setType !== b.setType
+      a.done !== b.done
     ) {
       return false;
     }
@@ -55,6 +54,7 @@ export function areExerciseCardPropsEqual(
     prev.canMoveUp !== next.canMoveUp ||
     prev.canMoveDown !== next.canMoveDown ||
     prev.isDragging !== next.isDragging ||
+    prev.dragOffsetY !== next.dragOffsetY ||
     prev.isHoldingDrag !== next.isHoldingDrag ||
     prev.isDropTarget !== next.isDropTarget ||
     prev.sessions !== next.sessions
@@ -108,6 +108,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   onMoveDown,
   onDeleteExercise,
   isDragging = false,
+  dragOffsetY = 0,
   isHoldingDrag = false,
   isDropTarget = false,
   onDragStartCard,
@@ -119,9 +120,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   const [expandedSets, setExpandedSets] = useState<Record<string, boolean>>({});
   const [isCardCollapsed, setIsCardCollapsed] = useState<boolean>(false);
 
-  // Swipe-to-delete horizontal do card de exercício inteiro com isolamento estrito
+  // Swipe-to-delete horizontal do card de exercício inteiro com animação suave de saída
   const [cardSwipeOffset, setCardSwipeOffset] = useState<number>(0);
   const [isCardSwiping, setIsCardSwiping] = useState<boolean>(false);
+  const [isExiting, setIsExiting] = useState<boolean>(false);
   const cardPointerStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const ex = item.exercise;
@@ -181,7 +183,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   const persistLogsToStorageDirectly = useCallback(
     (
       logKey: string,
-      partial: Partial<{ weight: string; reps: string; setType: SetIntensityType; done: boolean }>
+      partial: Partial<{ weight: string; reps: string; done: boolean }>
     ) => {
       try {
         const activeUser = authStorage.getActiveUser();
@@ -198,15 +200,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
       }
     },
     []
-  );
-
-  const handleUpdateSetType = useCallback(
-    (logKey: string, newType: SetIntensityType) => {
-      onUpdateLog(logKey, 'setType', newType);
-      persistLogsToStorageDirectly(logKey, { setType: newType });
-      soundManager.vibrate(20);
-    },
-    [onUpdateLog, persistLogsToStorageDirectly]
   );
 
   const handleInputChange = useCallback(
@@ -341,7 +334,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
 
       const currWeight = localLogs[logKey]?.weight;
       const currReps = localLogs[logKey]?.reps;
-      const currentType = logs[logKey]?.setType || 'T';
 
       if (finalWeight !== currWeight || finalReps !== currReps) {
         setLocalLogs((prev) => ({
@@ -355,11 +347,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
 
       onUpdateLog(logKey, 'weight', finalWeight);
       onUpdateLog(logKey, 'reps', finalReps);
-      onUpdateLog(logKey, 'setType', currentType);
       persistLogsToStorageDirectly(logKey, {
         weight: finalWeight,
         reps: finalReps,
-        setType: currentType,
         done: !logs[logKey]?.done,
       });
 
@@ -430,7 +420,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           if (shiftedData) {
             onUpdateLog(toKey, 'weight', shiftedData.weight || '');
             onUpdateLog(toKey, 'reps', shiftedData.reps || '');
-            if (shiftedData.setType) onUpdateLog(toKey, 'setType', shiftedData.setType);
           }
         }
         delete updatedStored[`${ex.id}_${item.sets}`];
@@ -445,8 +434,16 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
     [ex.id, index, item.sets, logs, onDeleteExercise, onDeleteSet, onRemoveSet, onUpdateLog]
   );
 
-  // Gestos de arrastar para a esquerda para excluir o card inteiro
-  // Isolamento estrito: ignora toque se originado em qualquer elemento interativo ou linha de série
+  // Gestos de arrastar para a esquerda para excluir o card inteiro com animação suave
+  const triggerSmoothDelete = useCallback(() => {
+    if (!onDeleteExercise || isExiting) return;
+    setIsExiting(true);
+    soundManager.vibrate(35);
+    setTimeout(() => {
+      onDeleteExercise(index);
+    }, 320);
+  }, [index, isExiting, onDeleteExercise]);
+
   const handleCardPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.closest('input, button, select, a, [data-set-row], .drag-handle-touch, .set-table-container, .set-row')) {
@@ -457,24 +454,24 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   };
 
   const handleCardPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!cardPointerStartRef.current) return;
+    if (!cardPointerStartRef.current || isExiting) return;
     const diffX = e.clientX - cardPointerStartRef.current.x;
     const diffY = e.clientY - cardPointerStartRef.current.y;
 
     // Alta precisão para não ativar acidentalmente ao rolar a página verticalmente
-    if (diffX < -35 && Math.abs(diffX) > Math.abs(diffY) * 2.2) {
+    if (diffX < -25 && Math.abs(diffX) > Math.abs(diffY) * 1.8) {
       setIsCardSwiping(true);
-      setCardSwipeOffset(Math.max(-120, Math.min(0, diffX)));
-    } else if (!isCardSwiping && Math.abs(diffY) > 15) {
+      setCardSwipeOffset(Math.max(-140, Math.min(0, diffX)));
+    } else if (!isCardSwiping && Math.abs(diffY) > 12) {
       cardPointerStartRef.current = null;
     }
   };
 
   const handleCardPointerUp = () => {
-    if (cardPointerStartRef.current && isCardSwiping) {
-      if (cardSwipeOffset <= -95 && onDeleteExercise) {
-        soundManager.vibrate(35);
-        onDeleteExercise(index);
+    if (cardPointerStartRef.current && isCardSwiping && !isExiting) {
+      if (cardSwipeOffset <= -85) {
+        triggerSmoothDelete();
+        return;
       }
     }
     cardPointerStartRef.current = null;
@@ -483,22 +480,29 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-2xl touch-pan-y">
-      {/* Camada vermelha revelada ao arrastar o card para a esquerda */}
+    <div
+      className={`relative overflow-hidden rounded-2xl touch-pan-y transition-all duration-300 ${
+        isExiting
+          ? 'opacity-0 scale-95 -translate-x-full max-h-0 my-0 py-0 overflow-hidden'
+          : 'max-h-[1400px] mb-3'
+      }`}
+    >
+      {/* Camada vermelha revelada suavemente ao arrastar o card para a esquerda */}
       <div
-        className="absolute inset-y-0 right-0 w-28 bg-rose-600 flex items-center justify-center gap-1.5 text-white font-black text-xs px-2 select-none cursor-pointer z-0 rounded-r-2xl"
-        onClick={() => {
-          if (onDeleteExercise) {
-            soundManager.vibrate(35);
-            onDeleteExercise(index);
-          }
-        }}
+        className="absolute inset-y-0 right-0 w-36 bg-gradient-to-l from-rose-600 via-rose-600 to-rose-700/95 flex items-center justify-center gap-2 text-white font-black text-xs px-3 select-none cursor-pointer z-0 rounded-r-2xl transition-all"
+        onClick={triggerSmoothDelete}
       >
-        <Trash2 className="w-5 h-5 stroke-[2.5]" />
-        <span>Excluir</span>
+        <Trash2
+          className={`w-5 h-5 stroke-[2.5] transition-transform duration-200 ${
+            cardSwipeOffset <= -85 ? 'scale-125 text-white animate-bounce' : 'scale-100 text-rose-200'
+          }`}
+        />
+        <span className={cardSwipeOffset <= -85 ? 'font-black uppercase tracking-wider text-[11px]' : 'font-bold text-[11px]'}>
+          {cardSwipeOffset <= -85 ? 'Solte p/ Excluir' : 'Excluir'}
+        </span>
       </div>
 
-      {/* Card do Exercício com translação de swipe */}
+      {/* Card do Exercício com translação de swipe suave */}
       <div
         id={`exercise-card-${index}`}
         data-exercise-card-index={index}
@@ -512,12 +516,22 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
         onPointerUp={handleCardPointerUp}
         onPointerCancel={handleCardPointerUp}
         style={{
-          transform: `translateX(${cardSwipeOffset}px)`,
-          transition: isCardSwiping ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)',
+          transform: isExiting
+            ? 'translateX(-120%)'
+            : isDragging
+            ? `translate3d(0, ${dragOffsetY}px, 0) scale(1.025) rotate(-0.5deg)`
+            : `translateX(${cardSwipeOffset}px)`,
+          transition: isCardSwiping || isDragging
+            ? 'none'
+            : 'transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.28s ease',
+          opacity: isExiting ? 0 : 1,
+          zIndex: isDragging ? 50 : undefined,
         }}
         className={`relative z-10 active-workout-card bg-slate-900 border rounded-2xl overflow-hidden shadow-lg transition-all scroll-mt-20 ${
           isDragging ? 'card-dragging' : ''
         } ${isDropTarget ? 'card-drop-target' : ''} ${
+          isHoldingDrag ? 'card-holding' : ''
+        } ${
           isAllSetsDone
             ? 'border-emerald-500/45 ring-1 ring-emerald-500/15'
             : 'border-slate-800 hover:border-slate-700/80'
@@ -611,11 +625,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             <div className="set-table-container bg-[#080d19] border border-slate-800/90 rounded-2xl overflow-hidden shadow-xl">
               {/* Cabeçalho Único da Tabela de Séries */}
               <div className="grid grid-cols-12 gap-1 px-2.5 sm:px-3 py-2 bg-[#0c1426] border-b border-slate-800 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-slate-400 items-center text-center select-none">
-                <div className="col-span-1">#</div>
-                <div className="col-span-1">Tipo</div>
-                <div className="hidden sm:block sm:col-span-2 text-slate-500">Anterior</div>
-                <div className="col-span-5 sm:col-span-4">Carga (kg)</div>
-                <div className="col-span-3 sm:col-span-2">Reps</div>
+                <div className="hidden sm:block sm:col-span-3 text-slate-500">Anterior</div>
+                <div className="col-span-6 sm:col-span-4">Carga (kg)</div>
+                <div className="col-span-4 sm:col-span-3">Reps</div>
                 <div className="col-span-2 sm:col-span-2">Status</div>
               </div>
 
@@ -687,7 +699,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                       targetMaxReps={targetMaxReps}
                       prevSessionSet={prevSessionSet}
                       onInputChange={handleInputChange}
-                      onUpdateSetType={handleUpdateSetType}
                       onCompleteSet={handleCompleteSet}
                       onReplicateSet={handleReplicateSet}
                       onDeleteSet={handleDeleteIndividualSet}

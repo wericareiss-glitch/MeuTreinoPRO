@@ -8,6 +8,7 @@ import {
   Zap, 
   ArrowRight 
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   UserProfile, 
   Exercise, 
@@ -33,50 +34,22 @@ import { AuthModal } from './components/AuthModal';
 import { NavigationTabs } from './components/NavigationTabs';
 import { HomeView } from './components/HomeView';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { PWAUpdateToast } from './components/PWAUpdateToast';
 import { BiometricLockScreen } from './components/BiometricLockScreen';
 import { SectionErrorBoundary } from './components/SectionErrorBoundary';
 
-// Code Splitting de Abas Secundárias e Modais sob demanda
-const WorkoutListView = React.lazy(() =>
-  import('./components/WorkoutListView').then((m) => ({ default: m.WorkoutListView }))
-);
-const ActiveWorkoutView = React.lazy(() =>
-  import('./components/ActiveWorkoutView').then((m) => ({ default: m.ActiveWorkoutView }))
-);
-const ProfileView = React.lazy(() =>
-  import('./components/ProfileView').then((m) => ({ default: m.ProfileView }))
-);
-const WarmupModal = React.lazy(() =>
-  import('./components/WarmupModal').then((m) => ({ default: m.WarmupModal }))
-);
-const HistoryModal = React.lazy(() =>
-  import('./components/HistoryModal').then((m) => ({ default: m.HistoryModal }))
-);
-const SwapExerciseModal = React.lazy(() =>
-  import('./components/SwapExerciseModal').then((m) => ({ default: m.SwapExerciseModal }))
-);
-const ProfileModal = React.lazy(() =>
-  import('./components/ProfileModal').then((m) => ({ default: m.ProfileModal }))
-);
-const VolumeBudgetModal = React.lazy(() =>
-  import('./components/VolumeBudgetModal').then((m) => ({ default: m.VolumeBudgetModal }))
-);
-const AddExerciseModal = React.lazy(() =>
-  import('./components/AddExerciseModal').then((m) => ({ default: m.AddExerciseModal }))
-);
-const WorkoutSummaryModal = React.lazy(() =>
-  import('./components/WorkoutSummaryModal').then((m) => ({ default: m.WorkoutSummaryModal }))
-);
-const ExerciseAnalyticsModal = React.lazy(() =>
-  import('./components/ExerciseAnalyticsModal').then((m) => ({ default: m.ExerciseAnalyticsModal }))
-);
-const BodyMeasurementsModal = React.lazy(() =>
-  import('./components/BodyMeasurementsModal').then((m) => ({ default: m.BodyMeasurementsModal }))
-);
-const ManualWorkoutModal = React.lazy(() =>
-  import('./components/ManualWorkoutModal').then((m) => ({ default: m.ManualWorkoutModal }))
-);
+import { WorkoutListView } from './components/WorkoutListView';
+import { ActiveWorkoutView } from './components/ActiveWorkoutView';
+import { ProfileView } from './components/ProfileView';
+import { WarmupModal } from './components/WarmupModal';
+import { HistoryModal } from './components/HistoryModal';
+import { SwapExerciseModal } from './components/SwapExerciseModal';
+import { ProfileModal } from './components/ProfileModal';
+import { VolumeBudgetModal } from './components/VolumeBudgetModal';
+import { AddExerciseModal } from './components/AddExerciseModal';
+import { WorkoutSummaryModal } from './components/WorkoutSummaryModal';
+import { ExerciseAnalyticsModal } from './components/ExerciseAnalyticsModal';
+import { BodyMeasurementsModal } from './components/BodyMeasurementsModal';
+import { ManualWorkoutModal } from './components/ManualWorkoutModal';
 
 interface AppContentProps {
   toastMessage: string | null;
@@ -344,9 +317,6 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
       {/* Offline Connectivity Notification */}
       <OfflineIndicator />
 
-      {/* PWA Version Update Notification */}
-      <PWAUpdateToast />
-
       {/* Header with Navigation and Fast Tools */}
       <Header
         user={currentUser}
@@ -412,137 +382,147 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
           </div>
         )}
 
-        {/* ABA 1: INÍCIO */}
-        {activeTab === 'inicio' && (
-          <SectionErrorBoundary sectionName="Painel Principal">
-            <HomeView
-              user={currentUser}
-              sessions={sessions}
-              completedSetsByMuscle={completedSetsByMuscle}
-              activeWorkoutMuscles={activeWorkoutMuscles}
-              totalSetsInWorkout={totalSetsInWorkout}
-              totalCompletedSetsInWorkout={totalCompletedSetsInWorkout}
-              workoutNotes={workoutNotes}
-              onUpdateWorkoutNotes={setWorkoutNotes}
-              onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-              onGoToWorkout={() => {
-                if (activeRoutineId) {
-                  setActiveTab('treino_ativo');
-                } else {
-                  setActiveTab('treino');
-                }
-              }}
-              onViewSummary={(sess) => setSummaryModalSession(sess)}
-              onOpenAnalytics={() => handleOpenAnalytics()}
-              onOpenMeasurements={() => setIsMeasurementsOpen(true)}
-            />
-          </SectionErrorBoundary>
-        )}
+        {/* Container Principal com Transição Suave via framer-motion */}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+            className="w-full"
+          >
+            {/* ABA 1: INÍCIO */}
+            {activeTab === 'inicio' && (
+              <SectionErrorBoundary sectionName="Painel Principal">
+                <HomeView
+                  user={currentUser}
+                  sessions={sessions}
+                  completedSetsByMuscle={completedSetsByMuscle}
+                  activeWorkoutMuscles={activeWorkoutMuscles}
+                  totalSetsInWorkout={totalSetsInWorkout}
+                  totalCompletedSetsInWorkout={totalCompletedSetsInWorkout}
+                  onOpenVolumeBudget={() => setIsBudgetOpen(true)}
+                  onGoToWorkout={() => {
+                    if (activeRoutineId) {
+                      setActiveTab('treino_ativo');
+                    } else {
+                      setActiveTab('treino');
+                    }
+                  }}
+                  onViewSummary={(sess) => setSummaryModalSession(sess)}
+                  onOpenAnalytics={() => handleOpenAnalytics()}
+                  onOpenMeasurements={() => setIsMeasurementsOpen(true)}
+                />
+              </SectionErrorBoundary>
+            )}
 
-        {/* Abas Secundárias Carregadas Sob Demanda */}
-        <React.Suspense
-          fallback={
-            <div className="py-16 text-center text-xs text-slate-400 animate-pulse">
-              Carregando...
-            </div>
-          }
-        >
-          {/* ABA 2: TREINO */}
-          {activeTab === 'treino' && currentUser && (
-            <SectionErrorBoundary sectionName="Lista de Treinos">
-              <WorkoutListView
-                user={currentUser}
-                routines={routines}
-                activeRoutineId={activeRoutineId}
-                onStartWorkout={(r) => handleStartWorkout(r, () => setActiveTab('treino_ativo'))}
-                onCreateManualWorkout={handleOpenCreateManualRoutine}
-                onGenerateQuickWorkout={handleGenerateQuickWorkout}
-                onEditRoutine={handleEditRoutine}
-                onDeleteRoutine={handleDeleteRoutine}
-                onShareRoutine={handleShareRoutine}
-                onReorderRoutines={handleReorderRoutines}
-                split={split}
-                setSplit={setSplit}
-                strategy={strategy}
-                setStrategy={setStrategy}
-                weeklyBudget={weeklyBudget}
-                setWeeklyBudget={setWeeklyBudget}
-                level={level}
-                setLevel={setLevel}
-                equip={equip}
-                setEquip={setEquip}
-                restSeconds={restSeconds}
-                setRestSeconds={setRestSeconds}
-                onGenerateRoutines={handleGenerateWeeklyRoutines}
-                onUpdateUser={updateUser}
-                periodizationStrategy={periodizationStrategy}
-                setPeriodizationStrategy={handleSelectPeriodizationStrategy}
-                onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-              />
-            </SectionErrorBoundary>
-          )}
+            {/* Abas Secundárias Carregadas Sob Demanda */}
+            <React.Suspense
+              fallback={
+                <div className="py-16 text-center text-xs text-slate-400 animate-pulse">
+                  Carregando...
+                </div>
+              }
+            >
+              {/* ABA 2: TREINO */}
+              {activeTab === 'treino' && currentUser && (
+                <SectionErrorBoundary sectionName="Lista de Treinos">
+                  <WorkoutListView
+                    user={currentUser}
+                    routines={routines}
+                    activeRoutineId={activeRoutineId}
+                    onStartWorkout={(r) => handleStartWorkout(r, () => setActiveTab('treino_ativo'))}
+                    onCreateManualWorkout={handleOpenCreateManualRoutine}
+                    onGenerateQuickWorkout={handleGenerateQuickWorkout}
+                    onEditRoutine={handleEditRoutine}
+                    onDeleteRoutine={handleDeleteRoutine}
+                    onShareRoutine={handleShareRoutine}
+                    onReorderRoutines={handleReorderRoutines}
+                    split={split}
+                    setSplit={setSplit}
+                    strategy={strategy}
+                    setStrategy={setStrategy}
+                    weeklyBudget={weeklyBudget}
+                    setWeeklyBudget={setWeeklyBudget}
+                    level={level}
+                    setLevel={setLevel}
+                    equip={equip}
+                    setEquip={setEquip}
+                    restSeconds={restSeconds}
+                    setRestSeconds={setRestSeconds}
+                    onGenerateRoutines={handleGenerateWeeklyRoutines}
+                    onUpdateUser={updateUser}
+                    periodizationStrategy={periodizationStrategy}
+                    setPeriodizationStrategy={handleSelectPeriodizationStrategy}
+                    onOpenVolumeBudget={() => setIsBudgetOpen(true)}
+                  />
+                </SectionErrorBoundary>
+              )}
 
-          {/* ABA 2.5: TREINO ATIVO */}
-          {activeTab === 'treino_ativo' && activeRoutine && (
-            <SectionErrorBoundary sectionName="Treino Ativo">
-              <ActiveWorkoutView
-                routine={activeRoutine}
-                workoutItems={workoutItems}
-                logs={logs}
-                history={history}
-                sessions={sessions}
-                onOpenAnalytics={handleOpenAnalytics}
-                startedAt={activeRoutineStartedAt || Date.now()}
-                workoutNotes={workoutNotes}
-                onUpdateWorkoutNotes={setWorkoutNotes}
-                onOpenAddExercise={() => setIsAddExerciseOpen(true)}
-                onMoveUp={handleMoveUp}
-                onMoveDown={handleMoveDown}
-                onReorderExercises={handleReorderExercises}
-                onDeleteExercise={handleDeleteExercise}
-                onUpdateLog={handleUpdateLog}
-                onToggleSet={handleToggleSet}
-                onUpdateRest={handleUpdateRest}
-                onOpenWarmup={(name, weight) => setWarmupData({ isOpen: true, name, weight })}
-                onOpenSwap={(idx) =>
-                  setSwapData({
-                    isOpen: true,
-                    index: idx,
-                    currentExerciseId: workoutItems[idx].exercise.id,
-                    muscleKey: workoutItems[idx].muscleKey,
-                  })
-                }
-                onAddSet={handleAddSet}
-                onRemoveSet={handleRemoveSet}
-                periodizationStrategy={periodizationStrategy}
-                userFocus={currentUser?.focus}
-                onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
-                onFinishSession={() => finishAndSaveSession(() => setActiveTab('inicio'))}
-                onDiscardSession={() => handleDiscardActiveWorkout(() => setActiveTab('treino'))}
-                onBackToList={() => setActiveTab('treino')}
-              />
-            </SectionErrorBoundary>
-          )}
+              {/* ABA 2.5: TREINO ATIVO */}
+              {activeTab === 'treino_ativo' && activeRoutine && (
+                <SectionErrorBoundary sectionName="Treino Ativo">
+                  <ActiveWorkoutView
+                    routine={activeRoutine}
+                    workoutItems={workoutItems}
+                    logs={logs}
+                    history={history}
+                    sessions={sessions}
+                    onOpenAnalytics={handleOpenAnalytics}
+                    startedAt={activeRoutineStartedAt || Date.now()}
+                    workoutNotes={workoutNotes}
+                    onUpdateWorkoutNotes={setWorkoutNotes}
+                    onOpenAddExercise={() => setIsAddExerciseOpen(true)}
+                    onMoveUp={handleMoveUp}
+                    onMoveDown={handleMoveDown}
+                    onReorderExercises={handleReorderExercises}
+                    onDeleteExercise={handleDeleteExercise}
+                    onUpdateLog={handleUpdateLog}
+                    onToggleSet={handleToggleSet}
+                    onUpdateRest={handleUpdateRest}
+                    onOpenWarmup={(name, weight) => setWarmupData({ isOpen: true, name, weight })}
+                    onOpenSwap={(idx) =>
+                      setSwapData({
+                        isOpen: true,
+                        index: idx,
+                        currentExerciseId: workoutItems[idx].exercise.id,
+                        muscleKey: workoutItems[idx].muscleKey,
+                      })
+                    }
+                    onAddSet={handleAddSet}
+                    onRemoveSet={handleRemoveSet}
+                    periodizationStrategy={periodizationStrategy}
+                    userFocus={currentUser?.focus}
+                    onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
+                    onFinishSession={() => finishAndSaveSession(() => setActiveTab('inicio'))}
+                    onDiscardSession={() => handleDiscardActiveWorkout(() => setActiveTab('treino'))}
+                    onBackToList={() => setActiveTab('treino')}
+                  />
+                </SectionErrorBoundary>
+              )}
 
-          {/* ABA: PERFIL */}
-          {activeTab === 'perfil' && currentUser && (
-            <SectionErrorBoundary sectionName="Perfil">
-              <ProfileView
-                user={currentUser}
-                sessions={sessions}
-                onUpdateUser={updateUser}
-                onLogout={handleLogout}
-                onOpenVolumeBudget={() => setIsBudgetOpen(true)}
-                onExportBackup={handleExportBackup}
-                onImportBackup={handleImportBackup}
-                onViewSummary={(sess) => setSummaryModalSession(sess)}
-                onClearHistory={clearHistory}
-                onDeleteProfile={handleDeleteProfile}
-                onSwitchProfile={handleSwitchProfile}
-              />
-            </SectionErrorBoundary>
-          )}
-        </React.Suspense>
+              {/* ABA: PERFIL */}
+              {activeTab === 'perfil' && currentUser && (
+                <SectionErrorBoundary sectionName="Perfil">
+                  <ProfileView
+                    user={currentUser}
+                    sessions={sessions}
+                    onUpdateUser={updateUser}
+                    onLogout={handleLogout}
+                    onOpenVolumeBudget={() => setIsBudgetOpen(true)}
+                    onExportBackup={handleExportBackup}
+                    onImportBackup={handleImportBackup}
+                    onViewSummary={(sess) => setSummaryModalSession(sess)}
+                    onClearHistory={clearHistory}
+                    onDeleteProfile={handleDeleteProfile}
+                    onSwitchProfile={handleSwitchProfile}
+                  />
+                </SectionErrorBoundary>
+              )}
+            </React.Suspense>
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Floating HUD Rest Timer */}
@@ -552,6 +532,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
         isMuted={isMuted}
         onToggleMute={() => setIsMuted(!isMuted)}
         activeExerciseName={activeExerciseName}
+        hasBottomNav={activeTab !== 'treino_ativo'}
       />
 
       {/* Modals */}
@@ -679,6 +660,72 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Detecção e atualização automática transparente do Service Worker nos estados 'installed' e 'waiting'
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
+
+    let refreshing = false;
+
+    // Recarregar a página automaticamente com window.location.reload() quando o novo SW assumir o controle
+    const handleControllerChange = () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
+    // Enviar SKIP_WAITING para forçar ativação imediata do novo Service Worker
+    const triggerSkipWaiting = (worker: ServiceWorker | null | undefined) => {
+      if (!worker) return;
+      try {
+        worker.postMessage({ type: 'SKIP_WAITING' });
+      } catch {
+        // Fallback caso postMessage falhe
+      }
+    };
+
+    // Monitorar registros e estados 'installed' e 'waiting'
+    navigator.serviceWorker.getRegistration().then((registration) => {
+      if (!registration) return;
+
+      // 1. Caso o Service Worker já esteja no estado 'waiting'
+      if (registration.waiting) {
+        triggerSkipWaiting(registration.waiting);
+      }
+
+      // 2. Detectar quando o Service Worker em instalação atinge o estado 'installed'
+      const checkInstallingWorker = (worker: ServiceWorker | null) => {
+        if (!worker) return;
+        if (worker.state === 'installed') {
+          triggerSkipWaiting(worker);
+        } else {
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'installed') {
+              triggerSkipWaiting(worker);
+            }
+          });
+        }
+      };
+
+      if (registration.installing) {
+        checkInstallingWorker(registration.installing);
+      }
+
+      // 3. Ouvir por novas atualizações descobertas durante a sessão
+      registration.addEventListener('updatefound', () => {
+        checkInstallingWorker(registration.installing);
+      });
+    });
+
+    return () => {
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+    };
+  }, []);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);

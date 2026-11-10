@@ -12,10 +12,7 @@ import {
   Target, 
   CheckCircle, 
   Zap, 
-  Layers,
-  FileEdit,
-  ChevronDown,
-  ChevronUp
+  Layers
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -37,19 +34,8 @@ interface VolumeDashboardProps {
   activeWorkoutMuscles: MuscleGroup[];
   muscleBudgets?: Record<MuscleGroup, number>;
   totalWeeklyBudget?: number;
-  workoutNotes?: string;
-  onUpdateWorkoutNotes?: (notes: string) => void;
   onOpenVolumeBudget?: () => void;
 }
-
-const NOTE_TAGS = [
-  '⚡ Alta Energia',
-  '💤 Sono 8h',
-  '⚠️ Cansaço Acumulado',
-  '🎯 Foco em Cadência',
-  '🦴 Conforto Articular',
-  '🔥 Recorde Pessoal',
-];
 
 const SHORT_NAMES: Record<MuscleGroup, string> = {
   quadriceps: 'Quad',
@@ -80,12 +66,9 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
   activeWorkoutMuscles,
   muscleBudgets,
   totalWeeklyBudget,
-  workoutNotes = '',
-  onUpdateWorkoutNotes,
   onOpenVolumeBudget,
 }) => {
   const [viewMode, setViewMode] = useState<'chart' | 'grid'>('chart');
-  const [isNotesOpen, setIsNotesOpen] = useState(true);
 
   const allMuscles = Object.keys(MUSCLE_NAMES) as MuscleGroup[];
 
@@ -153,70 +136,6 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
 
   return (
     <div className="bg-[#101828] border border-[#1e2c45] rounded-2xl p-4 sm:p-5 shadow-xl shadow-black/20 mb-6 transition-all">
-      {/* =========================================================
-          CAMPO DE NOTAS DE TREINO (OPCIONAL)
-          ========================================================= */}
-      <div className="bg-[#0b1220] border border-slate-800 rounded-2xl p-3.5 sm:p-4 mb-4 transition-all">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
-              <FileEdit className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide">
-                Notas & Percepções do Treino (Opcional)
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                Observações sobre disposição, dores ou ajustes que fez no treino
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsNotesOpen(!isNotesOpen)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            title={isNotesOpen ? 'Recolher notas' : 'Expandir notas'}
-          >
-            {isNotesOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-        </div>
-
-        {isNotesOpen && (
-          <div className="mt-3 space-y-2.5">
-            {/* Quick observation tag chips */}
-            {onUpdateWorkoutNotes && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] text-slate-500 font-semibold mr-1">Atalhos:</span>
-                {NOTE_TAGS.map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => {
-                      const current = workoutNotes ? workoutNotes.trim() : '';
-                      const updated = current ? `${current} · ${tag}` : tag;
-                      onUpdateWorkoutNotes(updated);
-                    }}
-                    className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-[#131d31] hover:bg-slate-800 text-slate-300 border border-slate-700/60 transition-colors"
-                  >
-                    + {tag}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Textarea */}
-            <textarea
-              rows={2}
-              value={workoutNotes}
-              onChange={(e) => onUpdateWorkoutNotes?.(e.target.value)}
-              placeholder="Ex: Dormi 8h com excelente recuperação, energia alta, boa estabilidade na cadeia posterior e sem dores articulares..."
-              className="w-full bg-[#080d18] border border-slate-800 focus:border-purple-500 rounded-xl p-2.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none transition-colors resize-none font-normal"
-            />
-          </div>
-        )}
-      </div>
-
       {/* =========================================================
           INDICADOR VISUAL DE PROGRESSO GLOBAL (CIRCULAR & LINEAR)
           ========================================================= */}

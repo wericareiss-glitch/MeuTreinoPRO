@@ -16,6 +16,7 @@ export const MemoizedWorkoutItemRow: React.FC<WorkoutItemRowProps> = React.memo(
     history,
     sessions,
     isDragging,
+    dragOffsetY,
     isHoldingDrag,
     isDropTarget,
     onMoveUp,
@@ -56,6 +57,7 @@ export const MemoizedWorkoutItemRow: React.FC<WorkoutItemRowProps> = React.memo(
         onRemoveSet={onRemoveSet}
         onOpenAnalytics={onOpenAnalytics}
         isDragging={isDragging}
+        dragOffsetY={dragOffsetY}
         isHoldingDrag={isHoldingDrag}
         isDropTarget={isDropTarget}
         onDragStartCard={onDragStartCard}
