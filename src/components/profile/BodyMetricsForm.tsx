@@ -9,13 +9,10 @@ import {
   Ruler, 
   Calendar, 
   Flame, 
-  Award, 
-  Target, 
-  Sparkles, 
   Check, 
   Save 
 } from 'lucide-react';
-import { GenderOption, LevelOption, FocusOption } from '../../types/workout';
+import { GenderOption } from '../../types/workout';
 import { useI18n } from '../../utils/i18n';
 
 export interface BodyMetricsFormProps {
@@ -31,16 +28,9 @@ export interface BodyMetricsFormProps {
   setBodyFatPercent: (v: number | undefined) => void;
   gender: GenderOption;
   setGender: (v: GenderOption) => void;
-  level: LevelOption;
-  setLevel: (v: LevelOption) => void;
-  focus: FocusOption;
-  setFocus: (v: FocusOption) => void;
-  frequency: number;
-  setFrequency: (v: number) => void;
   imcStr: string;
   bmiCat: { label: string; color: string };
   onSave: (e: React.FormEvent) => void;
-  onApplyRecommendedBudget: () => void;
   savedSuccess: boolean;
 }
 
@@ -57,16 +47,9 @@ export const BodyMetricsForm: React.FC<BodyMetricsFormProps> = ({
   setBodyFatPercent,
   gender,
   setGender,
-  level,
-  setLevel,
-  focus,
-  setFocus,
-  frequency,
-  setFrequency,
   imcStr,
   bmiCat,
   onSave,
-  onApplyRecommendedBudget,
   savedSuccess,
 }) => {
   const { t } = useI18n();
@@ -196,69 +179,6 @@ export const BodyMetricsForm: React.FC<BodyMetricsFormProps> = ({
         </select>
       </div>
 
-      {/* 2. SELEÇÃO DE NÍVEL DE TREINO (Menu Dropdown) */}
-      <div className="bg-[#0b1220] p-3.5 rounded-2xl border border-slate-800">
-        <label htmlFor="profile-level-select" className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
-          <Award className="w-3.5 h-3.5 text-amber-400" />
-          <span>Nível de Experiência</span>
-        </label>
-        <select
-          id="profile-level-select"
-          value={level}
-          onChange={(e) => setLevel(e.target.value as LevelOption)}
-          className="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
-        >
-          <option value="beginner" className="bg-[#0f172a] text-white">Iniciante</option>
-          <option value="intermediate" className="bg-[#0f172a] text-white">Intermediário</option>
-          <option value="advanced" className="bg-[#0f172a] text-white">Avançado</option>
-        </select>
-      </div>
-
-      {/* 3. SELEÇÃO DE FOCO DO TREINO (Menu Dropdown) */}
-      <div className="bg-[#0b1220] p-3.5 rounded-2xl border border-slate-800">
-        <label htmlFor="profile-focus-select" className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2 flex items-center gap-1.5">
-          <Target className="w-3.5 h-3.5 text-rose-400" />
-          <span>Foco Principal do Treino</span>
-        </label>
-        <select
-          id="profile-focus-select"
-          value={focus}
-          onChange={(e) => setFocus(e.target.value as FocusOption)}
-          className="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
-        >
-          <option value="balanced" className="bg-[#0f172a] text-white">⚖️ Equilíbrio Total (Harmonia e simetria para o corpo inteiro)</option>
-          <option value="glutes" className="bg-[#0f172a] text-white">🍑 Glúteos & Membros Inferiores (Ênfase máxima em glúteo, posterior e pernas)</option>
-          <option value="v_taper" className="bg-[#0f172a] text-white">🔱 Shape em V (Costas largas, ombros e peitoral em destaque)</option>
-          <option value="strength" className="bg-[#0f172a] text-white">🏋️ Força & Cargas (Progressão de cargas e grandes compostos)</option>
-        </select>
-      </div>
-
-      {/* 4. SELEÇÃO DE FREQUÊNCIA SEMANAL (Menu Dropdown) */}
-      <div className="bg-[#0b1220] p-3.5 rounded-2xl border border-slate-800">
-        <label htmlFor="profile-frequency-select" className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2 flex items-center justify-between">
-          <span className="flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-sky-400" />
-            <span>Frequência Semanal</span>
-          </span>
-          <span className="text-[11px] font-mono font-bold text-sky-400">
-            {frequency}x por semana
-          </span>
-        </label>
-        <select
-          id="profile-frequency-select"
-          value={frequency}
-          onChange={(e) => setFrequency(Number(e.target.value))}
-          className="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
-        >
-          <option value={1} className="bg-[#0f172a] text-white">1 dia por semana (Manutenção Geral)</option>
-          <option value={2} className="bg-[#0f172a] text-white">2 dias por semana (Divisão A/B)</option>
-          <option value={3} className="bg-[#0f172a] text-white">3 dias por semana (Full Body ou ABC)</option>
-          <option value={4} className="bg-[#0f172a] text-white">4 dias por semana (Upper / Lower 2x)</option>
-          <option value={5} className="bg-[#0f172a] text-white">5 dias por semana (Push / Pull / Legs + Upper / Lower)</option>
-          <option value={6} className="bg-[#0f172a] text-white">6 dias por semana (PPL 2x Alta Frequência)</option>
-        </select>
-      </div>
-
       {/* BMI Info pill & Save CTA */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
         <div className="bg-[#0a101d] px-3.5 py-2 rounded-xl border border-slate-800 flex items-center gap-2 text-xs">
@@ -270,16 +190,6 @@ export const BodyMetricsForm: React.FC<BodyMetricsFormProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onApplyRecommendedBudget}
-            className="px-4 py-2.5 rounded-xl font-bold text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Aplica e calibra automaticamente as séries ideais e distribui conforme o foco selecionado"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Otimizar Séries por Foco</span>
-          </button>
-
           {savedSuccess && (
             <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
               <Check className="w-4 h-4" />

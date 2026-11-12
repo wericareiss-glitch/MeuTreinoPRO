@@ -20,7 +20,6 @@ import {
 } from './types/workout';
 import { MUSCLE_NAMES } from './data/exerciseDatabase';
 import { safeStorage } from './utils/storage';
-import { authStorage } from './utils/auth';
 import { TabType } from './types/navigation';
 import { useI18n } from './utils/i18n';
 import { useTheme } from './utils/theme';
@@ -73,8 +72,6 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
     setIsBiometricLocked,
     handleAuthSuccess,
     handleLogout,
-    handleDeleteProfile,
-    handleSwitchProfile,
     updateUser,
     handleSaveBudgets,
   } = useAuth();
@@ -315,10 +312,22 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
       {/* Offline Connectivity Notification */}
       <OfflineIndicator />
 
-      {/* Clean Header */}
+      {/* Header with Navigation and Fast Tools */}
       <Header
+        user={currentUser}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
+        onOpenProfile={() => setActiveTab('perfil')}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenAnalytics={() => handleOpenAnalytics()}
+        onOpenMeasurements={() => setIsMeasurementsOpen(true)}
+        onOpenVolumeBudget={() => setIsBudgetOpen(true)}
+        onShare={handleShare}
+        isMuted={isMuted}
+        onToggleMute={() => setIsMuted(!isMuted)}
+        activeSetsCount={totalSetsInWorkout}
+        completedSetsCount={totalCompletedSetsInWorkout}
+        hasActiveWorkout={!!activeRoutineId}
       />
 
       {/* Responsive Navigation Tabs (Subheader on Desktop, Dock on Mobile) */}
@@ -326,7 +335,6 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
         <NavigationTabs
           activeTab={activeTab}
           onSelectTab={setActiveTab}
-          currentUser={currentUser}
           onLogout={handleLogout}
           activeSetsCount={totalSetsInWorkout}
           completedSetsCount={totalCompletedSetsInWorkout}
@@ -335,8 +343,8 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
         />
       )}
 
-      {/* Main Container - Renders the selected Tab View */}
-      <main className="w-full max-w-6xl mx-auto min-w-0 px-3 sm:px-6 pt-4 sm:pt-6 touch-pan-y">
+      {/* Main Container - Renders the selected Tab View (Proporção confortável para notebooks e monitores) */}
+      <main className="w-full max-w-5xl mx-auto min-w-0 px-3 sm:px-5 pt-3 sm:pt-5 touch-pan-y">
         {/* Banner Flutuante Rápido de Retorno ao Treino Ativo */}
         {activeRoutine && activeTab !== 'treino_ativo' && (
           <div className="mb-4 p-3 rounded-2xl bg-gradient-to-r from-amber-500/20 via-emerald-500/15 to-teal-500/20 border border-amber-400/50 shadow-lg flex items-center justify-between gap-3 animate-fadeIn">
@@ -483,17 +491,6 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
                     periodizationStrategy={periodizationStrategy}
                     userFocus={currentUser?.focus}
                     onSelectPeriodizationStrategy={handleSelectPeriodizationStrategy}
-                    deepWorkMode={Boolean(currentUser?.deepWorkMode)}
-                    onToggleDeepWork={() => {
-                      if (currentUser) {
-                        const updated = authStorage.updateProfile(currentUser.id, {
-                          deepWorkMode: !currentUser.deepWorkMode,
-                        });
-                        if (updated) {
-                          updateUser(updated);
-                        }
-                      }
-                    }}
                     onFinishSession={() => finishAndSaveSession(() => setActiveTab('inicio'))}
                     onDiscardSession={() => handleDiscardActiveWorkout(() => setActiveTab('treino'))}
                     onBackToList={() => setActiveTab('treino')}
@@ -514,8 +511,6 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
                     onImportBackup={handleImportBackup}
                     onViewSummary={(sess) => setSummaryModalSession(sess)}
                     onClearHistory={clearHistory}
-                    onDeleteProfile={handleDeleteProfile}
-                    onSwitchProfile={handleSwitchProfile}
                   />
                 </SectionErrorBoundary>
               )}
@@ -549,6 +544,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
       )}
 
       <React.Suspense fallback={null}>
+
         {currentUser && isBudgetOpen && (
           <VolumeBudgetModal
             isOpen={isBudgetOpen}
@@ -556,6 +552,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
             weeklyBudget={currentUser.weeklyBudget}
             muscleBudgets={currentUser.muscleBudgets}
             onSaveBudgets={handleSaveBudgets}
+            userFocus={currentUser.focus}
           />
         )}
 

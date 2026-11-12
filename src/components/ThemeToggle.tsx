@@ -248,6 +248,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
           </div>
         </div>
 
+
         {/* Rodapé informativo e opção secundária de sistema */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-xs">
           {justSaved ? (

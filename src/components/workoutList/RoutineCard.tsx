@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { ListChildComponentProps } from 'react-window';
 import { 
   Play, 
@@ -52,18 +52,6 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
 }) => {
   const { routine, visualIdx } = entry;
 
-  const formattedCreatedAt = useMemo(() => {
-    if (!routine.createdAt) return null;
-    try {
-      return new Date(routine.createdAt).toLocaleDateString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: '2-digit',
-      });
-    } catch {
-      return null;
-    }
-  }, [routine.createdAt]);
 
   return (
     <div
@@ -112,34 +100,14 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
               </button>
             )}
 
-            <div
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-lg shrink-0 ${
-                isActive
-                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30'
-                  : 'bg-gradient-to-tr from-sky-500/20 to-teal-500/20 text-sky-300 border border-sky-500/30'
-              }`}
-            >
-              {routine.letter}
-            </div>
-
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h2 className="text-base font-extrabold text-white tracking-tight truncate">
                   {routine.name}
                 </h2>
-                {routine.version && (
-                  <span className="text-[9px] font-mono font-bold text-emerald-300 bg-emerald-500/15 px-1.5 py-0.2 rounded border border-emerald-500/30">
-                    v{routine.version}
-                  </span>
-                )}
                 {routine.isCustom && (
                   <span className="text-[9px] font-bold text-purple-300 bg-purple-500/20 px-1.5 py-0.2 rounded border border-purple-500/30">
                     Personalizado
-                  </span>
-                )}
-                {formattedCreatedAt && (
-                  <span className="text-[9px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.2 rounded border border-slate-700/60">
-                    {formattedCreatedAt}
                   </span>
                 )}
               </div>

@@ -21,8 +21,6 @@ import {
   Camera,
   Flame,
   Check,
-  ShieldCheck,
-  AlertTriangle,
   Plus,
   Trash2,
   MessageSquare
@@ -32,7 +30,6 @@ import {
   WorkoutSessionSummary, 
   MuscleGroup 
 } from '../types/workout';
-import { TopLoadProgressComponent } from './TopLoadProgressComponent';
 import { ConsistencyCalendar } from './ConsistencyCalendar';
 import { useI18n } from '../utils/i18n';
 
@@ -42,7 +39,6 @@ import {
   getWeeklyMicrocycleStatus, 
   requestNotificationPermission, 
   sendAppNotification, 
-  isNotificationSupported,
   getReminderConfig,
   saveReminderConfig,
   checkAndTriggerScheduledNotification,
@@ -281,7 +277,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       });
     });
 
-    const totalWeeklyTarget = user?.weeklyBudget || 88;
+    const totalWeeklyTarget = user?.weeklyBudget || 90;
     const weeklyCompleted = Object.values(completedSetsByMuscle).reduce((a, b) => a + b, 0);
     const weeklyPercent = totalWeeklyTarget > 0 
       ? Math.min(100, Math.round((weeklyCompleted / totalWeeklyTarget) * 100)) 
@@ -297,19 +293,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
   }, [sessions, completedSetsByMuscle, user?.weeklyBudget]);
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-[max(6.5rem,calc(5rem+env(safe-area-inset-bottom)))] sm:pb-16 w-full max-w-full min-w-0 touch-pan-y">
-      {/* Welcome Banner Card */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#121c32] via-[#0e1628] to-[#0a101f] border border-[#213252] p-5 sm:p-7 shadow-2xl">
+    <div className="space-y-4 sm:space-y-5 animate-fadeIn pb-[max(6.5rem,calc(5rem+env(safe-area-inset-bottom)))] sm:pb-16 w-full max-w-full min-w-0 touch-pan-y">
+      {/* Welcome Banner Card (Proporção compacta e agradável aos olhos) */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#121c32] via-[#0e1628] to-[#0a101f] border border-[#213252] p-4 sm:p-5 shadow-xl">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-1/3 -mb-10 w-48 h-48 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
               <Sparkles className="w-3.5 h-3.5" />
               <span>{t.homeGreeting}, {user?.name || 'Atleta'}!</span>
             </div>
-            <h1 className="text-xl sm:text-3xl font-extrabold text-white tracking-tight">
+            <h1 className="text-lg sm:text-2xl font-extrabold text-white tracking-tight">
               {t.appTitle} — {t.appSubtitle}
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
@@ -349,7 +345,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <button
               type="button"
               onClick={onGoToWorkout}
-              className="w-full md:w-auto px-6 py-3.5 rounded-2xl font-extrabold text-xs sm:text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-500/30 active:scale-95 transition-all cursor-pointer"
+              className="w-full md:w-auto px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer"
             >
               <Dumbbell className="w-4 h-4 stroke-[2.5]" />
               <span>
@@ -802,12 +798,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </p>
       </div>
 
-      {/* 🏆 PROGRESSO DE CARGA: TOP 3 EXERCÍCIOS COM MAIOR AUMENTO DE 1RM (ÚLTIMAS 4 SEMANAS) */}
-      <TopLoadProgressComponent
-        sessions={sessions}
-        onOpenExerciseAnalytics={onOpenAnalytics}
-        onGoToWorkout={onGoToWorkout}
-      />
 
       {/* 📅 CALENDÁRIO DE CONSISTÊNCIA & STREAK (Últimos 35 dias) */}
       <ConsistencyCalendar
@@ -821,6 +811,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         onGoToWorkout={onGoToWorkout}
         onOpenAnalyticsModal={onOpenAnalytics}
       />
+
 
       {/* Weekly Volume Tracking & Periodization Dashboard */}
       <VolumeDashboard

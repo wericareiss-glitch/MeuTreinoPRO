@@ -55,7 +55,7 @@ export const WeeklyVolumeCard: React.FC<WeeklyVolumeCardProps> = ({
             {t.budgetCeilingLabel}
           </span>
           <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-400">
-            {user.weeklyBudget || 88} <span className="text-sm font-normal text-slate-400">{t.seriesLabel} / semana</span>
+            {user.weeklyBudget || 90} <span className="text-sm font-normal text-slate-400">{t.seriesLabel} / semana</span>
           </span>
         </div>
 

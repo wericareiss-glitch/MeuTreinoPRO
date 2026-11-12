@@ -213,17 +213,13 @@ function sanitizeUserProfile(user: UserProfile): UserProfile {
 /**
  * Calcula as séries semanais totais recomendadas com base no nível e sexo
  */
-export function calculateDefaultBudget(level: LevelOption = 'beginner', gender: GenderOption = 'male'): number {
+export function calculateDefaultBudget(level: LevelOption = 'beginner', _gender: GenderOption = 'male'): number {
   const baseByLevel: Record<LevelOption, number> = {
     beginner: 60,
-    intermediate: 85,
-    advanced: 110,
+    intermediate: 90,
+    advanced: 120,
   };
-  let base = baseByLevel[level] || 75;
-  if (gender === 'female') {
-    base = Math.round(base * 1.05);
-  }
-  return base;
+  return baseByLevel[level] || 90;
 }
 
 /**
@@ -328,6 +324,74 @@ export function scaleWeightsToBudget(
     const topMuscle = activeMuscles.reduce((a, b) => ((weights[a] || 0) >= (weights[b] || 0) ? a : b));
     result[topMuscle] = Math.max(1, result[topMuscle] + diff);
   }
+
+  return result;
+}
+
+/**
+ * Redistribui as séries sobrando entre os músculos ativos com base no foco estético/biomecânico do atleta.
+ * Músculos excluídos (0 séries ou alvo de exclusão) são estritamente preservados em 0.
+ */
+export function distributeLeftoverSetsByFocus(
+  currentBudgets: Record<MuscleGroup, number>,
+  totalBudget: number,
+  focus: FocusOption = 'balanced',
+  muscleToExclude?: MuscleGroup
+): Record<MuscleGroup, number> {
+  const result: Record<MuscleGroup, number> = { ...currentBudgets };
+
+  if (muscleToExclude) {
+    result[muscleToExclude] = 0;
+  }
+
+  const activeMuscles = ALL_MUSCLE_GROUPS.filter(
+    (m) => m !== muscleToExclude && (result[m] || 0) > 0
+  );
+
+  // Se não houver nenhum outro músculo ativo, nada a redistribuir
+  if (activeMuscles.length === 0) {
+    return result;
+  }
+
+  const allocatedSum = activeMuscles.reduce((sum, m) => sum + (result[m] || 0), 0);
+  const leftover = totalBudget - allocatedSum;
+
+  if (leftover <= 0) {
+    return result;
+  }
+
+  const weights = getPresetWeights(focus);
+  const sumWeights = activeMuscles.reduce((acc, m) => acc + (weights[m] || 8), 0);
+
+  // Ordena os músculos ativos pela prioridade decrescente do foco
+  const sortedActive = [...activeMuscles].sort(
+    (a, b) => (weights[b] || 8) - (weights[a] || 8)
+  );
+
+  // 1ª passada: distribuição proporcional do volume sobrando
+  let distributed = 0;
+  const additions: Record<MuscleGroup, number> = {} as Record<MuscleGroup, number>;
+  activeMuscles.forEach((m) => {
+    const w = weights[m] || 8;
+    const share = Math.floor((w / (sumWeights || 1)) * leftover);
+    additions[m] = share;
+    distributed += share;
+  });
+
+  // 2ª passada: aloca qualquer resíduo restante 1 a 1 para o topo da prioridade do foco
+  let residue = leftover - distributed;
+  let pIdx = 0;
+  while (residue > 0 && sortedActive.length > 0) {
+    const target = sortedActive[pIdx % sortedActive.length];
+    additions[target] = (additions[target] || 0) + 1;
+    residue -= 1;
+    pIdx++;
+  }
+
+  // Aplica as séries adicionais nos músculos ativos
+  activeMuscles.forEach((m) => {
+    result[m] = (result[m] || 0) + (additions[m] || 0);
+  });
 
   return result;
 }

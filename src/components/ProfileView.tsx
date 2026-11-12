@@ -7,16 +7,9 @@ import React, { useState } from 'react';
 import { Lock, Cloud, Heart } from 'lucide-react';
 import { 
   UserProfile, 
-  GenderOption, 
-  LevelOption, 
-  FocusOption 
+  GenderOption 
 } from '../types/workout';
-import { 
-  authStorage, 
-  calculateDefaultBudget, 
-  getPresetWeights, 
-  scaleWeightsToBudget 
-} from '../utils/auth';
+import { authStorage } from '../utils/auth';
 import { useI18n } from '../utils/i18n';
 import { loginWithGoogle, syncUserProfileToCloud } from '../services/firebase';
 import { DonationModal } from './DonationModal';
@@ -25,8 +18,7 @@ import {
   ProfileHeaderCard,
   BodyMetricsForm,
   WeeklyVolumeCard,
-  CollapsiblePreferences,
-  DeleteProfileModal
+  CollapsiblePreferences
 } from './profile';
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -35,8 +27,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUpdateUser,
   onLogout,
   onOpenVolumeBudget,
-  onDeleteProfile,
-  onSwitchProfile,
 }) => {
   const { t } = useI18n();
 
@@ -48,15 +38,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [age, setAge] = useState<number>(user.age || 28);
   const [bodyFatPercent, setBodyFatPercent] = useState<number | undefined>(user.bodyFatPercent);
   const [gender, setGender] = useState<GenderOption>(user.gender || 'male');
-  const [level, setLevel] = useState<LevelOption>(user.level || 'beginner');
-  const [focus, setFocus] = useState<FocusOption>(user.focus || 'v_taper');
-  const [frequency, setFrequency] = useState<number>(user.frequency || 4);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // Platform authentication & Google linking state
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [linkGoogleError, setLinkGoogleError] = useState<string | null>(null);
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [isDonationOpen, setIsDonationOpen] = useState(false);
 
   // IMC (BMI) calculation
@@ -83,29 +69,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       age,
       bodyFatPercent,
       gender,
-      level,
-      focus,
-      frequency,
-    });
-    if (updated) {
-      onUpdateUser(updated);
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2200);
-    }
-  };
-
-  const handleApplyRecommendedBudget = () => {
-    const recommendedBudget = calculateDefaultBudget(level, gender);
-    const weights = getPresetWeights(focus);
-    const newBudgets = scaleWeightsToBudget(weights, recommendedBudget);
-
-    const updated = authStorage.updateProfile(user.id, {
-      gender,
-      level,
-      focus,
-      frequency,
-      weeklyBudget: recommendedBudget,
-      muscleBudgets: newBudgets,
     });
     if (updated) {
       onUpdateUser(updated);
@@ -136,9 +99,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
         <ProfileHeaderCard
           user={user}
-          onSwitchProfile={onSwitchProfile}
           onLogout={onLogout}
-          onRequestDelete={onDeleteProfile ? () => setShowDeleteConfirmModal(true) : undefined}
           onOpenDonation={() => setIsDonationOpen(true)}
           isLinkingGoogle={isLinkingGoogle}
           linkGoogleError={linkGoogleError}
@@ -159,16 +120,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           setBodyFatPercent={setBodyFatPercent}
           gender={gender}
           setGender={setGender}
-          level={level}
-          setLevel={setLevel}
-          focus={focus}
-          setFocus={setFocus}
-          frequency={frequency}
-          setFrequency={setFrequency}
           imcStr={imcStr}
           bmiCat={bmiCat}
           onSave={handleSaveProfile}
-          onApplyRecommendedBudget={handleApplyRecommendedBudget}
           savedSuccess={savedSuccess}
         />
 
@@ -210,17 +164,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       </div>
 
       {/* Metas & Séries Semanais */}
-      <WeeklyVolumeCard
-        user={user}
-        onOpenVolumeBudget={onOpenVolumeBudget}
-      />
+      {onOpenVolumeBudget && (
+        <WeeklyVolumeCard
+          user={user}
+          onOpenVolumeBudget={onOpenVolumeBudget}
+        />
+      )}
 
       {/* Seções de Preferências Minimizadas por Padrão */}
       <CollapsiblePreferences
         user={user}
         sessions={sessions}
-        onUpdateUser={onUpdateUser}
       />
+
 
       {/* Apoio ao Projeto (Discreto e Elegante) */}
       <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/40 border border-slate-800/80 hover:border-pink-500/20 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -257,16 +213,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         onClose={() => setIsDonationOpen(false)}
       />
 
-      {/* Modal Seguro de Confirmação para Exclusão de Perfil */}
-      <DeleteProfileModal
-        isOpen={showDeleteConfirmModal}
-        userName={user.name}
-        onClose={() => setShowDeleteConfirmModal(false)}
-        onConfirm={() => {
-          setShowDeleteConfirmModal(false);
-          onDeleteProfile?.(user.id);
-        }}
-      />
+
     </div>
   );
 };

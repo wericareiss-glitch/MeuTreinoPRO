@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   BarChart3, 
   LayoutGrid, 
@@ -61,6 +61,8 @@ function getPeriodizationStatus(sets: number, target: number) {
   return { label: 'Sobretreino / Limite', color: 'text-amber-400' };
 }
 
+const ALL_MUSCLES = Object.keys(MUSCLE_NAMES) as MuscleGroup[];
+
 export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
   completedSetsByMuscle,
   activeWorkoutMuscles,
@@ -70,32 +72,31 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'chart' | 'grid'>('chart');
 
-  const allMuscles = Object.keys(MUSCLE_NAMES) as MuscleGroup[];
-
   // Global calculations across all muscle groups based on user's custom budget
   const totalTargetSets = totalWeeklyBudget || (
     muscleBudgets
       ? Object.values(muscleBudgets).reduce((a, b) => a + b, 0)
-      : 88
+      : 90
   );
 
-  const totalCompletedSets = allMuscles.reduce(
-    (acc, m) => acc + (completedSetsByMuscle[m] || 0),
-    0
+  const totalCompletedSets = useMemo(
+    () => ALL_MUSCLES.reduce((acc, m) => acc + (completedSetsByMuscle[m] || 0), 0),
+    [completedSetsByMuscle]
   );
 
   const globalPercentage = totalTargetSets > 0 
     ? Math.min(100, Math.round((totalCompletedSets / totalTargetSets) * 100))
     : 0;
 
-  const musclesAtTarget = allMuscles.filter((m) => {
-    const target = muscleBudgets?.[m] || 8;
-    return (completedSetsByMuscle[m] || 0) >= target;
-  }).length;
+  const musclesAtTarget = useMemo(
+    () => ALL_MUSCLES.filter((m) => (completedSetsByMuscle[m] || 0) >= (muscleBudgets?.[m] || 8)).length,
+    [completedSetsByMuscle, muscleBudgets]
+  );
 
-  const musclesWithProgress = allMuscles.filter(
-    (m) => (completedSetsByMuscle[m] || 0) > 0
-  ).length;
+  const musclesWithProgress = useMemo(
+    () => ALL_MUSCLES.filter((m) => (completedSetsByMuscle[m] || 0) > 0).length,
+    [completedSetsByMuscle]
+  );
 
   // Global progress cycle status
   const getCycleStatus = (pct: number) => {
@@ -114,25 +115,27 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
   const strokeDashoffset = circumference - (globalPercentage / 100) * circumference;
 
   // Format dataset for Recharts with user's specific muscle budget & physiological volume landmarks (MRV/MEV)
-  const chartData = allMuscles.map((muscle) => {
-    const sets = completedSetsByMuscle[muscle] || 0;
-    const muscleTarget = muscleBudgets?.[muscle] || 8;
-    const isActive = activeWorkoutMuscles.includes(muscle);
-    const landmarks = getVolumeLandmarks(muscle, 'intermediate');
-    const zone = evaluateVolumeZone(sets, landmarks);
+  const chartData = useMemo(() => {
+    return ALL_MUSCLES.map((muscle) => {
+      const sets = completedSetsByMuscle[muscle] || 0;
+      const muscleTarget = muscleBudgets?.[muscle] || 8;
+      const isActive = activeWorkoutMuscles.includes(muscle);
+      const landmarks = getVolumeLandmarks(muscle, 'intermediate');
+      const zone = evaluateVolumeZone(sets, landmarks);
 
-    return {
-      key: muscle,
-      name: SHORT_NAMES[muscle],
-      fullName: MUSCLE_NAMES[muscle],
-      sets: sets,
-      target: muscleTarget,
-      isActive,
-      landmarks,
-      zone,
-      statusLabel: zone.badge,
-    };
-  });
+      return {
+        key: muscle,
+        name: SHORT_NAMES[muscle],
+        fullName: MUSCLE_NAMES[muscle],
+        sets: sets,
+        target: muscleTarget,
+        isActive,
+        landmarks,
+        zone,
+        statusLabel: zone.badge,
+      };
+    });
+  }, [completedSetsByMuscle, muscleBudgets, activeWorkoutMuscles]);
 
   return (
     <div className="bg-[#101828] border border-[#1e2c45] rounded-2xl p-4 sm:p-5 shadow-xl shadow-black/20 mb-6 transition-all">
@@ -255,8 +258,8 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
         <div className="mt-4 pt-3 border-t border-slate-800/80">
           <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5 font-mono">
             <span>0% (Início)</span>
-            <span className="text-sky-400">50% MEV Mínimo</span>
-            <span className="text-emerald-400 font-bold">100% Meta Semanal (176 séries)</span>
+            <span className="text-sky-400">50% MEV Mínimo ({Math.round(totalTargetSets / 2)}s)</span>
+            <span className="text-emerald-400 font-bold">100% Meta Semanal ({totalTargetSets} séries)</span>
           </div>
 
           <div className="w-full h-2 bg-slate-800/90 rounded-full overflow-hidden p-0.5 border border-slate-700/60">

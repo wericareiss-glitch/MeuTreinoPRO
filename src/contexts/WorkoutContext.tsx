@@ -139,8 +139,8 @@ export const WorkoutProvider: React.FC<{
   const exercisesPerMuscle: 1 = 1;
 
   const [weeklyBudget, setWeeklyBudget] = useState<number>(() => {
-    if (!uid) return 80;
-    return safeStorage.get(`alex_u_${uid}_weekly_budget`, currentUser?.weeklyBudget || 80);
+    if (!uid) return 90;
+    return safeStorage.get(`alex_u_${uid}_weekly_budget`, currentUser?.weeklyBudget || 90);
   });
 
   const [level, setLevel] = useState<LevelOption>(() => currentUser?.level || 'intermediate');
@@ -237,7 +237,7 @@ export const WorkoutProvider: React.FC<{
 
     const resolvedSplit = safeStorage.get(`alex_u_${currentUid}_split`, defaultSplit);
     const resolvedStrategy = safeStorage.get<StrategyOption>(`alex_u_${currentUid}_strategy`, 'synergy');
-    const resolvedBudget = safeStorage.get(`alex_u_${currentUid}_weekly_budget`, currentUser.weeklyBudget || 80);
+    const resolvedBudget = safeStorage.get(`alex_u_${currentUid}_weekly_budget`, currentUser.weeklyBudget || 90);
     const resolvedLevel = safeStorage.get<LevelOption>(`alex_u_${currentUid}_level`, currentUser.level || 'beginner');
     const resolvedEquip = safeStorage.get<EquipmentRequirement>(`alex_u_${currentUid}_equip`, 'full_gym');
 

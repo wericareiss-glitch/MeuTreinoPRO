@@ -37,13 +37,13 @@ export const WorkoutConfig: React.FC<WorkoutConfigProps> = ({
   const handleLevelChange = (newLevel: LevelOption) => {
     setLevel(newLevel);
     // Volumes padrões baseados no nível:
-    // 80 series iniciante, 120 intermediário, 160 avançado
+    // 60 séries iniciante, 90 séries intermediário, 120 séries avançado
     if (newLevel === 'beginner') {
-      setWeeklyBudget(80);
+      setWeeklyBudget(60);
     } else if (newLevel === 'intermediate') {
-      setWeeklyBudget(120);
+      setWeeklyBudget(90);
     } else if (newLevel === 'advanced') {
-      setWeeklyBudget(160);
+      setWeeklyBudget(120);
     }
   };
 
@@ -195,7 +195,7 @@ export const WorkoutConfig: React.FC<WorkoutConfigProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5 mt-2">
-              {[80, 120, 160].map((preset) => (
+              {[60, 90, 120].map((preset) => (
                 <button
                   key={preset}
                   type="button"

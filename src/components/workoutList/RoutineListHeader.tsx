@@ -107,26 +107,9 @@ export const RoutineListHeader: React.FC<RoutineListHeaderProps> = ({
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <span className="text-[10px] font-mono font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-              Rotinas da Semana ({routinesCount}) · {user.frequency || 4}x por semana
-            </span>
-            <span className="text-[10px] font-bold text-sky-300 bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/20">
-              {user.focus === 'glutes' 
-                ? '🍑 Foco Glúteos' 
-                : user.focus === 'strength' 
-                ? '🏋️ Foco Força' 
-                : user.focus === 'v_taper' 
-                ? '🔱 Foco Shape em V' 
-                : '⚖️ Foco Equilíbrio'}
-            </span>
-          </div>
           <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight">
             Seus Treinos & Rotinas
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Deslize para o lado para navegar pelos treinos da semana sem precisar rolar a página.
-          </p>
         </div>
 
         {/* Quick Creation Actions */}

@@ -3,11 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
-  Users, 
   LogOut, 
-  Trash2, 
   MoreVertical, 
   Sparkles, 
   Lock, 
@@ -19,14 +17,13 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../../types/workout';
 import { useI18n } from '../../utils/i18n';
+import { soundManager } from '../../utils/audio';
 import { ThemeToggle } from '../ThemeToggle';
 import { ActionSheet, ActionSheetItem } from '../common/ActionSheet';
 
 export interface ProfileHeaderCardProps {
   user: UserProfile;
-  onSwitchProfile?: () => void;
   onLogout: () => void;
-  onRequestDelete?: () => void;
   onOpenDonation?: () => void;
   isLinkingGoogle: boolean;
   linkGoogleError: string | null;
@@ -35,9 +32,7 @@ export interface ProfileHeaderCardProps {
 
 export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   user,
-  onSwitchProfile,
   onLogout,
-  onRequestDelete,
   onOpenDonation,
   isLinkingGoogle,
   linkGoogleError,
@@ -46,9 +41,30 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   const { t } = useI18n();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [copied, setCopied] = useState(false);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startLongPress = () => {
+    longPressTimerRef.current = setTimeout(() => {
+      soundManager.vibrate([40, 30, 40]);
+      setShowProfileMenu(true);
+    }, 600);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
 
   return (
-    <div className="relative pb-6 border-b border-theme-subtle">
+    <div
+      onPointerDown={startLongPress}
+      onPointerUp={cancelLongPress}
+      onPointerLeave={cancelLongPress}
+      onPointerCancel={cancelLongPress}
+      className="relative pb-6 border-b border-theme-subtle select-none touch-manipulation"
+    >
       {/* Botão de 3 Pontos com Fundo Transparente no Topo à Direita */}
       <div className="absolute top-0 right-0 z-30">
         <button
@@ -81,17 +97,7 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
             />
           )}
 
-          {onSwitchProfile && (
-            <ActionSheetItem
-              onClick={() => {
-                setShowProfileMenu(false);
-                onSwitchProfile();
-              }}
-              icon={<Users className="w-5 h-5" />}
-              title="Trocar Perfil / Atleta"
-              description="Alternar para outra conta ou atleta cadastrado"
-            />
-          )}
+
 
           <ActionSheetItem
             onClick={() => {
@@ -103,20 +109,6 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
             description="Sair da sessão deste dispositivo com segurança"
           />
 
-          {onRequestDelete && (
-            <div className="pt-2 mt-2 border-t border-theme-menu-subtle">
-              <ActionSheetItem
-                onClick={() => {
-                  setShowProfileMenu(false);
-                  onRequestDelete();
-                }}
-                icon={<Trash2 className="w-5 h-5" />}
-                title="Excluir Perfil"
-                description="Remover todos os dados e histórico permanentemente"
-                variant="danger"
-              />
-            </div>
-          )}
         </ActionSheet>
       </div>
 

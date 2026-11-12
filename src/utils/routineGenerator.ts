@@ -39,41 +39,102 @@ interface DayPlan {
   muscleGroups: MuscleGroup[];
 }
 
-// Ordem de prioridade anatômica baseada no FOCO do atleta
+export type GymZone = 'legs' | 'back' | 'chest' | 'shoulders' | 'arms' | 'core';
+
+export const MUSCLE_TO_ZONE: Record<MuscleGroup, GymZone> = {
+  glutes: 'legs',
+  hamstrings: 'legs',
+  quadriceps: 'legs',
+  calves: 'legs',
+  back: 'back',
+  rear_delts: 'back',
+  chest: 'chest',
+  shoulders: 'shoulders',
+  biceps: 'arms',
+  triceps: 'arms',
+  abs: 'core',
+};
+
+// Ordem das zonas físicas da academia baseada estritamente no FOCO do atleta
+export const ZONE_ORDER_BY_FOCUS: Record<FocusOption, GymZone[]> = {
+  // Foco em glúteos e pernas: inicia na área de pernas por inteiro
+  glutes: ['legs', 'back', 'chest', 'shoulders', 'arms', 'core'],
+  // Foco em V-Taper: inicia com costas e ombros, depois peito, braços e pernas
+  v_taper: ['back', 'shoulders', 'chest', 'arms', 'legs', 'core'],
+  // Foco em força: membros inferiores por inteiro, depois tronco e braços
+  strength: ['legs', 'chest', 'back', 'shoulders', 'arms', 'core'],
+  // Equilíbrio total: membros inferiores por inteiro, depois superiores
+  balanced: ['legs', 'chest', 'back', 'shoulders', 'arms', 'core'],
+};
+
+export function getIntraZoneMuscleOrder(zone: GymZone, focus: FocusOption = 'balanced'): MuscleGroup[] {
+  switch (zone) {
+    case 'legs':
+      // Se foco em glúteos, inicia com glúteos e posteriores. Caso contrário, quadríceps primeiro.
+      // Em TODOS os casos, PANTURRILHA encerra o bloco de pernas para concluir toda a perna junta!
+      return focus === 'glutes'
+        ? ['glutes', 'hamstrings', 'quadriceps', 'calves']
+        : ['quadriceps', 'hamstrings', 'glutes', 'calves'];
+    case 'back':
+      return ['back', 'rear_delts'];
+    case 'chest':
+      return ['chest'];
+    case 'shoulders':
+      return ['shoulders'];
+    case 'arms':
+      return focus === 'v_taper' ? ['biceps', 'triceps'] : ['triceps', 'biceps'];
+    case 'core':
+      return ['abs'];
+  }
+}
+
+export function getMuscleFocusOrderRank(muscle: MuscleGroup, focus: FocusOption = 'balanced'): number {
+  const zone = MUSCLE_TO_ZONE[muscle] || 'core';
+  const zoneOrder = ZONE_ORDER_BY_FOCUS[focus] || ZONE_ORDER_BY_FOCUS.balanced;
+  const zoneIndex = zoneOrder.indexOf(zone);
+  const intraZoneList = getIntraZoneMuscleOrder(zone, focus);
+  const intraIndex = intraZoneList.indexOf(muscle);
+
+  // Cada zona ganha 100 pontos de base. Isso impede matematicamente que qualquer exercício
+  // de outro setor se intercale entre exercícios da mesma zona de pernas ou tronco.
+  return (zoneIndex >= 0 ? zoneIndex : 10) * 100 + (intraIndex >= 0 ? intraIndex : 50);
+}
+
+// Ordem de prioridade anatômica baseada no FOCO do atleta (com zonas contíguas)
 const FOCUS_PRIORITIES: Record<FocusOption, MuscleGroup[]> = {
   glutes: [
     'glutes',
     'hamstrings',
     'quadriceps',
     'calves',
-    'abs',
     'back',
+    'rear_delts',
     'chest',
     'shoulders',
     'triceps',
     'biceps',
-    'rear_delts',
+    'abs',
   ],
   strength: [
     'quadriceps',
+    'hamstrings',
+    'glutes',
+    'calves',
     'chest',
     'back',
-    'hamstrings',
     'shoulders',
-    'glutes',
     'triceps',
     'biceps',
-    'calves',
-    'abs',
     'rear_delts',
+    'abs',
   ],
   v_taper: [
     'back',
+    'rear_delts',
     'shoulders',
     'chest',
     'biceps',
     'triceps',
-    'rear_delts',
     'quadriceps',
     'hamstrings',
     'glutes',
@@ -81,19 +142,44 @@ const FOCUS_PRIORITIES: Record<FocusOption, MuscleGroup[]> = {
     'abs',
   ],
   balanced: [
-    'chest',
-    'back',
     'quadriceps',
     'hamstrings',
-    'shoulders',
     'glutes',
+    'calves',
+    'chest',
+    'back',
+    'shoulders',
+    'rear_delts',
     'triceps',
     'biceps',
-    'calves',
     'abs',
-    'rear_delts',
   ],
 };
+
+export function getSplitDisplayName(split: SplitOption | string): string {
+  switch (split) {
+    case 'fullbody':
+      return 'Fullbody';
+    case 'abcde':
+      return 'ABCDE';
+    case 'upper_lower':
+      return 'Upper/Lower';
+    case 'upper':
+      return 'Upper';
+    case 'lower':
+      return 'Lower';
+    case 'ppl':
+      return 'PPL';
+    case 'push':
+      return 'Push';
+    case 'pull':
+      return 'Pull';
+    case 'legs':
+      return 'Legs';
+    default:
+      return 'Fullbody';
+  }
+}
 
 export function generateWeeklyRoutines(params: RoutineGeneratorParams): GeneratedWorkoutRoutine[] {
   const { user } = params;
@@ -130,19 +216,7 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
   // MONTAGEM DOS PLANOS DIÁRIOS
   // =========================================================================
   if (requestedSplit === 'fullbody') {
-    const fullBodyBaseMuscles: MuscleGroup[] = [
-      'quadriceps',
-      'hamstrings',
-      'glutes',
-      'chest',
-      'back',
-      'shoulders',
-      'rear_delts',
-      'triceps',
-      'biceps',
-      'calves',
-      'abs',
-    ];
+    const fullBodyBaseMuscles: MuscleGroup[] = [...(FOCUS_PRIORITIES[focus] || FOCUS_PRIORITIES.balanced)];
     const daysCount = Math.min(Math.max(1, frequency), 6);
     dayPlans = Array.from({ length: daysCount }).map((_, idx) => ({
       letter: letters[idx],
@@ -285,13 +359,17 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
     ];
   }
 
-  // Re-indexa letras e nomes em ordem estrita (A, B, C, D...) mesmo se dias intermediários foram removidos
+  // Re-indexa letras e nomes: no ABCDE somente "Treino [Letra]", e nos demais "Treino [Nome do Split] [Letra]"
   dayPlans = dayPlans.map((plan, idx) => {
     const l = letters[idx] || String.fromCharCode(65 + idx);
+    const currentSplit = plan.split || requestedSplit;
+    const name = currentSplit === 'abcde'
+      ? `Treino ${l}`
+      : `Treino ${getSplitDisplayName(currentSplit)} ${l}`;
     return {
       ...plan,
       letter: l,
-      name: `Treino ${l}`,
+      name,
     };
   });
 
@@ -309,9 +387,41 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
 
   if (hasCustomBudgets && customBudgets) {
     // Usa diretamente a meta de séries configurada pelo atleta para cada músculo ativo
+    let allocatedTotal = 0;
     sortedMuscles.forEach((m) => {
-      muscleBudgets[m] = Math.max(0, customBudgets[m] || 0);
+      const val = Math.max(0, customBudgets[m] || 0);
+      muscleBudgets[m] = val;
+      allocatedTotal += val;
     });
+
+    // Se houver séries sobrando (por exemplo após exclusão de músculos), distribui automaticamente baseado no FOCO
+    const leftover = totalWeeklyBudget - allocatedTotal;
+    if (leftover > 0 && sortedMuscles.length > 0) {
+      const baseWeights = getPresetWeights(focus);
+      const sumActiveWeights = sortedMuscles.reduce((acc, m) => acc + (baseWeights[m] || 8), 0);
+
+      let distributed = 0;
+      const extras: Record<MuscleGroup, number> = {} as Record<MuscleGroup, number>;
+      sortedMuscles.forEach((m) => {
+        const w = baseWeights[m] || 8;
+        const share = Math.floor((w / (sumActiveWeights || 1)) * leftover);
+        extras[m] = share;
+        distributed += share;
+      });
+
+      let residue = leftover - distributed;
+      let pIdx = 0;
+      while (residue > 0 && sortedMuscles.length > 0) {
+        const targetM = sortedMuscles[pIdx % sortedMuscles.length];
+        extras[targetM] = (extras[targetM] || 0) + 1;
+        residue -= 1;
+        pIdx++;
+      }
+
+      sortedMuscles.forEach((m) => {
+        muscleBudgets[m] += (extras[m] || 0);
+      });
+    }
   } else if (totalWeeklyBudget <= sortedMuscles.length) {
     // Se o totalWeeklyBudget for menor que o número de músculos, distribui 1 a 1 para os de maior prioridade
     for (let i = 0; i < totalWeeklyBudget; i++) {
@@ -368,7 +478,12 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
   const routines: GeneratedWorkoutRoutine[] = dayPlans.map((plan, planIdx) => {
     const items: WorkoutItem[] = [];
 
-    plan.muscleGroups.forEach((mKey) => {
+    // Ordena os músculos do plano para garantir blocos anatômicos contíguos na ordem do FOCO
+    const sortedPlanMuscles = [...plan.muscleGroups].sort(
+      (a, b) => getMuscleFocusOrderRank(a, focus) - getMuscleFocusOrderRank(b, focus)
+    );
+
+    sortedPlanMuscles.forEach((mKey) => {
       const totalMuscleBudget = muscleBudgets[mKey] || 0;
       if (totalMuscleBudget <= 0) return; // Músculo excluído ou sem séries
 
@@ -444,8 +559,9 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       });
     });
 
-    // Ordenação Biomecânica da Fadiga: Compostos Pesados > Isolados > Core/Panturrilha
-    const sortedItems = sortWorkoutItemsByFatigueHierarchy(items);
+    // Ordenação Anatômica Contígua Baseada no FOCO:
+    // Conclui o setor inteiro (ex: Pernas completas) antes de transitar para outro setor da academia
+    const sortedItems = sortWorkoutItemsByFocusAndAnatomy(items, focus);
     const totalSets = sortedItems.reduce((acc, curr) => acc + curr.sets, 0);
     const estimatedMinutes = Math.round((totalSets * (45 + restSeconds)) / 60);
 
@@ -456,7 +572,7 @@ export function generateWeeklyRoutines(params: RoutineGeneratorParams): Generate
       subtitle: plan.subtitle,
       split: plan.split,
       strategy: targetPeriodization,
-      muscleGroups: plan.muscleGroups,
+      muscleGroups: sortedPlanMuscles,
       items: sortedItems,
       totalSets,
       estimatedMinutes: Math.max(20, estimatedMinutes),
@@ -541,10 +657,35 @@ export function getExerciseFatigueRank(item: WorkoutItem): number {
   return 3;
 }
 
-export function sortWorkoutItemsByFatigueHierarchy(items: WorkoutItem[]): WorkoutItem[] {
+/**
+ * Ordenação Anatômica Contígua Baseada no FOCO:
+ * Garante que se iniciar com perna, termina a perna inteira antes de iniciar outro setor.
+ * Dentro de cada setor, a ordem anatômica do foco é respeitada e exercícios compostos
+ * mais pesados vêm antes de isoladores.
+ */
+export function sortWorkoutItemsByFocusAndAnatomy(
+  items: WorkoutItem[],
+  focus: FocusOption = 'balanced'
+): WorkoutItem[] {
   return [...items].sort((a, b) => {
+    const rankA = getMuscleFocusOrderRank(a.muscleKey, focus);
+    const rankB = getMuscleFocusOrderRank(b.muscleKey, focus);
+
+    if (rankA !== rankB) {
+      return rankA - rankB;
+    }
+
+    // Mesmo músculo/zona: demanda neural (composto mais pesado antes de isolador)
     return getExerciseFatigueRank(a) - getExerciseFatigueRank(b);
   });
+}
+
+// Mantemos o alias para retrocompatibilidade
+export function sortWorkoutItemsByFatigueHierarchy(
+  items: WorkoutItem[],
+  focus: FocusOption = 'balanced'
+): WorkoutItem[] {
+  return sortWorkoutItemsByFocusAndAnatomy(items, focus);
 }
 
 /**
@@ -563,6 +704,8 @@ export function generateQuickWorkoutRoutine(
   const user = 'user' in optionsOrUser ? optionsOrUser.user : optionsOrUser;
   const equip = 'equip' in optionsOrUser && optionsOrUser.equip ? optionsOrUser.equip : fallbackEquip;
   const restSeconds = 'restSeconds' in optionsOrUser && optionsOrUser.restSeconds ? optionsOrUser.restSeconds : 60;
+  const userFocus: FocusOption = user.focus || 'balanced';
+
   const getFilteredExercise = (mKey: MuscleGroup, preferredProfile?: string) => {
     const list = EXERCISE_DATABASE[mKey] || [];
     let pool = list.filter((e) => {
@@ -579,7 +722,7 @@ export function generateQuickWorkoutRoutine(
     return pool[Math.floor(Math.random() * pool.length)] || pool[0];
   };
 
-  const items: WorkoutItem[] = [
+  const rawItems: WorkoutItem[] = [
     // 1. Joelho Dominante
     {
       id: `quick_knee_${Date.now()}`,
@@ -623,8 +766,8 @@ export function generateQuickWorkoutRoutine(
     // 5. Deltoide Lateral ou Glúteo (baseado no foco)
     {
       id: `quick_iso_${Date.now()}`,
-      muscleKey: user.focus === 'glutes' ? 'glutes' : 'shoulders',
-      exercise: getFilteredExercise(user.focus === 'glutes' ? 'glutes' : 'shoulders'),
+      muscleKey: userFocus === 'glutes' ? 'glutes' : 'shoulders',
+      exercise: getFilteredExercise(userFocus === 'glutes' ? 'glutes' : 'shoulders'),
       sets: 3,
       reps: '10 a 12',
       rest: 45,
@@ -632,10 +775,13 @@ export function generateQuickWorkoutRoutine(
     },
   ];
 
+  // Ordena os itens do treino rápido com base no foco e contiguidade anatômica
+  const items = sortWorkoutItemsByFocusAndAnatomy(rawItems, userFocus);
   const totalSets = items.reduce((acc, curr) => acc + curr.sets, 0);
 
   const nowTs = Date.now();
   const randSuffix = Math.random().toString(36).slice(2, 7);
+  const orderedMuscles = Array.from(new Set(items.map((it) => it.muscleKey)));
 
   return {
     id: `quick_routine_${nowTs}_${randSuffix}`,
@@ -643,7 +789,7 @@ export function generateQuickWorkoutRoutine(
     name: 'Treino Rápido Full Body',
     subtitle: 'Padrão Dobradiça, Joelho, Empurrar & Puxar (Alta Eficiência)',
     split: 'fullbody',
-    muscleGroups: ['quadriceps', 'hamstrings', 'chest', 'back', user.focus === 'glutes' ? 'glutes' : 'shoulders'],
+    muscleGroups: orderedMuscles,
     items,
     totalSets,
     estimatedMinutes: 35,

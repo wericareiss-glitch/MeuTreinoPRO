@@ -6,10 +6,10 @@
    ========================================================================== */
 
 :root {
-  /* Default: High-Contrast Dark Mode */
+  /* Default: High-Contrast Dark Mode (Calibrado para descanso visual e antirreflexo) */
   color-scheme: dark;
   --color-scheme: dark;
-  --bg-app: #080d1a;
+  --bg-app: #0a0f1d;
   --bg-surface: #0f172a;
   --bg-surface-secondary: #121c32;
   --bg-card: #0c1424;
@@ -17,8 +17,8 @@
   --bg-input: #080d19;
   --border-subtle: #1e293b;
   --border-strong: #334155;
-  --text-heading: #ffffff;
-  --text-body: #e2e8f0;
+  --text-heading: #f8fafc;
+  --text-body: #cbd5e1;
   --text-muted: #94a3b8;
   --text-faint: #64748b;
   
@@ -138,6 +138,20 @@ html {
   padding: 0;
   touch-action: pan-y;
   -webkit-text-size-adjust: 100%;
+  /* Medidas calibradas nativamente para conforto visual e ergonomia no mobile e notebook */
+  font-size: 13.5px;
+}
+
+@media (min-width: 640px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 1024px) {
+  html {
+    font-size: 14px;
+  }
 }
 
 body {

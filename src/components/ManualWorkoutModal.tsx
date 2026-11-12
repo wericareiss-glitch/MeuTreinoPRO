@@ -64,7 +64,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
   const nextLetter = letters[existingRoutinesCount % letters.length] || 'A';
 
   const [name, setName] = useState(() => editingRoutine?.name || `Treino ${nextLetter}`);
-  const [letter, setLetter] = useState(() => editingRoutine?.letter || nextLetter);
+  const letter = editingRoutine?.letter || nextLetter;
   const [subtitle, setSubtitle] = useState(() => editingRoutine?.subtitle || 'Treino Personalizado');
   const [split, setSplit] = useState<SplitOption>(() => editingRoutine?.split || 'upper_lower');
   const [items, setItems] = useState<WorkoutItem[]>(() => editingRoutine?.items || []);
@@ -82,13 +82,11 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
       setValidationError(null);
       if (editingRoutine) {
         setName(editingRoutine.name);
-        setLetter(editingRoutine.letter);
         setSubtitle(editingRoutine.subtitle);
         setSplit(editingRoutine.split);
         setItems(editingRoutine.items || []);
       } else {
         setName(`Treino ${nextLetter}`);
-        setLetter(nextLetter);
         setSubtitle('Treino Personalizado');
         setSplit('upper_lower');
         setItems([]);
@@ -376,19 +374,6 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
 
           {/* Identificação do Treino */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-[#0a101d] p-3.5 rounded-2xl border border-slate-800/80">
-            <div className="sm:col-span-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Letra
-              </label>
-              <input
-                type="text"
-                maxLength={2}
-                value={letter}
-                onChange={(e) => setLetter(e.target.value.toUpperCase())}
-                className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-2 py-2 text-center font-black text-sm text-emerald-400 focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
             <div className="sm:col-span-5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                 Nome do Treino
@@ -397,14 +382,14 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Treino A · Peitoral & Bíceps"
+                placeholder="Ex: Treino Peitoral & Bíceps"
                 className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-emerald-500"
               />
             </div>
 
-            <div className="sm:col-span-3">
+            <div className="sm:col-span-4">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Subtítulo / Foco
+                Subtítulo
               </label>
               <input
                 type="text"
@@ -415,9 +400,9 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
               />
             </div>
 
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-3">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Divisão (Split)
+                Foco / Divisão
               </label>
               <select
                 value={split}

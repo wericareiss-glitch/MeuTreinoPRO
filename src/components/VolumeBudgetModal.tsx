@@ -16,9 +16,9 @@ import {
   Trash2,
   RotateCcw
 } from 'lucide-react';
-import { MuscleGroup } from '../types/workout';
+import { MuscleGroup, FocusOption } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
-import { BUDGET_PRESETS, ALL_MUSCLE_GROUPS, scaleWeightsToBudget } from '../utils/auth';
+import { BUDGET_PRESETS, ALL_MUSCLE_GROUPS, scaleWeightsToBudget, distributeLeftoverSetsByFocus } from '../utils/auth';
 
 interface VolumeBudgetModalProps {
   isOpen: boolean;
@@ -26,6 +26,7 @@ interface VolumeBudgetModalProps {
   weeklyBudget: number;
   muscleBudgets: Record<MuscleGroup, number>;
   onSaveBudgets: (totalBudget: number, newBudgets: Record<MuscleGroup, number>) => void;
+  userFocus?: FocusOption;
 }
 
 export const VolumeBudgetModal: React.FC<VolumeBudgetModalProps> = ({
@@ -34,11 +35,13 @@ export const VolumeBudgetModal: React.FC<VolumeBudgetModalProps> = ({
   weeklyBudget: initialBudget,
   muscleBudgets: initialMuscles,
   onSaveBudgets,
+  userFocus = 'balanced',
 }) => {
   const [targetBudget, setTargetBudget] = useState(initialBudget || 88);
   const [budgets, setBudgets] = useState<Record<MuscleGroup, number>>(() => ({
     ...initialMuscles,
   }));
+  const [redistributeNotice, setRedistributeNotice] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -74,11 +77,27 @@ export const VolumeBudgetModal: React.FC<VolumeBudgetModalProps> = ({
     setBudgets((prev) => {
       const current = prev[m] || 0;
       if (current > 0) {
-        // Exclui o músculo (0 séries)
-        return { ...prev, [m]: 0 };
+        // Exclui o músculo (0 séries) e redistribui automaticamente as séries sobrando baseado no foco
+        const updated = distributeLeftoverSetsByFocus(prev, targetBudget, userFocus, m);
+        const focusName = BUDGET_PRESETS[userFocus]?.name || userFocus;
+        setRedistributeNotice(`Séries de ${MUSCLE_NAMES[m]} (${current}s) redistribuídas nos músculos ativos com foco em "${focusName}"!`);
+        setTimeout(() => setRedistributeNotice(null), 3500);
+        return updated;
       }
-      // Restaura para 8 séries padrão
-      return { ...prev, [m]: 8 };
+      // Restaura para o valor proporcional ao foco
+      const activeCount = ALL_MUSCLE_GROUPS.filter((group) => (prev[group] || 0) > 0).length + 1;
+      const restoredVal = Math.max(4, Math.round(targetBudget / (activeCount || 1)));
+      return { ...prev, [m]: restoredVal };
+    });
+  };
+
+  const handleRedistributeLeftover = () => {
+    setBudgets((prev) => {
+      const updated = distributeLeftoverSetsByFocus(prev, targetBudget, userFocus);
+      const focusName = BUDGET_PRESETS[userFocus]?.name || userFocus;
+      setRedistributeNotice(`${diff} séries sobrando distribuídas automaticamente com foco em "${focusName}"!`);
+      setTimeout(() => setRedistributeNotice(null), 3500);
+      return updated;
     });
   };
 
@@ -189,7 +208,31 @@ export const VolumeBudgetModal: React.FC<VolumeBudgetModalProps> = ({
             </div>
 
             <p className="text-[11px] font-medium mt-1.5">{balanceMessage}</p>
+
+            {diff > 0 && (
+              <div className="mt-2.5 pt-2 border-t border-sky-500/20 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] text-sky-200">
+                  Restam <strong>{diff} séries</strong>. Deseja redistribuir pelo seu foco ({BUDGET_PRESETS[userFocus]?.name || userFocus})?
+                </span>
+                <button
+                  type="button"
+                  onClick={handleRedistributeLeftover}
+                  className="px-2.5 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-300" />
+                  <span>Distribuir Sobras por Foco</span>
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Feedback de Redistribuição Automática */}
+          {redistributeNotice && (
+            <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-2 animate-fadeIn shadow-sm">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{redistributeNotice}</span>
+            </div>
+          )}
 
           {/* Modelos Sugeridos de Séries */}
           <div>

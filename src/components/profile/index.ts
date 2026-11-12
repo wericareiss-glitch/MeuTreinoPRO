@@ -8,4 +8,3 @@ export * from './ProfileHeaderCard';
 export * from './BodyMetricsForm';
 export * from './WeeklyVolumeCard';
 export * from './CollapsiblePreferences';
-export * from './DeleteProfileModal';
