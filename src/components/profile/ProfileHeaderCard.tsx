@@ -11,9 +11,7 @@ import {
   Lock, 
   Cloud,
   User,
-  Heart,
-  Copy,
-  Check
+  Heart
 } from 'lucide-react';
 import { UserProfile } from '../../types/workout';
 import { soundManager } from '../../utils/audio';
@@ -38,7 +36,6 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   onConnectGoogle,
 }) => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [copied, setCopied] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const startLongPress = () => {
@@ -144,24 +141,8 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
                 Conecte sua Conta Google para salvar seus treinos e metas na nuvem com autenticação segura de plataforma.
               </p>
               {linkGoogleError && (
-                <div className="mt-2 p-2.5 rounded-xl bg-rose-950/60 border border-rose-800/60 text-[11px] text-rose-300 space-y-1.5">
+                <div className="mt-2 p-2.5 rounded-xl bg-rose-950/60 border border-rose-800/60 text-[11px] text-rose-300">
                   <p className="font-semibold text-rose-200">{linkGoogleError}</p>
-                  {linkGoogleError.includes('domínios autorizados') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (typeof window !== 'undefined' && navigator.clipboard) {
-                          navigator.clipboard.writeText(window.location.hostname);
-                          setCopied(true);
-                          setTimeout(() => setCopied(false), 2000);
-                        }
-                      }}
-                      className="py-1 px-2.5 rounded bg-rose-900/60 hover:bg-rose-900 text-white font-bold text-[10px] inline-flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copied ? 'Domínio copiado!' : `Copiar Domínio (${typeof window !== 'undefined' ? window.location.hostname : ''})`}</span>
-                    </button>
-                  )}
                 </div>
               )}
             </div>

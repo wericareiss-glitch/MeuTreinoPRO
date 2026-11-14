@@ -43,23 +43,23 @@ const PRESETS: DonationPreset[] = [
   {
     value: 5,
     label: 'R$ 5,00',
-    badge: 'Café do Dev',
+    badge: 'Café Expresso',
     icon: <Coffee className="w-4 h-4 text-amber-400" />,
-    desc: 'Um café para manter o foco no código!',
+    desc: 'Um incentivo para manter o app sempre evoluindo!',
   },
   {
     value: 10,
     label: 'R$ 10,00',
     badge: 'Energia',
     icon: <Zap className="w-4 h-4 text-emerald-400" />,
-    desc: 'Ajuda com banco de dados e APIs.',
+    desc: 'Ajuda a manter seus treinos salvos e disponíveis.',
   },
   {
     value: 20,
     label: 'R$ 20,00',
     badge: 'Whey Protein',
     icon: <Flame className="w-4 h-4 text-orange-400" />,
-    desc: 'Apoio aos servidores e infraestrutura.',
+    desc: 'Apoio para manter o aplicativo rápido e estável.',
   },
   {
     value: 50,
@@ -222,7 +222,7 @@ export const DonationModal: React.FC<DonationModalProps> = ({
         <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1 overscroll-contain">
           {/* Mensagem Institucional Discreta */}
           <div className="bg-theme-surface-secondary border border-theme-subtle rounded-2xl p-3.5 text-xs text-theme-muted leading-relaxed">
-            O <strong>MeuTreino Pro</strong> é um projeto independente, gratuito e sem anúncios invasivos. Sua contribuição voluntária cobre custos de servidores e financia novas ferramentas científicas.
+            O <strong>MeuTreino Pro</strong> é um projeto independente, gratuito e sem anúncios invasivos. Sua contribuição voluntária ajuda a manter o app no ar e financia novas ferramentas de treino.
           </div>
 
           {/* 1. Escolha de Valores Fixos */}

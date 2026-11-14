@@ -76,7 +76,7 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
       return;
     }
     setIsVerifyingIntegrity(true);
-    setFeedback({ type: 'info', message: 'Comparando dados do safeStorage local com o Firestore...' });
+    setFeedback({ type: 'info', message: 'Comparando seus dados locais com a nuvem...' });
     soundManager.vibrate(20);
 
     try {
@@ -96,7 +96,7 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
       } else {
         setFeedback({ 
           type: 'success', 
-          message: 'Banco de dados 100% íntegro! Todos os treinos, rotinas e medidas estão em sincronia na nuvem.' 
+          message: 'Tudo sincronizado! Todos os seus treinos, rotinas e medidas estão salvos na nuvem.' 
         });
         soundManager.vibrate(30);
       }
@@ -120,7 +120,7 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
     if (!auth.currentUser || user.isVisitor || user.id.startsWith('user_guest_')) {
       setFeedback({
         type: 'info',
-        message: 'Conecte sua conta Google no perfil ou tela de login para enviar dados à nuvem Firebase.'
+        message: 'Conecte sua conta Google no perfil ou na tela de login para salvar seus dados na nuvem.'
       });
       return;
     }
@@ -132,7 +132,7 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
         const nowIso = new Date().toISOString();
         safeStorage.set(`firebase_last_sync_${user.id}`, nowIso);
         setLastSyncTime(nowIso);
-        setFeedback({ type: 'success', message: 'Backup completo enviado para o Firebase com sucesso!' });
+        setFeedback({ type: 'success', message: 'Backup completo enviado para a nuvem com sucesso!' });
         soundManager.vibrate([30, 50, 30]);
       } else {
         setFeedback({ type: 'error', message: 'Não foi possível enviar agora. Verifique sua conexão.' });
@@ -151,7 +151,7 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
     if (!auth.currentUser || user.isVisitor || user.id.startsWith('user_guest_')) {
       setFeedback({
         type: 'info',
-        message: 'Conecte sua conta Google para restaurar treinos salvos na nuvem Firebase.'
+        message: 'Conecte sua conta Google para restaurar seus treinos salvos na nuvem.'
       });
       return;
     }
@@ -175,7 +175,7 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
           onRefreshData();
         }
       } else {
-        setFeedback({ type: 'error', message: 'Nenhum dado remoto encontrado no Firestore para esta conta.' });
+        setFeedback({ type: 'error', message: 'Nenhum dado encontrado na nuvem para esta conta.' });
       }
     } catch (err) {
       setFeedback({ type: 'error', message: 'Erro ao baixar dados da nuvem.' });
@@ -199,22 +199,22 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                Integridade & Nuvem Firebase
+                Backup & Sincronização na Nuvem
               </h3>
               {isCloudConnected ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                   <Database className="w-3 h-3" />
-                  Firestore Conectado
+                  Nuvem Conectada
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30">
                   <Database className="w-3 h-3" />
-                  Armazenamento Local
+                  Salvo no Aparelho
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Auditoria de integridade entre safeStorage local e nuvem com merge multi-dispositivo
+              Seus treinos e medidas sincronizados automaticamente entre seus dispositivos
             </p>
           </div>
         </div>
@@ -292,8 +292,8 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
           <ShieldCheck className={`w-5 h-5 ${isVerifyingIntegrity ? 'animate-spin' : ''}`} />
           <span>
             {isVerifyingIntegrity
-              ? 'Auditando Integridade & Mesclando...'
-              : 'Verificar Integridade & Mesclar Dados'}
+              ? 'Sincronizando Dados...'
+              : 'Sincronizar e Verificar Dados'}
           </span>
         </button>
 
@@ -304,10 +304,10 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
             onClick={handleSyncNow}
             disabled={isSyncing || !isOnline}
             className="flex-1 inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 disabled:opacity-50 transition-all cursor-pointer"
-            title="Enviar todas as rotinas e sessões locais para o Firestore"
+            title="Enviar todos os treinos e registros para a nuvem"
           >
             <UploadCloud className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'Enviando...' : 'Forçar Envio Local'}</span>
+            <span>{isSyncing ? 'Enviando...' : 'Enviar para a Nuvem'}</span>
           </button>
 
           <button
@@ -315,7 +315,7 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
             onClick={handleRestoreFromCloud}
             disabled={isRestoring || !isOnline}
             className="flex-1 inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 disabled:opacity-50 transition-all cursor-pointer"
-            title="Restaurar dados salvos no Firestore caso esteja em um novo dispositivo"
+            title="Restaurar dados salvos na nuvem para este aparelho"
           >
             <DownloadCloud className={`w-4 h-4 ${isRestoring ? 'animate-spin' : ''}`} />
             <span>{isRestoring ? 'Baixando...' : 'Restaurar da Nuvem'}</span>
@@ -323,7 +323,7 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
         </div>
       </div>
 
-      {/* Botão de Expansão do Relatório de Integridade */}
+      {/* Botão de Expansão do Relatório de Sincronização */}
       <button
         type="button"
         onClick={() => setShowDetails((prev) => !prev)}
@@ -331,10 +331,10 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
       >
         <span className="flex items-center gap-2">
           <Activity className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Relatório de Integridade Multi-Dispositivo</span>
+          <span>Resumo da Sincronização</span>
           {integrityReport && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300">
-              {integrityReport.status === 'healthy' ? '100% Íntegro' : `${integrityReport.discrepanciesResolved} mesclados`}
+              {integrityReport.status === 'healthy' ? 'Sincronizado' : `${integrityReport.discrepanciesResolved} atualizados`}
             </span>
           )}
         </span>
@@ -407,16 +407,16 @@ export const FirebaseSyncCard: React.FC<FirebaseSyncCardProps> = ({ user, onRefr
             <Smartphone className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <div>
               <span className="text-slate-200 font-semibold block mb-0.5">
-                Sincronismo Multi-Dispositivo Ativo
+                Sincronização Multi-Dispositivo Ativa
               </span>
-              O PWA compara e consolida automaticamente seus treinos ao reconectar à internet ou retornar ao app, permitindo usar o celular na academia e o computador em casa sem perder nenhuma série.
+              O aplicativo sincroniza automaticamente seus treinos ao reconectar à internet, permitindo usar o celular na academia e o computador em casa sem perder nenhuma série.
             </div>
           </div>
         </div>
       )}
 
       <p className="text-[11px] text-slate-500 text-center mt-3">
-        ✓ Merge automático bidirecional ativado para safeStorage & Firestore
+        ✓ Sincronização automática entre este aparelho e a nuvem ativada
       </p>
     </div>
   );

@@ -171,7 +171,7 @@ export async function loginWithGoogle(): Promise<{
 
     if (code === 'auth/unauthorized-domain' || rawMessage.includes('auth/unauthorized-domain')) {
       return { 
-        error: `O domínio "${currentHost}" não está na lista de domínios autorizados do Firebase Authentication (ou foi cadastrado com "https://" ou barra final no console).`,
+        error: 'Login com Google temporariamente indisponível neste endereço. Você pode entrar como visitante ou com usuário e senha.',
         code: 'auth/unauthorized-domain',
         unauthorizedDomain: currentHost,
         rawMessage
@@ -179,7 +179,7 @@ export async function loginWithGoogle(): Promise<{
     }
     if (code === 'auth/operation-not-allowed' || rawMessage.includes('operation-not-allowed')) {
       return {
-        error: 'O provedor Google ainda não está ativado no Firebase Console. Ative o provedor "Google" em Firebase Console > Authentication > Sign-in method.',
+        error: 'Login com Google não está disponível no momento. Entre com usuário e senha ou como visitante.',
         code: 'auth/operation-not-allowed',
         rawMessage
       };
@@ -187,8 +187,8 @@ export async function loginWithGoogle(): Promise<{
     if (code === 'auth/popup-closed-by-user') {
       return { 
         error: isIframe
-          ? 'O popup foi fechado pelo navegador ou bloqueado pelo iFrame de prévia. Abra o aplicativo em uma nova aba completa para conectar sua conta Google.'
-          : 'O popup foi fechado antes de concluir a sincronização (ou foi bloqueado pelo bloqueador de cookies de terceiros do navegador). Tente abrir em uma nova aba separada.',
+          ? 'A janela do Google foi fechada ou bloqueada. Abra o aplicativo em uma nova aba para conectar sua conta Google.'
+          : 'O login foi cancelado antes da conclusão. Tente novamente.',
         code,
         unauthorizedDomain: currentHost,
         rawMessage
@@ -204,21 +204,21 @@ export async function loginWithGoogle(): Promise<{
     if (code === 'auth/popup-blocked') {
       return { 
         error: isIframe
-          ? 'O popup foi bloqueado pelo iFrame do editor. Clique no botão "Abrir em Nova Aba" para autenticar diretamente no navegador.'
-          : 'O popup de login foi bloqueado pelo navegador. Por favor, permita popups para este site nas configurações da barra de endereços.',
+          ? 'A janela de login foi bloqueada. Clique em "Abrir em Nova Aba" para conectar sua conta Google.'
+          : 'O navegador bloqueou a janela de login. Permita pop-ups para este site e tente novamente.',
         code,
         rawMessage 
       };
     }
     if (code === 'auth/network-request-failed') {
       return {
-        error: 'Falha de conexão com os servidores de autenticação do Google. Verifique sua conexão de internet.',
+        error: 'Sem conexão com a internet. Verifique sua rede e tente novamente.',
         code,
         rawMessage
       };
     }
     return { 
-      error: rawMessage ? `Erro ao autenticar com o Google (${code || 'desconhecido'}): ${rawMessage}` : 'Falha ao entrar com Google.', 
+      error: 'Não foi possível entrar com o Google no momento. Tente novamente ou continue como visitante.', 
       code,
       rawMessage 
     };

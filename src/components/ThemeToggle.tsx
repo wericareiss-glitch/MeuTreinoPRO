@@ -292,7 +292,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
               : 'text-slate-400 hover:text-slate-200'
           }`}
           aria-pressed={!isSystem && isDark}
-          title="Forçar Modo Escuro (salva no localStorage e desativa detecção automática)"
+          title="Usar modo escuro"
         >
           <Moon className={`w-3.5 h-3.5 ${!isSystem && isDark ? 'text-slate-950' : 'text-sky-400'}`} />
           <span>Dark (Escuro)</span>
@@ -306,7 +306,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
               : 'text-slate-400 hover:text-slate-200'
           }`}
           aria-pressed={!isSystem && !isDark}
-          title="Forçar Modo Claro (salva no localStorage e desativa detecção automática)"
+          title="Usar modo claro"
         >
           <Sun className={`w-3.5 h-3.5 ${!isSystem && !isDark ? 'text-slate-950' : 'text-amber-500'}`} />
           <span>Light (Claro)</span>

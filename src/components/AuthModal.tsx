@@ -20,7 +20,6 @@ import {
   Fingerprint,
   ScanFace,
   Cloud,
-  Copy,
   ExternalLink
 } from 'lucide-react';
 import { UserProfile, GenderOption, LevelOption, FocusOption, SplitOption } from '../types/workout';
@@ -47,11 +46,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
     return authStorage.hasRegisteredUsers() ? 'login' : 'register';
   });
   const [error, setError] = useState<string | null>(null);
-  const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [errorRaw, setErrorRaw] = useState<string | null>(null);
-  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
-  const [copiedDomain, setCopiedDomain] = useState(false);
-  const [copiedDiagnostic, setCopiedDiagnostic] = useState(false);
 
   // Login form
   const [loginUsername, setLoginUsername] = useState('');
@@ -121,20 +115,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
 
   const handleGoogleSignIn = async () => {
     setError(null);
-    setErrorCode(null);
-    setErrorRaw(null);
-    setUnauthorizedDomain(null);
     setIsGoogleLoading(true);
     const res = await loginWithGoogle();
     setIsGoogleLoading(false);
 
     if (res.error || !res.user) {
-      setError(res.error || 'Falha ao autenticar com o Google.');
-      setErrorCode(res.code || null);
-      setErrorRaw(res.rawMessage || null);
-      if (res.unauthorizedDomain) {
-        setUnauthorizedDomain(res.unauthorizedDomain);
-      }
+      setError(res.error || 'Não foi possível entrar com o Google agora.');
       return;
     }
 
@@ -322,8 +308,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
           {typeof window !== 'undefined' && window.self !== window.top && (
             <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-[11px] flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <span className="font-bold text-amber-300 block">Modo Prévia (iFrame)</span>
-                <span className="text-[10px] text-amber-200/80">O Google bloqueia popup dentro do editor.</span>
+                <span className="font-bold text-amber-300 block">Login com Google</span>
+                <span className="text-[10px] text-amber-200/80">Abra em uma nova aba para entrar com sua conta Google.</span>
               </div>
               <a
                 href={typeof window !== 'undefined' ? window.location.href : '#'}
@@ -403,49 +389,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
           </button>
         </div>
 
-        {/* Error message / Unauthorized Domain Banner */}
+        {/* Error message */}
         {error && (
           <div className="p-3.5 mb-4 rounded-2xl bg-rose-950/40 border border-rose-900/60 text-rose-300 text-xs space-y-2.5">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-rose-200">{error}</span>
-                  {errorCode && (
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/50 text-rose-300 border border-rose-800/60">
-                      {errorCode}
-                    </span>
-                  )}
-                </div>
-
-                {unauthorizedDomain && (
-                  <p className="text-[11px] text-rose-300/80 mt-1.5 leading-relaxed">
-                    Certifique-se de adicionar <strong>apenas o domínio puro</strong> (sem <code>https://</code> e sem barra <code>/</code>):{' '}
-                    <strong className="text-white font-mono bg-black/40 px-1.5 py-0.5 rounded border border-rose-800/40">{unauthorizedDomain}</strong>{' '}
-                    no Firebase Console em <em>Authentication &gt; Configurações &gt; Domínios autorizados</em>.
-                  </p>
-                )}
+                <span className="font-semibold text-rose-200">{error}</span>
               </div>
             </div>
 
             <div className="pt-1 flex flex-wrap gap-2">
-              {unauthorizedDomain && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (navigator.clipboard) {
-                      navigator.clipboard.writeText(unauthorizedDomain);
-                      setCopiedDomain(true);
-                      setTimeout(() => setCopiedDomain(false), 2000);
-                    }
-                  }}
-                  className="py-1.5 px-3 rounded-lg bg-rose-900/50 hover:bg-rose-900/70 border border-rose-700/60 text-white font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>{copiedDomain ? 'Domínio Copiado!' : 'Copiar Domínio'}</span>
-                </button>
-              )}
-
               {typeof window !== 'undefined' && window.self !== window.top && (
                 <a
                   href={typeof window !== 'undefined' ? window.location.href : '#'}
@@ -457,29 +411,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
                   <span>Abrir em Nova Aba</span>
                 </a>
               )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (navigator.clipboard) {
-                    const diag = JSON.stringify({
-                      error,
-                      code: errorCode,
-                      rawMessage: errorRaw,
-                      domain: typeof window !== 'undefined' ? window.location.hostname : '',
-                      isIframe: typeof window !== 'undefined' && window.self !== window.top,
-                      timestamp: new Date().toISOString()
-                    }, null, 2);
-                    navigator.clipboard.writeText(diag);
-                    setCopiedDiagnostic(true);
-                    setTimeout(() => setCopiedDiagnostic(false), 2000);
-                  }
-                }}
-                className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>{copiedDiagnostic ? 'Diagnóstico Copiado!' : 'Copiar Detalhes'}</span>
-              </button>
 
               <button
                 type="button"

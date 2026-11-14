@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { FixedSizeList as List, ListOnItemsRenderedProps } from 'react-window';
+import { FixedSizeList as List, ListOnScrollProps } from 'react-window';
 import { 
   GeneratedWorkoutRoutine, 
   FocusOption
@@ -25,6 +25,7 @@ import {
   RoutineCarouselNav,
   RoutineEmptyState
 } from './workoutList';
+import { computeCenteredCardIndex, computeTargetScrollLeft } from './workoutList/carouselMath';
 
 export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   user,
@@ -76,6 +77,8 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     typeof window !== 'undefined' ? Math.min(896, Math.max(320, window.innerWidth - 32)) : 360
   );
   const [currentVisibleIdx, setCurrentVisibleIdx] = useState<number>(0);
+  const currentIdxRef = useRef<number>(0);
+  const programmaticScrollLockUntilRef = useRef<number>(0);
   const [selectedRoutineTab, setSelectedRoutineTab] = useState<string>(() => {
     if (activeRoutineId && routines.some((r) => r.id === activeRoutineId)) {
       return activeRoutineId;
@@ -93,8 +96,9 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   const [isGeneratorOpen, setIsGeneratorOpen] = useState<boolean>(() => routines.length === 0);
   const [genSuccess, setGenSuccess] = useState(false);
 
-  // Mede dinamicamente a largura do container do carrossel horizontal
+  // Mede dinamicamente a largura do container do carrossel horizontal (inclusive ao alternar para Carrossel)
   useEffect(() => {
+    if (viewMode !== 'carousel') return;
     const el = carouselContainerRef.current;
     if (!el) return;
 
@@ -115,7 +119,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
       window.addEventListener('resize', updateWidth);
       return () => window.removeEventListener('resize', updateWidth);
     }
-  }, [routines.length]);
+  }, [routines.length, viewMode]);
 
   const handleShareClick = useCallback((routine: GeneratedWorkoutRoutine) => {
     if (onShareRoutine) {
@@ -249,10 +253,24 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
 
   const scrollToRoutineIndex = useCallback(
     (targetIdx: number) => {
+      if (filteredEntries.length === 0) return;
       const clampedIdx = Math.max(0, Math.min(filteredEntries.length - 1, targetIdx));
+      currentIdxRef.current = clampedIdx;
       setCurrentVisibleIdx(clampedIdx);
+      programmaticScrollLockUntilRef.current = Date.now() + 750;
+
+      const selectedEntry = filteredEntries[clampedIdx];
+      if (selectedEntry) {
+        setSelectedRoutineTab(selectedEntry.routine.id);
+      }
+
       if (outerListRef.current) {
-        const targetLeft = Math.max(0, clampedIdx * itemWidth - (containerWidth - itemWidth) / 2);
+        const targetLeft = computeTargetScrollLeft({
+          targetIdx: clampedIdx,
+          containerWidth,
+          itemWidth,
+          itemCount: filteredEntries.length,
+        });
         outerListRef.current.scrollTo({
           left: targetLeft,
           behavior: 'smooth',
@@ -261,8 +279,22 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
         listRef.current?.scrollToItem(clampedIdx, 'center');
       }
     },
-    [filteredEntries.length, itemWidth, containerWidth]
+    [filteredEntries, itemWidth, containerWidth]
   );
+
+  // Garante índice válido quando filtros reduzem a quantidade de treinos
+  useEffect(() => {
+    if (filteredEntries.length === 0) {
+      currentIdxRef.current = 0;
+      setCurrentVisibleIdx(0);
+      return;
+    }
+    if (currentIdxRef.current >= filteredEntries.length) {
+      const clamped = filteredEntries.length - 1;
+      currentIdxRef.current = clamped;
+      setCurrentVisibleIdx(clamped);
+    }
+  }, [filteredEntries.length]);
 
   const handleExecuteGenerate = useCallback((focus: FocusOption, frequency: number) => {
     if (onUpdateUser) {
@@ -316,15 +348,34 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   }, [activeCardIdx, viewMode, activeRoutineId, scrollToRoutineIndex]);
 
   const handlePrevCard = useCallback(() => {
-    scrollToRoutineIndex(currentVisibleIdx - 1);
-  }, [currentVisibleIdx, scrollToRoutineIndex]);
+    scrollToRoutineIndex(currentIdxRef.current - 1);
+  }, [scrollToRoutineIndex]);
 
   const handleNextCard = useCallback(() => {
-    scrollToRoutineIndex(currentVisibleIdx + 1);
-  }, [currentVisibleIdx, scrollToRoutineIndex]);
+    scrollToRoutineIndex(currentIdxRef.current + 1);
+  }, [scrollToRoutineIndex]);
 
-  const handleItemsRendered = useCallback(({ visibleStartIndex }: ListOnItemsRenderedProps) => {
-    setCurrentVisibleIdx(visibleStartIndex);
+  const handleCarouselScroll = useCallback(
+    ({ scrollOffset, scrollUpdateWasRequested }: ListOnScrollProps) => {
+      if (scrollUpdateWasRequested || Date.now() < programmaticScrollLockUntilRef.current) {
+        return;
+      }
+      const nextIdx = computeCenteredCardIndex({
+        scrollLeft: scrollOffset,
+        containerWidth,
+        itemWidth,
+        itemCount: filteredEntries.length,
+      });
+      if (nextIdx !== currentIdxRef.current) {
+        currentIdxRef.current = nextIdx;
+        setCurrentVisibleIdx(nextIdx);
+      }
+    },
+    [containerWidth, itemWidth, filteredEntries.length]
+  );
+
+  const handleUserCarouselInteraction = useCallback(() => {
+    programmaticScrollLockUntilRef.current = 0;
   }, []);
 
   const handleReorderVisualCards = useCallback(
@@ -740,7 +791,12 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
           />
 
           {/* Container Medido para o FixedSizeList Horizontal */}
-          <div ref={carouselContainerRef} className="w-full min-w-0 overflow-hidden">
+          <div
+            ref={carouselContainerRef}
+            onTouchStart={handleUserCarouselInteraction}
+            onWheel={handleUserCarouselInteraction}
+            className="w-full min-w-0 overflow-hidden"
+          >
             <List
               ref={listRef}
               outerRef={outerListRef}
@@ -752,7 +808,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
               itemSize={itemWidth}
               itemData={carouselItemData}
               itemKey={(index, data) => data.entries[index]?.routine.id ?? String(index)}
-              onItemsRendered={handleItemsRendered}
+              onScroll={handleCarouselScroll}
               overscanCount={2}
             >
               {HorizontalRoutineSlot}

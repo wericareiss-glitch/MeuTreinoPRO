@@ -291,8 +291,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </span>
                   <span className="text-[11px] text-slate-400 block mt-0.5 truncate">
                     {user.isVisitor
-                      ? 'Sessão anônima offline. Conecte o Google para sincronizar.'
-                      : `Protegido via Google / Firebase (${user.email || 'Plataforma'}).`}
+                      ? 'Sessão local sem nuvem. Conecte o Google para sincronizar.'
+                      : `Conectado com Google (${user.email || 'Conta Segura'}).`}
                   </span>
                 </div>
               </div>
@@ -332,7 +332,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               Apoiar o Projeto MeuTreino Pro · Voluntário
             </h4>
             <p className="text-[11px] text-slate-400 truncate">
-              Ajude a manter os servidores e melhorias contínuas via PIX.
+              Ajude a manter o aplicativo gratuito e em constante evolução via PIX.
             </p>
           </div>
         </div>

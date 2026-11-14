@@ -286,9 +286,6 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
           <div>
             <h2 className="text-xs sm:text-sm font-bold text-white tracking-wider uppercase flex items-center gap-2">
               <span>Volume Semanal por Grupamento</span>
-              <span className="text-[10px] font-mono text-sky-400 font-semibold lowercase bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
-                recharts
-              </span>
             </h2>
             <p className="text-[11px] text-slate-400">
               Distribuição anatômica das séries efetivas no microciclo

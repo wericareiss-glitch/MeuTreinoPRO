@@ -85,7 +85,7 @@ export const CollapsiblePreferences: React.FC<CollapsiblePreferencesProps> = ({
                 Desbloqueio Biométrico
               </h3>
               <p className="text-[11px] text-slate-400 truncate">
-                Face ID / Impressão Digital via WebAuthn seguro
+                Desbloqueio por Face ID ou Impressão Digital
               </p>
             </div>
           </div>
@@ -119,7 +119,7 @@ export const CollapsiblePreferences: React.FC<CollapsiblePreferencesProps> = ({
                 Integridade & Nuvem
               </h3>
               <p className="text-[11px] text-slate-400 truncate">
-                Backup contínuo, sincronização e conflitos offline
+                Backup contínuo e sincronização entre dispositivos
               </p>
             </div>
           </div>

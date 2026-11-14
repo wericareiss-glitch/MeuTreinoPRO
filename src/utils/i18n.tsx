@@ -360,7 +360,7 @@ const translations: Record<Language, Translations> = {
     emptyWorkoutDesc: 'Select parameters above and tap "Generate Workout with Proportional Sets" or add exercises customly.',
     finishSessionBtn: 'Finish Session & Save',
     resetTodayBtn: 'Reset Today’s Logs',
-    exportBackupBtn: 'Export Backup (.json)',
+    exportBackupBtn: 'Export Backup',
     importBackupBtn: 'Restore Backup',
     backupSuccess: 'Profile backup successfully exported!',
     backupRestored: 'Data restored successfully for this profile!',
@@ -415,8 +415,8 @@ const translations: Record<Language, Translations> = {
     presetPushPull: 'Push / Pull Focus',
 
     toolsSectionTitle: 'Workout Organization & Tools',
-    toolsSectionSubtitle: 'IndexedDB storage and profile data backup.',
-    toolBackup: 'Profile Backup (.json)',
+    toolsSectionSubtitle: 'Local storage and profile data backup.',
+    toolBackup: 'Profile Backup',
     toolBackupDesc: 'Export or restore isolated athlete training logs and history.',
 
     profileHistoryTitle: 'Athlete Workout Archive',
@@ -515,7 +515,7 @@ const translations: Record<Language, Translations> = {
     emptyWorkoutDesc: 'Selecciona los parámetros arriba y presiona "Generar Rutina con Series Proporcionales" o agrega ejercicios individualmente.',
     finishSessionBtn: 'Finalizar Sesión y Guardar',
     resetTodayBtn: 'Reiniciar Registros de Hoy',
-    exportBackupBtn: 'Exportar Copia (.json)',
+    exportBackupBtn: 'Exportar Copia',
     importBackupBtn: 'Restaurar Copia',
     backupSuccess: '¡Copia de seguridad del perfil exportada con éxito!',
     backupRestored: '¡Datos restaurados con éxito para este perfil!',
@@ -571,8 +571,8 @@ const translations: Record<Language, Translations> = {
     presetPushPull: 'Enfoque Empuje / Tirón',
 
     toolsSectionTitle: 'Organización de Entrenamientos y Herramientas',
-    toolsSectionSubtitle: 'Almacenamiento IndexedDB y copia de seguridad de datos.',
-    toolBackup: 'Copia del Perfil en .JSON',
+    toolsSectionSubtitle: 'Almacenamiento local y copia de seguridad de datos.',
+    toolBackup: 'Copia del Perfil',
     toolBackupDesc: 'Exporta o restaura tus registros e historial aislados por atleta.',
 
     profileHistoryTitle: 'Historial General del Atleta',

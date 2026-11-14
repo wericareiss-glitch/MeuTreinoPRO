@@ -123,11 +123,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
             <p className="text-xs text-slate-400 leading-relaxed">
               Ocorreu uma inconsistência temporária ao carregar a interface. Clique no botão abaixo para reiniciar o aplicativo com segurança.
             </p>
-            {this.state.error && (
-              <pre className="text-[10px] text-rose-300/80 bg-rose-950/40 p-2.5 rounded-xl overflow-x-auto text-left font-mono">
-                {this.state.error.message}
-              </pre>
-            )}
             <div className="pt-2 flex flex-col gap-2">
               <button
                 type="button"

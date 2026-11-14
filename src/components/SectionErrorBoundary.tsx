@@ -83,11 +83,6 @@ export class SectionErrorBoundary extends Component<Props, State> {
           <p className="text-xs text-slate-400 max-w-md mx-auto mb-3">
             Ocorreu um erro isolado ao carregar este bloco. O restante do aplicativo e seus treinos permanecem seguros e ativos.
           </p>
-          {this.state.error && (
-            <p className="text-[11px] font-mono text-rose-300/80 bg-rose-950/40 p-2 rounded-lg max-w-sm mx-auto mb-3 truncate">
-              {this.state.error.message}
-            </p>
-          )}
           <button
             type="button"
             onClick={this.handleRetry}

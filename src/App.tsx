@@ -21,6 +21,7 @@ import {
 import { MUSCLE_NAMES } from './data/exerciseDatabase';
 import { safeStorage } from './utils/storage';
 import { TabType } from './types/navigation';
+import { getPersistedTab, persistActiveTab } from './utils/navigationState';
 import { useI18n } from './utils/i18n';
 import { useTheme } from './utils/theme';
 
@@ -58,9 +59,6 @@ interface AppContentProps {
 function AppContent({ toastMessage, showToast }: AppContentProps) {
   const { t } = useI18n();
   useTheme();
-
-  // Navigation tab state: 'inicio' | 'treino' | 'treino_ativo' | 'perfil'
-  const [activeTab, setActiveTab] = useState<TabType>('inicio');
 
   // Auth Context
   const {
@@ -164,12 +162,37 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
     handleEditRoutine,
   } = useWorkout();
 
+  // Navigation tab state: 'inicio' | 'treino' | 'treino_ativo' | 'perfil' (persisted across reloads)
+  const [activeTab, setActiveTabState] = useState<TabType>(() =>
+    getPersistedTab(currentUser?.id, !!activeRoutineId)
+  );
+  const prevUidRef = useRef<string | undefined>(currentUser?.id);
+
+  const setActiveTab = useCallback(
+    (nextTab: TabType) => {
+      setActiveTabState(nextTab);
+      persistActiveTab(nextTab, currentUser?.id);
+    },
+    [currentUser?.id]
+  );
+
+  // Sync tab when active user switches or logs out
+  useEffect(() => {
+    if (prevUidRef.current === currentUser?.id) return;
+    prevUidRef.current = currentUser?.id;
+    if (!currentUser?.id) {
+      setActiveTabState('inicio');
+      return;
+    }
+    setActiveTabState(getPersistedTab(currentUser.id, !!activeRoutineId));
+  }, [currentUser?.id, activeRoutineId]);
+
   // Ensure active tab redirects to treino if active routine is cleared
   useEffect(() => {
     if (activeTab === 'treino_ativo' && !activeRoutineId) {
       setActiveTab('treino');
     }
-  }, [activeTab, activeRoutineId]);
+  }, [activeTab, activeRoutineId, setActiveTab]);
 
   // Export and Share Helpers
   const buildExportText = () => {
