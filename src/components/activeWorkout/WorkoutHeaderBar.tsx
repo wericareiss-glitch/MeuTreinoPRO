@@ -12,7 +12,6 @@ import {
   Flame, 
   Sparkles, 
   CheckCircle2,
-  Zap,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
@@ -35,8 +34,6 @@ export interface WorkoutHeaderBarProps {
   mobilityTotalExercises: number;
   mobilityTotalMinutes: number;
   onFinishSession: () => void;
-  deepWorkMode?: boolean;
-  onToggleDeepWork?: () => void;
 }
 
 export const WorkoutHeaderBar: React.FC<WorkoutHeaderBarProps> = ({
@@ -56,12 +53,12 @@ export const WorkoutHeaderBar: React.FC<WorkoutHeaderBarProps> = ({
   mobilityTotalExercises,
   mobilityTotalMinutes,
   onFinishSession,
-  deepWorkMode = false,
-  onToggleDeepWork,
 }) => {
-  const [showNotesInDeepWork, setShowNotesInDeepWork] = useState(false);
+  const [isNotesExpanded, setIsNotesExpanded] = useState(false);
+  const showNotesBox = localNotes.trim().length > 0 || isNotesExpanded;
+
   return (
-    <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-3.5 sm:p-4 landscape:p-3 shadow-xl">
+    <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-3 sm:p-4 landscape:p-3 shadow-xl">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <button
@@ -84,23 +81,12 @@ export const WorkoutHeaderBar: React.FC<WorkoutHeaderBarProps> = ({
               <span className="text-[11px] text-slate-400 hidden xs:inline truncate">
                 · {routine.subtitle}
               </span>
-              {deepWorkMode && (
-                <button
-                  type="button"
-                  onClick={onToggleDeepWork}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-extrabold tracking-wide hover:bg-amber-500/25 transition-all cursor-pointer shrink-0"
-                  title="Modo Deep Work ativo: elementos secundários ocultos. Clique para alternar."
-                >
-                  <Zap className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  <span>DEEP WORK</span>
-                </button>
-              )}
             </div>
           </div>
         </div>
 
         {/* Duração & Progresso */}
-        <div className="flex items-center gap-2 shrink-0 font-mono">
+        <div className="flex items-center gap-2 shrink-0 font-mono tabular-nums">
           <div className="px-2.5 py-1 rounded-xl bg-[#080d19] border border-slate-800 text-xs text-slate-300 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5 text-emerald-400" />
             <span className="font-bold text-white text-xs">{formatElapsed(elapsedSecs)}</span>
@@ -121,24 +107,20 @@ export const WorkoutHeaderBar: React.FC<WorkoutHeaderBarProps> = ({
         />
       </div>
 
-      {/* Anotações do Treino no Topo com Auto-Save Debounced (Oculto em Deep Work se vazio) */}
-      {(!deepWorkMode || localNotes.trim().length > 0 || showNotesInDeepWork) ? (
-        <div className="mt-2.5 bg-[#090e1a] border border-slate-800/90 rounded-2xl p-3 shadow-sm">
+      {/* Anotações do Treino com Auto-Save (Recolhidas quando vazias para reduzir scroll) */}
+      {showNotesBox ? (
+        <div className="mt-2.5 bg-[#090e1a] border border-slate-800/90 rounded-2xl p-2.5 sm:p-3 shadow-sm">
           <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
             <div className="flex items-center gap-1.5 text-slate-300">
               <FileEdit className="w-3.5 h-3.5 text-purple-400" />
               <span className="text-xs font-bold text-white uppercase tracking-wider">
                 Anotações do Treino
               </span>
-              {deepWorkMode && (
-                <span className="text-[10px] text-amber-400/80 font-mono">(Modo Deep Work)</span>
-              )}
             </div>
 
             <div className="flex items-center gap-1.5">
               {notesSaveStatus === 'saving' && (
                 <span className="flex items-center gap-1 text-[11px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
                   <span>Salvando...</span>
                 </span>
               )}
@@ -153,13 +135,14 @@ export const WorkoutHeaderBar: React.FC<WorkoutHeaderBarProps> = ({
                   Auto-salvo
                 </span>
               )}
-              {deepWorkMode && !localNotes.trim() && (
+              {!localNotes.trim() && (
                 <button
                   type="button"
-                  onClick={() => setShowNotesInDeepWork(false)}
-                  className="text-[10px] text-slate-400 hover:text-slate-200 underline ml-1 cursor-pointer"
+                  onClick={() => setIsNotesExpanded(false)}
+                  className="inline-flex items-center gap-0.5 text-[11px] text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded cursor-pointer"
                 >
-                  Ocultar
+                  <ChevronUp className="w-3.5 h-3.5" />
+                  <span>Recolher</span>
                 </button>
               )}
             </div>
@@ -173,21 +156,22 @@ export const WorkoutHeaderBar: React.FC<WorkoutHeaderBarProps> = ({
             className="w-full bg-[#060a14] border border-slate-700/80 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 transition-colors resize-none font-medium leading-relaxed"
           />
         </div>
-      ) : deepWorkMode && localNotes.trim().length === 0 ? (
-        <div className="mt-2 flex justify-end">
+      ) : (
+        <div className="mt-2 flex items-center justify-end">
           <button
             type="button"
-            onClick={() => setShowNotesInDeepWork(true)}
-            className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-400 cursor-pointer transition-colors"
+            onClick={() => setIsNotesExpanded(true)}
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 hover:text-slate-200 px-2 py-1 rounded-lg hover:bg-slate-800/70 cursor-pointer transition-colors"
           >
-            <FileEdit className="w-3 h-3" />
-            <span>Adicionar anotação rápida</span>
+            <FileEdit className="w-3.5 h-3.5 text-purple-400" />
+            <span>Adicionar anotações do treino</span>
+            <ChevronDown className="w-3 h-3" />
           </button>
         </div>
-      ) : null}
+      )}
 
-      {/* Alertas de Recordes Batidos e Aquecimento Articular (Ocultos no Modo Deep Work) */}
-      {!deepWorkMode && (beatenSetsCount > 0 || completedSets === 0) && (
+      {/* Alertas de Recordes Batidos e Aquecimento Articular */}
+      {(beatenSetsCount > 0 || completedSets === 0) && (
         <div className="mt-2.5 grid grid-cols-1 landscape:grid-cols-2 gap-2">
           {beatenSetsCount > 0 && (
             <div className="px-3 py-1.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between text-xs">

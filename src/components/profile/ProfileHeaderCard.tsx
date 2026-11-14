@@ -16,7 +16,6 @@ import {
   Check
 } from 'lucide-react';
 import { UserProfile } from '../../types/workout';
-import { useI18n } from '../../utils/i18n';
 import { soundManager } from '../../utils/audio';
 import { ThemeToggle } from '../ThemeToggle';
 import { ActionSheet, ActionSheetItem } from '../common/ActionSheet';
@@ -38,7 +37,6 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   linkGoogleError,
   onConnectGoogle,
 }) => {
-  const { t } = useI18n();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -118,14 +116,9 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
             {user.name.charAt(0).toUpperCase()}
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-theme-heading tracking-tight">
-                {user.name}
-              </h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                {t.badgePro}
-              </span>
-            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-theme-heading tracking-tight">
+              {user.name}
+            </h1>
             <p className="text-xs text-theme-muted font-mono mt-0.5">
               @{user.username}
             </p>

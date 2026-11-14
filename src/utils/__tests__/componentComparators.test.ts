@@ -170,9 +170,5 @@ describe('Component Comparators & Memoization Audit', () => {
       };
       expect(areWorkoutItemRowEqual(baseRowProps, { ...baseRowProps, logs: nextLogs })).toBe(false);
     });
-
-    it('returns false when deepWorkMode changes', () => {
-      expect(areWorkoutItemRowEqual(baseRowProps, { ...baseRowProps, deepWorkMode: true })).toBe(false);
-    });
   });
 });

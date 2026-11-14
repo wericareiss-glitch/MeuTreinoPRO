@@ -17,7 +17,6 @@ export interface Translations {
   tabProfile: string;
   appTitle: string;
   appSubtitle: string;
-  badgePro: string;
 
   // Header
   budgetBtn: string;
@@ -163,7 +162,6 @@ const translations: Record<Language, Translations> = {
     tabProfile: 'Perfil',
     appTitle: 'MeuTreino Pro',
     appSubtitle: 'Hipertrofia individualizada',
-    badgePro: 'Hipertrofia Pro',
 
     budgetBtn: 'Séries',
     historyBtn: 'Histórico',
@@ -320,7 +318,6 @@ const translations: Record<Language, Translations> = {
     tabProfile: 'Profile',
     appTitle: 'MeuTreino Pro',
     appSubtitle: 'Individualized Hypertrophy',
-    badgePro: 'Hypertrophy Pro',
 
     budgetBtn: 'Sets',
     historyBtn: 'History',
@@ -476,7 +473,6 @@ const translations: Record<Language, Translations> = {
     tabProfile: 'Perfil',
     appTitle: 'MeuTreino Pro',
     appSubtitle: 'Hipertrofia individualizada',
-    badgePro: 'Hipertrofia Pro',
 
     budgetBtn: 'Series',
     historyBtn: 'Historial',

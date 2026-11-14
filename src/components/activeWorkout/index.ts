@@ -8,3 +8,5 @@ export * from './MemoizedWorkoutItemRow';
 export * from './WorkoutHeaderBar';
 export * from './WorkoutToolbar';
 export * from './WorkoutFooterActions';
+export * from './ActiveExerciseNav';
+

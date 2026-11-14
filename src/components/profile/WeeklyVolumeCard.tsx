@@ -13,23 +13,27 @@ import { useI18n } from '../../utils/i18n';
 export interface WeeklyVolumeCardProps {
   user: UserProfile;
   onOpenVolumeBudget: () => void;
+  embedded?: boolean;
 }
 
 export const WeeklyVolumeCard: React.FC<WeeklyVolumeCardProps> = ({
   user,
   onOpenVolumeBudget,
+  embedded = false,
 }) => {
   const { t } = useI18n();
 
   return (
-    <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800 mb-5">
+    <div className={embedded ? 'space-y-4' : 'bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl p-5 sm:p-7 shadow-2xl'}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800 mb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            <Sliders className="w-5 h-5" />
-          </div>
+          {!embedded && (
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Sliders className="w-5 h-5" />
+            </div>
+          )}
           <div>
-            <h2 className="text-base sm:text-lg font-extrabold text-white">
+            <h2 className="text-sm sm:text-base font-extrabold text-white">
               {t.budgetSectionTitle}
             </h2>
             <p className="text-xs text-slate-400">

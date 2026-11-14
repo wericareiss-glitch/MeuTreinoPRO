@@ -4,245 +4,167 @@
  */
 
 import React, { useState } from 'react';
-import { 
-  Sparkles, 
-  ChevronDown, 
-  ChevronUp, 
-  Fingerprint, 
-  Cloud, 
+import {
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Fingerprint,
+  Cloud,
   Bell,
-  Zap
 } from 'lucide-react';
 import { UserProfile, WorkoutSessionSummary } from '../../types/workout';
 import { ThemeToggle } from '../ThemeToggle';
 import { BiometricSettingsCard } from '../BiometricSettingsCard';
 import { FirebaseSyncCard } from '../FirebaseSyncCard';
 import { ProfilePushNotificationManager } from '../ProfilePushNotificationManager';
-import { authStorage } from '../../utils/auth';
-import { syncUserProfileToCloud } from '../../services/firebase';
-import { soundManager } from '../../utils/audio';
 
 export interface CollapsiblePreferencesProps {
   user: UserProfile;
   sessions: WorkoutSessionSummary[];
-  onUpdateUser?: (updated: UserProfile) => void;
 }
 
 export const CollapsiblePreferences: React.FC<CollapsiblePreferencesProps> = ({
   user,
   sessions,
-  onUpdateUser,
 }) => {
-  const [isThemeOpen, setIsThemeOpen] = useState(false);
-  const [isBiometricOpen, setIsBiometricOpen] = useState(false);
-  const [isCloudOpen, setIsCloudOpen] = useState(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [openPref, setOpenPref] = useState<'theme' | 'biometric' | 'cloud' | 'notifications' | null>(null);
 
-  const handleToggleDeepWork = () => {
-    const nextVal = !user.deepWorkMode;
-    const updated = authStorage.updateProfile(user.id, {
-      deepWorkMode: nextVal,
-    });
-    if (updated) {
-      syncUserProfileToCloud(updated);
-      onUpdateUser?.(updated);
-    }
-    soundManager.vibrate(30);
+  const togglePref = (key: 'theme' | 'biometric' | 'cloud' | 'notifications') => {
+    setOpenPref((curr) => (curr === key ? null : key));
   };
 
   return (
-    <div className="space-y-6">
-      {/* ⚡ Modo Deep Work (Foco Total no Treino Ativo) */}
-      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl shadow-2xl p-5 sm:p-6 transition-all hover:border-amber-500/30">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className={`p-2.5 rounded-xl shrink-0 transition-colors ${
-              user.deepWorkMode 
-                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)]' 
-                : 'bg-slate-800 text-slate-400 border border-slate-700/60'
-            }`}>
-              <Zap className="w-5 h-5 fill-current" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-extrabold text-white">
-                  Modo Deep Work (Foco Total)
-                </h2>
-                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
-                  user.deepWorkMode 
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' 
-                    : 'bg-slate-800 text-slate-400 border-slate-700'
-                }`}>
-                  {user.deepWorkMode ? 'ATIVO' : 'DESATIVADO'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-1 max-w-lg leading-relaxed">
-                Remove temporariamente barras de ações secundárias, notas vazias e alertas durante o treino ativo, proporcionando foco absoluto nas séries, cargas e descanso.
-              </p>
-            </div>
-          </div>
-
-          <label className="relative inline-flex items-center cursor-pointer shrink-0 select-none">
-            <input
-              type="checkbox"
-              checked={Boolean(user.deepWorkMode)}
-              onChange={handleToggleDeepWork}
-              className="sr-only peer"
-            />
-            <div className="w-12 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500 border border-slate-700 peer-checked:border-amber-400 shadow-inner" />
-          </label>
-        </div>
-      </div>
-      {/* 1. 🎨 Aparência & Tema Visual (Minimizado por padrão) */}
-      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl shadow-2xl overflow-hidden transition-all">
+    <div className="space-y-2.5">
+      {/* 1. Aparência & Tema Visual */}
+      <div className="bg-[#0a101d] border border-slate-800/90 rounded-2xl overflow-hidden">
         <button
           type="button"
-          onClick={() => setIsThemeOpen((prev) => !prev)}
-          className="w-full p-5 sm:p-6 flex items-center justify-between gap-3 text-left hover:bg-slate-800/30 transition-colors cursor-pointer"
+          onClick={() => togglePref('theme')}
+          className="w-full min-h-[52px] p-3.5 flex items-center justify-between gap-3 text-left hover:bg-slate-800/30 transition-colors cursor-pointer"
         >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
-              <Sparkles className="w-5 h-5" />
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+              <Sparkles className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-extrabold text-white">
-                  Aparência & Tema Visual
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                  {isThemeOpen ? 'Expandido' : 'Minimizado'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Alterne entre modo escuro, modo claro ou contraste OLED
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-extrabold text-white truncate">
+                Aparência & Tema Visual
+              </h3>
+              <p className="text-[11px] text-slate-400 truncate">
+                Modo escuro, claro ou contraste OLED
               </p>
             </div>
           </div>
-          <div className="p-2 rounded-xl bg-slate-800 text-slate-300">
-            {isThemeOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          <div className="p-1.5 rounded-lg bg-slate-800 text-slate-300 shrink-0">
+            {openPref === 'theme' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
         </button>
 
-        {isThemeOpen && (
-          <div className="p-5 sm:p-6 pt-0 border-t border-slate-800 animate-fadeIn">
-            <div className="pt-4">
+        {openPref === 'theme' && (
+          <div className="p-3.5 pt-0 border-t border-slate-800 animate-fadeIn">
+            <div className="pt-3">
               <ThemeToggle variant="profile-card" />
             </div>
           </div>
         )}
       </div>
 
-      {/* 2. 🔐 Desbloqueio Biométrico (Minimizado por padrão) */}
-      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl shadow-2xl overflow-hidden transition-all">
+      {/* 2. Desbloqueio Biométrico */}
+      <div className="bg-[#0a101d] border border-slate-800/90 rounded-2xl overflow-hidden">
         <button
           type="button"
-          onClick={() => setIsBiometricOpen((prev) => !prev)}
-          className="w-full p-5 sm:p-6 flex items-center justify-between gap-3 text-left hover:bg-slate-800/30 transition-colors cursor-pointer"
+          onClick={() => togglePref('biometric')}
+          className="w-full min-h-[52px] p-3.5 flex items-center justify-between gap-3 text-left hover:bg-slate-800/30 transition-colors cursor-pointer"
         >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-              <Fingerprint className="w-5 h-5" />
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+              <Fingerprint className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-extrabold text-white">
-                  Desbloqueio Biométrico
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                  {isBiometricOpen ? 'Expandido' : 'Minimizado'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-extrabold text-white truncate">
+                Desbloqueio Biométrico
+              </h3>
+              <p className="text-[11px] text-slate-400 truncate">
                 Face ID / Impressão Digital via WebAuthn seguro
               </p>
             </div>
           </div>
-          <div className="p-2 rounded-xl bg-slate-800 text-slate-300">
-            {isBiometricOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          <div className="p-1.5 rounded-lg bg-slate-800 text-slate-300 shrink-0">
+            {openPref === 'biometric' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
         </button>
 
-        {isBiometricOpen && (
-          <div className="p-5 sm:p-6 pt-0 border-t border-slate-800 animate-fadeIn">
-            <div className="pt-4">
+        {openPref === 'biometric' && (
+          <div className="p-3.5 pt-0 border-t border-slate-800 animate-fadeIn">
+            <div className="pt-3">
               <BiometricSettingsCard user={user} variant="full" />
             </div>
           </div>
         )}
       </div>
 
-      {/* 3. ☁️ Integridade & Nuvem Firebase (Minimizado por padrão) */}
-      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl shadow-2xl overflow-hidden transition-all">
+      {/* 3. Integridade & Nuvem */}
+      <div className="bg-[#0a101d] border border-slate-800/90 rounded-2xl overflow-hidden">
         <button
           type="button"
-          onClick={() => setIsCloudOpen((prev) => !prev)}
-          className="w-full p-5 sm:p-6 flex items-center justify-between gap-3 text-left hover:bg-slate-800/30 transition-colors cursor-pointer"
+          onClick={() => togglePref('cloud')}
+          className="w-full min-h-[52px] p-3.5 flex items-center justify-between gap-3 text-left hover:bg-slate-800/30 transition-colors cursor-pointer"
         >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
-              <Cloud className="w-5 h-5" />
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
+              <Cloud className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-extrabold text-white">
-                  Integridade & Nuvem
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                  {isCloudOpen ? 'Expandido' : 'Minimizado'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Backup contínuo, sincronização e resolução de conflitos offline
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-extrabold text-white truncate">
+                Integridade & Nuvem
+              </h3>
+              <p className="text-[11px] text-slate-400 truncate">
+                Backup contínuo, sincronização e conflitos offline
               </p>
             </div>
           </div>
-          <div className="p-2 rounded-xl bg-slate-800 text-slate-300">
-            {isCloudOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          <div className="p-1.5 rounded-lg bg-slate-800 text-slate-300 shrink-0">
+            {openPref === 'cloud' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
         </button>
 
-        {isCloudOpen && (
-          <div className="p-5 sm:p-6 pt-0 border-t border-slate-800 animate-fadeIn">
-            <div className="pt-4">
+        {openPref === 'cloud' && (
+          <div className="p-3.5 pt-0 border-t border-slate-800 animate-fadeIn">
+            <div className="pt-3">
               <FirebaseSyncCard user={user} />
             </div>
           </div>
         )}
       </div>
 
-      {/* 4. 🔔 Lembretes e Alertas de Treino (Minimizado por padrão) */}
-      <div className="bg-[#0f172a]/95 border border-[#1f2b42] rounded-3xl shadow-2xl overflow-hidden transition-all">
+      {/* 4. Lembretes e Alertas de Treino */}
+      <div className="bg-[#0a101d] border border-slate-800/90 rounded-2xl overflow-hidden">
         <button
           type="button"
-          onClick={() => setIsNotificationsOpen((prev) => !prev)}
-          className="w-full p-5 sm:p-6 flex items-center justify-between gap-3 text-left hover:bg-slate-800/30 transition-colors cursor-pointer"
+          onClick={() => togglePref('notifications')}
+          className="w-full min-h-[52px] p-3.5 flex items-center justify-between gap-3 text-left hover:bg-slate-800/30 transition-colors cursor-pointer"
         >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
-              <Bell className="w-5 h-5" />
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+              <Bell className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-extrabold text-white">
-                  Lembretes e Alertas de Treino
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                  {isNotificationsOpen ? 'Expandido' : 'Minimizado'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Notificações push programadas para horário de treino e lembretes de descanso
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-extrabold text-white truncate">
+                Lembretes e Alertas de Treino
+              </h3>
+              <p className="text-[11px] text-slate-400 truncate">
+                Notificações push programadas nos dias de treino
               </p>
             </div>
           </div>
-          <div className="p-2 rounded-xl bg-slate-800 text-slate-300">
-            {isNotificationsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          <div className="p-1.5 rounded-lg bg-slate-800 text-slate-300 shrink-0">
+            {openPref === 'notifications' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
         </button>
 
-        {isNotificationsOpen && (
-          <div className="p-5 sm:p-6 pt-0 border-t border-slate-800 animate-fadeIn">
-            <div className="pt-4">
+        {openPref === 'notifications' && (
+          <div className="p-3.5 pt-0 border-t border-slate-800 animate-fadeIn">
+            <div className="pt-3">
               <ProfilePushNotificationManager
                 userId={user.id}
                 userName={user.name}

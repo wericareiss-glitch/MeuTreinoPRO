@@ -76,6 +76,12 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     typeof window !== 'undefined' ? Math.min(896, Math.max(320, window.innerWidth - 32)) : 360
   );
   const [currentVisibleIdx, setCurrentVisibleIdx] = useState<number>(0);
+  const [selectedRoutineTab, setSelectedRoutineTab] = useState<string>(() => {
+    if (activeRoutineId && routines.some((r) => r.id === activeRoutineId)) {
+      return activeRoutineId;
+    }
+    return routines.length > 0 ? routines[0].id : 'all';
+  });
 
   const handleToggleViewMode = useCallback((mode: RoutineViewMode) => {
     setViewMode(mode);
@@ -194,6 +200,31 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     }));
   }, [sortedEntries, routines, versionFilter, activeRoutineId, searchQuery]);
 
+  // Mantém a aba selecionada válida (prioriza treino ativo ou primeiro treino para evitar scroll longo)
+  useEffect(() => {
+    if (filteredEntries.length === 0) {
+      if (selectedRoutineTab !== 'all') setSelectedRoutineTab('all');
+      return;
+    }
+    if (
+      selectedRoutineTab !== 'all' &&
+      !filteredEntries.some((e) => e.routine.id === selectedRoutineTab)
+    ) {
+      const nextId =
+        activeRoutineId && filteredEntries.some((e) => e.routine.id === activeRoutineId)
+          ? activeRoutineId
+          : filteredEntries[0].routine.id;
+      setSelectedRoutineTab(nextId);
+    }
+  }, [filteredEntries, selectedRoutineTab, activeRoutineId]);
+
+  // Rotinas exibidas na tela (Todas ou apenas a rotina selecionada para ZERO scroll)
+  const displayedEntries = useMemo(() => {
+    if (selectedRoutineTab === 'all') return filteredEntries;
+    const match = filteredEntries.filter((e) => e.routine.id === selectedRoutineTab);
+    return match.length > 0 ? match : filteredEntries;
+  }, [filteredEntries, selectedRoutineTab]);
+
   // Calcula largura responsiva de cada card no carrossel horizontal
   const itemWidth = useMemo(() => {
     if (filteredEntries.length === 1) {
@@ -276,8 +307,13 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
 
   const handleScrollToActiveRoutine = useCallback(() => {
     if (activeCardIdx < 0) return;
+    if (viewMode === 'grid' && activeRoutineId) {
+      setSelectedRoutineTab(activeRoutineId);
+      soundManager.vibrate(10);
+      return;
+    }
     scrollToRoutineIndex(activeCardIdx);
-  }, [activeCardIdx, scrollToRoutineIndex]);
+  }, [activeCardIdx, viewMode, activeRoutineId, scrollToRoutineIndex]);
 
   const handlePrevCard = useCallback(() => {
     scrollToRoutineIndex(currentVisibleIdx - 1);
@@ -578,36 +614,117 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
           onCreateManualWorkout={onCreateManualWorkout}
         />
       ) : viewMode === 'grid' ? (
-        /* Visualização em Grade Completa (todos os treinos visíveis de uma vez, sem cortes) */
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredEntries.map((entry) => (
-            <RoutineCard
-              key={entry.routine.id}
-              entry={entry}
-              isActive={activeRoutineId === entry.routine.id}
-              isMenuOpen={openMenuId === entry.routine.id}
-              isConfirmingDelete={confirmDeleteId === entry.routine.id}
-              isDraggingThis={draggingIdx === entry.visualIdx}
-              dragOffset={draggingIdx === entry.visualIdx ? dragOffset : undefined}
-              isHoldingThis={holdingIdx === entry.visualIdx}
-              isDropTargetThis={dropTargetIdx === entry.visualIdx && draggingIdx !== entry.visualIdx}
-              canReorder={canReorder}
-              hasEditHandler={hasEditHandler}
-              hasDeleteHandler={hasDeleteHandler}
-              onToggleMenu={handleToggleMenu}
-              onCloseMenu={handleCloseMenu}
-              onRequestDeleteConfirm={setConfirmDeleteId}
-              onConfirmDelete={handleConfirmDelete}
-              onStartWorkout={onStartWorkout}
-              onEditRoutine={onEditRoutine}
-              onShareRoutineClick={handleShareClick}
-              onPointerDownGrip={handlePointerDownRoutineHandle}
-              onCardDragStart={handleCardDragStart}
-              onCardDragOver={handleCardDragOver}
-              onCardDrop={handleCardDrop}
-              onCardDragEnd={handleCardDragEnd}
-            />
-          ))}
+        /* Navegação por Abas Horizontais + Card Focado (Zero Scroll desnecessário) */
+        <div className="space-y-3">
+          {filteredEntries.length > 1 && (
+            <div
+              role="tablist"
+              aria-label="Selecionar treino da semana"
+              className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1 snap-x"
+            >
+              {filteredEntries.map(({ routine }) => {
+                const isSelected = selectedRoutineTab === routine.id;
+                const isActiveRoutine = routine.id === activeRoutineId;
+                const cleanSubtitle =
+                  routine.name.replace(/^Treino\s+[A-Z0-9]+\s*[-–—:]?\s*/i, '').trim() ||
+                  routine.subtitle;
+
+                return (
+                  <button
+                    key={routine.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isSelected}
+                    onClick={() => {
+                      setSelectedRoutineTab(routine.id);
+                      soundManager.vibrate(10);
+                    }}
+                    className={`min-h-[44px] px-3.5 py-2 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer border whitespace-nowrap shrink-0 snap-start active:scale-[0.98] ${
+                      isSelected
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-lg shadow-emerald-500/20'
+                        : isActiveRoutine
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                        : 'bg-[#101828] text-slate-300 border-[#1e2c45] hover:border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    <span
+                      className={`font-black text-xs px-1.5 py-0.5 rounded-md ${
+                        isSelected
+                          ? 'bg-slate-950/15 text-slate-950'
+                          : 'bg-slate-800 text-emerald-400'
+                      }`}
+                    >
+                      {routine.letter}
+                    </span>
+                    <span className="max-w-[120px] truncate font-bold">
+                      {cleanSubtitle || `Treino ${routine.letter}`}
+                    </span>
+                    {isActiveRoutine && (
+                      <span
+                        className={`text-[10px] font-mono font-black uppercase ${
+                          isSelected ? 'text-slate-950/80' : 'text-emerald-400'
+                        }`}
+                      >
+                        · Ativo
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selectedRoutineTab === 'all'}
+                onClick={() => {
+                  setSelectedRoutineTab('all');
+                  soundManager.vibrate(10);
+                }}
+                className={`min-h-[44px] px-3.5 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border whitespace-nowrap shrink-0 snap-start active:scale-[0.98] ${
+                  selectedRoutineTab === 'all'
+                    ? 'bg-sky-500 text-slate-950 border-sky-400 font-black shadow-lg shadow-sky-500/20'
+                    : 'bg-[#101828] text-slate-400 border-[#1e2c45] hover:border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                <span>Todos ({filteredEntries.length})</span>
+              </button>
+            </div>
+          )}
+
+          <div
+            className={`grid gap-4 ${
+              displayedEntries.length === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'
+            }`}
+          >
+            {displayedEntries.map((entry) => (
+              <RoutineCard
+                key={entry.routine.id}
+                entry={entry}
+                isActive={activeRoutineId === entry.routine.id}
+                isMenuOpen={openMenuId === entry.routine.id}
+                isConfirmingDelete={confirmDeleteId === entry.routine.id}
+                isDraggingThis={draggingIdx === entry.visualIdx}
+                dragOffset={draggingIdx === entry.visualIdx ? dragOffset : undefined}
+                isHoldingThis={holdingIdx === entry.visualIdx}
+                isDropTargetThis={dropTargetIdx === entry.visualIdx && draggingIdx !== entry.visualIdx}
+                canReorder={canReorder && displayedEntries.length > 1}
+                hasEditHandler={hasEditHandler}
+                hasDeleteHandler={hasDeleteHandler}
+                onToggleMenu={handleToggleMenu}
+                onCloseMenu={handleCloseMenu}
+                onRequestDeleteConfirm={setConfirmDeleteId}
+                onConfirmDelete={handleConfirmDelete}
+                onStartWorkout={onStartWorkout}
+                onEditRoutine={onEditRoutine}
+                onShareRoutineClick={handleShareClick}
+                onPointerDownGrip={handlePointerDownRoutineHandle}
+                onCardDragStart={handleCardDragStart}
+                onCardDragOver={handleCardDragOver}
+                onCardDrop={handleCardDrop}
+                onCardDragEnd={handleCardDragEnd}
+              />
+            ))}
+          </div>
         </div>
       ) : (
         /* Carrossel Horizontal Virtualizado de Treinos (react-window com layout="horizontal") */

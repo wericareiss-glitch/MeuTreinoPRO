@@ -24,12 +24,16 @@ import {
   GeneratedWorkoutRoutine, 
   WorkoutItem, 
   MuscleGroup, 
-  SplitOption, 
   Exercise,
   EquipmentRequirement 
 } from '../types/workout';
 import { EXERCISE_DATABASE, MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { soundManager } from '../utils/audio';
+import {
+  EQUIPMENT_FILTERS,
+  EquipmentFilterOption,
+  filterExercisesCatalog,
+} from '../utils/exerciseFilters';
 
 interface ManualWorkoutModalProps {
   isOpen: boolean;
@@ -66,7 +70,6 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
   const [name, setName] = useState(() => editingRoutine?.name || `Treino ${nextLetter}`);
   const letter = editingRoutine?.letter || nextLetter;
   const [subtitle, setSubtitle] = useState(() => editingRoutine?.subtitle || 'Treino Personalizado');
-  const [split, setSplit] = useState<SplitOption>(() => editingRoutine?.split || 'upper_lower');
   const [items, setItems] = useState<WorkoutItem[]>(() => editingRoutine?.items || []);
   const [swappingIdx, setSwappingIdx] = useState<number | null>(null);
   const [holdingIdx, setHoldingIdx] = useState<number | null>(null);
@@ -80,15 +83,17 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
     if (isOpen) {
       setSwappingIdx(null);
       setValidationError(null);
+      setSelectedMuscle('all');
+      setSelectedEquipment('all');
+      setSearchQuery('');
+      setCustomMuscle('chest');
       if (editingRoutine) {
         setName(editingRoutine.name);
         setSubtitle(editingRoutine.subtitle);
-        setSplit(editingRoutine.split);
         setItems(editingRoutine.items || []);
       } else {
         setName(`Treino ${nextLetter}`);
         setSubtitle('Treino Personalizado');
-        setSplit('upper_lower');
         setItems([]);
       }
     }
@@ -96,19 +101,23 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
 
   // Exercise selection & search state
   const [activeTab, setActiveTab] = useState<'catalog' | 'custom'>('catalog');
-  const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup>('chest');
+  const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | 'all'>('all');
+  const [selectedEquipment, setSelectedEquipment] = useState<EquipmentFilterOption>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Custom exercise form state
   const [customName, setCustomName] = useState('');
+  const [customMuscle, setCustomMuscle] = useState<MuscleGroup>('chest');
   const [customEquip, setCustomEquip] = useState<EquipmentRequirement>('full_gym');
 
   if (!isOpen) return null;
 
-  // Exercise database filtered by muscle & search
-  const availableExercises = (EXERCISE_DATABASE[selectedMuscle] || []).filter((ex) =>
-    ex.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Exercise database filtered by muscle, equipment & search
+  const availableExercises = filterExercisesCatalog({
+    muscle: selectedMuscle,
+    equipment: selectedEquipment,
+    searchQuery,
+  });
 
   const handleReorderItems = (fromIdx: number, toIdx: number) => {
     if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return;
@@ -237,11 +246,11 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
       id: `custom_${Date.now()}`,
       name: customName.trim(),
       category: 'Personalizado',
-      muscleKey: selectedMuscle,
+      muscleKey: customMuscle,
       equip: [customEquip],
       profile: 'Personalizado',
       stability: 'Média',
-      target: MUSCLE_NAMES[selectedMuscle] || selectedMuscle,
+      target: MUSCLE_NAMES[customMuscle] || customMuscle,
       bio: 'Exercício personalizado adicionado pelo atleta.',
       cue: 'Execução controlada com foco no grupamento alvo.',
     };
@@ -251,7 +260,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
         const copy = [...prev];
         copy[swappingIdx] = {
           ...copy[swappingIdx],
-          muscleKey: selectedMuscle,
+          muscleKey: customMuscle,
           exercise: newEx,
         };
         return copy;
@@ -264,7 +273,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
 
     const newItem: WorkoutItem = {
       id: `manual_${Date.now()}_${newEx.id}`,
-      muscleKey: selectedMuscle,
+      muscleKey: customMuscle,
       exercise: newEx,
       sets: 3,
       reps: '8 a 10',
@@ -315,7 +324,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
       letter: letter.trim().toUpperCase() || 'A',
       name: name.trim() || `Treino ${letter}`,
       subtitle: subtitle.trim() || 'Treino Personalizado',
-      split: split,
+      split: editingRoutine?.split || 'upper_lower',
       muscleGroups,
       items,
       totalSets,
@@ -373,8 +382,8 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
           )}
 
           {/* Identificação do Treino */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-[#0a101d] p-3.5 rounded-2xl border border-slate-800/80">
-            <div className="sm:col-span-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#0a101d] p-3.5 rounded-2xl border border-slate-800/80">
+            <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                 Nome do Treino
               </label>
@@ -387,7 +396,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
               />
             </div>
 
-            <div className="sm:col-span-4">
+            <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                 Subtítulo
               </label>
@@ -398,25 +407,6 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                 placeholder="Ex: Foco Peito & Braços"
                 className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
               />
-            </div>
-
-            <div className="sm:col-span-3">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Foco / Divisão
-              </label>
-              <select
-                value={split}
-                onChange={(e) => setSplit(e.target.value as SplitOption)}
-                className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
-              >
-                <option value="upper_lower">Upper/Lower</option>
-                <option value="ppl">PPL</option>
-                <option value="abcde">ABCDE</option>
-                <option value="fullbody">Full Body</option>
-                <option value="lower">Lower</option>
-                <option value="upper">Upper</option>
-                <option value="legs">Legs</option>
-              </select>
             </div>
           </div>
 
@@ -540,6 +530,8 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                               } else {
                                 setSwappingIdx(idx);
                                 setSelectedMuscle(item.muscleKey);
+                                setCustomMuscle(item.muscleKey);
+                                setSelectedEquipment('all');
                                 setSearchQuery('');
                               }
                             }}
@@ -628,7 +620,7 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                         <div className="pt-2 border-t border-sky-500/30 space-y-2 animate-fadeIn">
                           <div className="flex items-center justify-between gap-2 text-[11px] text-sky-300 font-bold">
                             <span>
-                              🔄 Escolha um substituto rápido de {MUSCLE_NAMES[selectedMuscle] || selectedMuscle} (ou use o catálogo abaixo):
+                              🔄 Escolha um substituto rápido de {MUSCLE_NAMES[item.muscleKey] || item.muscleKey} (ou use o catálogo abaixo):
                             </span>
                             <button
                               type="button"
@@ -718,58 +710,124 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
 
             {/* TAB 1: DO CATÁLOGO */}
             {activeTab === 'catalog' && (
-              <div className="space-y-3">
-                {/* Seletor de Músculo */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-                  {ALL_MUSCLES.map((m) => (
+              <div className="space-y-2.5">
+                {/* Filtro 1: Músculo Alvo */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                    Músculo Alvo
+                  </span>
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 theme-scrollbar">
                     <button
-                      key={m}
                       type="button"
-                      onClick={() => setSelectedMuscle(m)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                        selectedMuscle === m
+                      onClick={() => setSelectedMuscle('all')}
+                      className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
+                        selectedMuscle === 'all'
                           ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
                           : 'bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700/60'
                       }`}
                     >
-                      {MUSCLE_NAMES[m] || m}
+                      Todos
                     </button>
-                  ))}
+                    {ALL_MUSCLES.map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => {
+                          setSelectedMuscle(m);
+                          setCustomMuscle(m);
+                        }}
+                        className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
+                          selectedMuscle === m
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
+                            : 'bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700/60'
+                        }`}
+                      >
+                        {MUSCLE_NAMES[m] || m}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Busca rápida */}
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Pesquisar exercício..."
-                    className="w-full bg-[#070b14] border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                  />
+                {/* Filtro 2: Equipamento / Modalidade */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                    Equipamento
+                  </span>
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 theme-scrollbar">
+                    {EQUIPMENT_FILTERS.map((eq) => (
+                      <button
+                        key={eq.id}
+                        type="button"
+                        onClick={() => setSelectedEquipment(eq.id)}
+                        className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
+                          selectedEquipment === eq.id
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                            : 'bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700/60'
+                        }`}
+                      >
+                        {eq.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Busca rápida + contador */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Pesquisar exercício, músculo alvo ou equipamento..."
+                      className="w-full bg-[#070b14] border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400 whitespace-nowrap shrink-0 tabular-nums">
+                    {availableExercises.length} {availableExercises.length === 1 ? 'opção' : 'opções'}
+                  </span>
                 </div>
 
                 {/* Lista de Exercícios Disponíveis */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
-                  {availableExercises.map((ex) => (
+                {availableExercises.length === 0 ? (
+                  <div className="p-5 text-center rounded-xl bg-[#070b14] border border-slate-800 space-y-2">
+                    <p className="text-xs text-slate-400">
+                      Nenhum exercício encontrado com essa combinação de filtros.
+                    </p>
                     <button
-                      key={ex.id}
                       type="button"
-                      onClick={() => handleAddCatalogExercise(ex)}
-                      className="p-2 rounded-xl bg-[#070b14] hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/40 text-left transition-all flex items-center justify-between gap-2 cursor-pointer group"
+                      onClick={() => {
+                        setSelectedMuscle('all');
+                        setSelectedEquipment('all');
+                        setSearchQuery('');
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 cursor-pointer"
                     >
-                      <div className="min-w-0">
-                        <span className="text-xs font-bold text-white group-hover:text-emerald-300 block truncate">
-                          {ex.name}
-                        </span>
-                        <span className="text-[10px] text-slate-500 block truncate">
-                          {ex.category} · {ex.profile}
-                        </span>
-                      </div>
-                      <Plus className="w-4 h-4 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
+                      Limpar filtros
                     </button>
-                  ))}
-                </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto theme-scrollbar pr-0.5">
+                    {availableExercises.map((ex) => (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        onClick={() => handleAddCatalogExercise(ex)}
+                        className="p-2.5 rounded-xl bg-[#070b14] hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/40 text-left transition-all flex items-center justify-between gap-2 cursor-pointer group"
+                      >
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-white group-hover:text-emerald-300 block truncate">
+                            {ex.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block truncate">
+                            {MUSCLE_NAMES[ex.muscleKey] || ex.muscleKey} · {ex.category} · {ex.profile}
+                          </span>
+                        </div>
+                        <Plus className="w-4 h-4 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -796,8 +854,8 @@ export const ManualWorkoutModal: React.FC<ManualWorkoutModalProps> = ({
                       Músculo Alvo
                     </label>
                     <select
-                      value={selectedMuscle}
-                      onChange={(e) => setSelectedMuscle(e.target.value as MuscleGroup)}
+                      value={customMuscle}
+                      onChange={(e) => setCustomMuscle(e.target.value as MuscleGroup)}
                       className="w-full bg-[#070b14] border border-slate-700 rounded-xl px-2 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
                     >
                       {ALL_MUSCLES.map((m) => (

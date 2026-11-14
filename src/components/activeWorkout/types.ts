@@ -41,7 +41,6 @@ export interface WorkoutItemRowProps {
   onDropCard: (index: number, e: React.DragEvent<HTMLDivElement>) => void;
   onDragEndCard: () => void;
   onPointerDownDragHandle: (index: number, e: React.PointerEvent<HTMLButtonElement>) => void;
-  deepWorkMode?: boolean;
 }
 
 export function areWorkoutItemRowEqual(prev: WorkoutItemRowProps, next: WorkoutItemRowProps): boolean {
@@ -52,8 +51,7 @@ export function areWorkoutItemRowEqual(prev: WorkoutItemRowProps, next: WorkoutI
     prev.dragOffsetY !== next.dragOffsetY ||
     prev.isHoldingDrag !== next.isHoldingDrag ||
     prev.isDropTarget !== next.isDropTarget ||
-    prev.sessions !== next.sessions ||
-    prev.deepWorkMode !== next.deepWorkMode
+    prev.sessions !== next.sessions
   ) {
     return false;
   }
@@ -95,8 +93,6 @@ export interface ActiveWorkoutViewProps {
   periodizationStrategy?: PeriodizationStrategy;
   userFocus?: FocusOption;
   onSelectPeriodizationStrategy?: (phase: PeriodizationStrategy) => void;
-  deepWorkMode?: boolean;
-  onToggleDeepWork?: () => void;
 
   onOpenAddExercise: () => void;
   onMoveUp: (index: number) => void;

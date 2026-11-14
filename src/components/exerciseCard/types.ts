@@ -39,7 +39,6 @@ export interface ExerciseCardProps {
   onDropCard?: (index: number, e: React.DragEvent<HTMLDivElement>) => void;
   onDragEndCard?: () => void;
   onPointerDownDragHandle?: (index: number, e: React.PointerEvent<HTMLButtonElement>) => void;
-  deepWorkMode?: boolean;
 }
 
 export interface SetLogData {

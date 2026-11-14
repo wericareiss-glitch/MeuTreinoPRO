@@ -117,15 +117,10 @@ export const Header: React.FC<HeaderProps> = ({
             <Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 stroke-[2.5]" />
           </div>
           <div>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <span className="font-extrabold text-sm sm:text-base md:text-lg text-white tracking-tight">
-                {t.appTitle}
-              </span>
-              <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                PRO
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400 hidden xl:block leading-none">
+            <span className="font-extrabold text-sm sm:text-base md:text-lg text-white tracking-tight block leading-tight">
+              {t.appTitle}
+            </span>
+            <p className="text-[10px] text-slate-400 hidden xl:block leading-none mt-0.5">
               Hipertrofia & Sobrecarga Científica
             </p>
           </div>

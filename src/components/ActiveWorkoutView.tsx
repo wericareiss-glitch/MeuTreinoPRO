@@ -17,7 +17,12 @@ import {
   MemoizedWorkoutItemRow,
   WorkoutHeaderBar,
   WorkoutToolbar,
-  WorkoutFooterActions
+  WorkoutFooterActions,
+  ActiveExerciseNav,
+  FocusExercisePager,
+  ActiveWorkoutViewMode,
+  findFirstIncompleteExerciseIndex,
+  findNextIncompleteExerciseIndex,
 } from './activeWorkout';
 
 import { JointMobilityModal } from './JointMobilityModal';
@@ -34,8 +39,6 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   periodizationStrategy,
   userFocus,
   onSelectPeriodizationStrategy,
-  deepWorkMode = false,
-  onToggleDeepWork,
   onOpenAddExercise,
   onMoveUp,
   onMoveDown,
@@ -58,6 +61,168 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const [dragOffsetY, setDragOffsetY] = useState<number>(0);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
+
+  // Modo de visualização (1 por vez vs Lista) + Exercício em foco para reduzir scroll
+  const [viewMode, setViewMode] = useState<ActiveWorkoutViewMode>(() => {
+    const saved = safeStorage.get<string>('meutreino_active_view_mode', 'focus');
+    return saved === 'list' ? 'list' : 'focus';
+  });
+  const [focusedExerciseIdx, setFocusedExerciseIdx] = useState<number>(() =>
+    findFirstIncompleteExerciseIndex(workoutItems, logs)
+  );
+  const exerciseNavRef = useRef<HTMLDivElement | null>(null);
+  const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevItemsLengthRef = useRef<number>(workoutItems.length);
+
+  // Refs para evitar closures obsoletas dentro de MemoizedWorkoutItemRow
+  const latestLogsRef = useRef(logs);
+  const latestItemsRef = useRef(workoutItems);
+  const latestViewModeRef = useRef(viewMode);
+  const latestOnToggleSetRef = useRef(onToggleSet);
+  const latestOnMoveUpRef = useRef(onMoveUp);
+  const latestOnMoveDownRef = useRef(onMoveDown);
+
+  useEffect(() => {
+    latestLogsRef.current = logs;
+  }, [logs]);
+
+  useEffect(() => {
+    latestItemsRef.current = workoutItems;
+  }, [workoutItems]);
+
+  useEffect(() => {
+    latestViewModeRef.current = viewMode;
+  }, [viewMode]);
+
+  useEffect(() => {
+    latestOnToggleSetRef.current = onToggleSet;
+  }, [onToggleSet]);
+
+  useEffect(() => {
+    latestOnMoveUpRef.current = onMoveUp;
+  }, [onMoveUp]);
+
+  useEffect(() => {
+    latestOnMoveDownRef.current = onMoveDown;
+  }, [onMoveDown]);
+
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const prevLen = prevItemsLengthRef.current;
+    prevItemsLengthRef.current = workoutItems.length;
+
+    if (workoutItems.length === 0) {
+      setFocusedExerciseIdx(0);
+      return;
+    }
+
+    if (workoutItems.length > prevLen) {
+      // Novo exercício adicionado manualmente: focar no novo item
+      setFocusedExerciseIdx(workoutItems.length - 1);
+      return;
+    }
+
+    setFocusedExerciseIdx((curr) => Math.max(0, Math.min(curr, workoutItems.length - 1)));
+  }, [workoutItems.length]);
+
+  const handleChangeViewMode = useCallback((mode: ActiveWorkoutViewMode) => {
+    setViewMode(mode);
+    safeStorage.set('meutreino_active_view_mode', mode);
+  }, []);
+
+  const scrollToExerciseCard = useCallback((idx: number) => {
+    requestAnimationFrame(() => {
+      const target = document.querySelector(`[data-exercise-card-index="${idx}"]`);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }, []);
+
+  const handleSelectExercise = useCallback(
+    (idx: number) => {
+      setFocusedExerciseIdx(idx);
+      if (latestViewModeRef.current === 'list') {
+        scrollToExerciseCard(idx);
+      }
+    },
+    [scrollToExerciseCard]
+  );
+
+  const handleMoveUpWithFocus = useCallback((idx: number) => {
+    latestOnMoveUpRef.current(idx);
+    setFocusedExerciseIdx((curr) => {
+      if (curr === idx && idx > 0) return idx - 1;
+      if (curr === idx - 1) return idx;
+      return curr;
+    });
+  }, []);
+
+  const handleMoveDownWithFocus = useCallback((idx: number) => {
+    latestOnMoveDownRef.current(idx);
+    setFocusedExerciseIdx((curr) => {
+      if (curr === idx && idx < latestItemsRef.current.length - 1) return idx + 1;
+      if (curr === idx + 1) return idx;
+      return curr;
+    });
+  }, []);
+
+  const handleToggleSetWithAutoFocus = useCallback(
+    (logKey: string, restSec: number) => {
+      const currentLogs = latestLogsRef.current;
+      const items = latestItemsRef.current;
+      const wasDone = Boolean(currentLogs[logKey]?.done);
+
+      latestOnToggleSetRef.current(logKey, restSec);
+
+      if (wasDone) return;
+
+      // Verifica se o exercício correspondente acabou de ser 100% concluído
+      const sepIdx = logKey.lastIndexOf('_');
+      if (sepIdx <= 0) return;
+      const exId = logKey.slice(0, sepIdx);
+      const itemIdx = items.findIndex((it) => it.exercise.id === exId);
+      if (itemIdx < 0) return;
+
+      const targetItem = items[itemIdx];
+      let doneAfterToggle = 0;
+      const simulatedLogs = {
+        ...currentLogs,
+        [logKey]: { ...(currentLogs[logKey] || { weight: '', reps: '' }), done: true },
+      };
+
+      for (let s = 1; s <= targetItem.sets; s++) {
+        if (simulatedLogs[`${targetItem.exercise.id}_${s}`]?.done) {
+          doneAfterToggle++;
+        }
+      }
+
+      if (targetItem.sets > 0 && doneAfterToggle >= targetItem.sets) {
+        const nextIncompleteIdx = findNextIncompleteExerciseIndex(items, simulatedLogs, itemIdx);
+        if (nextIncompleteIdx !== -1 && nextIncompleteIdx !== itemIdx) {
+          if (autoAdvanceTimerRef.current) {
+            clearTimeout(autoAdvanceTimerRef.current);
+          }
+          autoAdvanceTimerRef.current = setTimeout(() => {
+            setFocusedExerciseIdx(nextIncompleteIdx);
+            if (latestViewModeRef.current === 'list') {
+              scrollToExerciseCard(nextIncompleteIdx);
+            } else {
+              exerciseNavRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          }, 420);
+        }
+      }
+    },
+    [scrollToExerciseCard]
+  );
 
   const performReorder = useCallback(
     (fromIdx: number, toIdx: number) => {
@@ -430,54 +595,108 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
         mobilityTotalExercises={mobilityRoutine.totalExercises}
         mobilityTotalMinutes={mobilityRoutine.totalDurationMinutes}
         onFinishSession={onFinishSession}
-        deepWorkMode={deepWorkMode}
-        onToggleDeepWork={onToggleDeepWork}
       />
 
-      {/* 2. Barra de Ações Rápidas (Oculta temporariamente no Modo Deep Work) */}
-      {!deepWorkMode && (
-        <WorkoutToolbar
-          workoutItemsCount={workoutItems.length}
-          onOpenMobility={() => setIsMobilityOpen(true)}
-          onOpenAddExercise={onOpenAddExercise}
-        />
+      {/* 2. Barra de Ações Rápidas */}
+      <WorkoutToolbar
+        workoutItemsCount={workoutItems.length}
+        onOpenMobility={() => setIsMobilityOpen(true)}
+        onOpenAddExercise={onOpenAddExercise}
+      />
+
+      {/* 2.5 Navegação Horizontal Rápida + Seletor 1 por vez / Lista */}
+      {workoutItems.length > 0 && (
+        <div ref={exerciseNavRef} className="scroll-mt-16">
+          <ActiveExerciseNav
+            workoutItems={workoutItems}
+            logs={logs}
+            focusedIndex={focusedExerciseIdx}
+            viewMode={viewMode}
+            onSelectExercise={handleSelectExercise}
+            onChangeViewMode={handleChangeViewMode}
+          />
+        </div>
       )}
 
-      {/* 3. Lista de Exercícios Ativos */}
-      <div className="space-y-3">
-        {workoutItems.map((item, index) => (
-          <MemoizedWorkoutItemRow
-            key={item.id}
-            item={item}
-            index={index}
-            totalItems={workoutItems.length}
-            logs={logs}
-            history={history}
-            sessions={sessions}
-            isDragging={draggingIdx === index}
-            dragOffsetY={draggingIdx === index ? dragOffsetY : 0}
-            isHoldingDrag={holdingIdx === index}
-            isDropTarget={dropTargetIdx === index && draggingIdx !== index}
-            onMoveUp={onMoveUp}
-            onMoveDown={onMoveDown}
-            onDeleteExercise={onDeleteExercise}
-            onUpdateLog={onUpdateLog}
-            onToggleSet={onToggleSet}
-            onUpdateRest={onUpdateRest}
-            onOpenWarmup={onOpenWarmup}
-            onOpenSwap={onOpenSwap}
-            onAddSet={onAddSet}
-            onRemoveSet={onRemoveSet}
-            onOpenAnalytics={onOpenAnalytics}
-            onDragStartCard={handleDragStartCard}
-            onDragOverCard={handleDragOverCard}
-            onDropCard={handleDropCard}
-            onDragEndCard={handleDragEndCard}
-            onPointerDownDragHandle={handlePointerDownDragHandle}
-            deepWorkMode={deepWorkMode}
-          />
-        ))}
-      </div>
+      {/* 3. Exercícios Ativos (Modo Foco: 1 por vez | Modo Lista: todos) */}
+      {viewMode === 'focus' && workoutItems.length > 0 ? (() => {
+        const safeIdx = Math.max(0, Math.min(focusedExerciseIdx, workoutItems.length - 1));
+        const focusedItem = workoutItems[safeIdx];
+        return (
+          <div className="space-y-3">
+            <MemoizedWorkoutItemRow
+              key={focusedItem.id}
+              item={focusedItem}
+              index={safeIdx}
+              totalItems={workoutItems.length}
+              logs={logs}
+              history={history}
+              sessions={sessions}
+              isDragging={draggingIdx === safeIdx}
+              dragOffsetY={draggingIdx === safeIdx ? dragOffsetY : 0}
+              isHoldingDrag={holdingIdx === safeIdx}
+              isDropTarget={dropTargetIdx === safeIdx && draggingIdx !== safeIdx}
+              onMoveUp={handleMoveUpWithFocus}
+              onMoveDown={handleMoveDownWithFocus}
+              onDeleteExercise={onDeleteExercise}
+              onUpdateLog={onUpdateLog}
+              onToggleSet={handleToggleSetWithAutoFocus}
+              onUpdateRest={onUpdateRest}
+              onOpenWarmup={onOpenWarmup}
+              onOpenSwap={onOpenSwap}
+              onAddSet={onAddSet}
+              onRemoveSet={onRemoveSet}
+              onOpenAnalytics={onOpenAnalytics}
+              onDragStartCard={handleDragStartCard}
+              onDragOverCard={handleDragOverCard}
+              onDropCard={handleDropCard}
+              onDragEndCard={handleDragEndCard}
+              onPointerDownDragHandle={handlePointerDownDragHandle}
+            />
+
+            <FocusExercisePager
+              workoutItems={workoutItems}
+              logs={logs}
+              focusedIndex={safeIdx}
+              onSelectExercise={handleSelectExercise}
+            />
+          </div>
+        );
+      })() : (
+        <div className="space-y-3">
+          {workoutItems.map((item, index) => (
+            <MemoizedWorkoutItemRow
+              key={item.id}
+              item={item}
+              index={index}
+              totalItems={workoutItems.length}
+              logs={logs}
+              history={history}
+              sessions={sessions}
+              isDragging={draggingIdx === index}
+              dragOffsetY={draggingIdx === index ? dragOffsetY : 0}
+              isHoldingDrag={holdingIdx === index}
+              isDropTarget={dropTargetIdx === index && draggingIdx !== index}
+              onMoveUp={handleMoveUpWithFocus}
+              onMoveDown={handleMoveDownWithFocus}
+              onDeleteExercise={onDeleteExercise}
+              onUpdateLog={onUpdateLog}
+              onToggleSet={handleToggleSetWithAutoFocus}
+              onUpdateRest={onUpdateRest}
+              onOpenWarmup={onOpenWarmup}
+              onOpenSwap={onOpenSwap}
+              onAddSet={onAddSet}
+              onRemoveSet={onRemoveSet}
+              onOpenAnalytics={onOpenAnalytics}
+              onDragStartCard={handleDragStartCard}
+              onDragOverCard={handleDragOverCard}
+              onDropCard={handleDropCard}
+              onDragEndCard={handleDragEndCard}
+              onPointerDownDragHandle={handlePointerDownDragHandle}
+            />
+          ))}
+        </div>
+      )}
 
       {/* 4. Ações Finais: Concluir / Descartar */}
       <WorkoutFooterActions

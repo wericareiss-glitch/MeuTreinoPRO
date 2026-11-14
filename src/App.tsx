@@ -398,6 +398,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
                   activeWorkoutMuscles={activeWorkoutMuscles}
                   totalSetsInWorkout={totalSetsInWorkout}
                   totalCompletedSetsInWorkout={totalCompletedSetsInWorkout}
+                  activeRoutineName={activeRoutine?.name}
                   onOpenVolumeBudget={() => setIsBudgetOpen(true)}
                   onGoToWorkout={() => {
                     if (activeRoutineId) {

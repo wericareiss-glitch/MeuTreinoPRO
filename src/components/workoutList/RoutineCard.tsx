@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ListChildComponentProps } from 'react-window';
 import { 
   Play, 
@@ -15,7 +15,9 @@ import {
   MoreVertical, 
   Share2, 
   GripVertical,
-  Dumbbell 
+  Dumbbell,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { MUSCLE_NAMES } from '../../data/exerciseDatabase';
 import { ActionSheet, ActionSheetItem } from '../common/ActionSheet';
@@ -51,7 +53,8 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
   onCardDragEnd,
 }) => {
   const { routine, visualIdx } = entry;
-
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedExIdx, setExpandedExIdx] = useState<number | null>(null);
 
   return (
     <div
@@ -216,17 +219,17 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
           </div>
         </div>
 
-        {/* Badges de Grupos Musculares */}
-        <div className="flex flex-wrap gap-1 mb-2.5 shrink-0">
-          {routine.muscleGroups.map((m) => (
-            <span
-              key={m}
-              className="text-[10px] font-semibold text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700/60"
-            >
-              {MUSCLE_NAMES[m] || m}
-            </span>
-          ))}
-        </div>
+        {/* Grupos Musculares como metadados limpos sem pílulas */}
+        {routine.muscleGroups.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-400 font-medium mb-2.5 shrink-0">
+            {routine.muscleGroups.map((m, i) => (
+              <React.Fragment key={m}>
+                {i > 0 && <span aria-hidden="true" className="text-slate-600">·</span>}
+                <span className="text-slate-300">{MUSCLE_NAMES[m] || m}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
 
         {/* Informações de Séries & Tempo */}
         <div className="flex items-center gap-3 text-xs text-slate-400 font-mono py-2 px-3 rounded-xl bg-[#0b1220] border border-slate-800/70 mb-2.5 shrink-0">
@@ -246,11 +249,11 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
           </span>
         </div>
 
-        {/* Preview dos Exercícios */}
-        <div className="flex-1 min-h-0 overflow-y-auto theme-scrollbar space-y-1 mb-3 pr-1">
-          <div className="flex items-center justify-between gap-2 mb-1">
+        {/* Preview dos Exercícios com visualização compacta e expansão sob demanda */}
+        <div className="flex-1 min-h-0 overflow-y-auto theme-scrollbar pr-0.5 space-y-1 mb-3">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
             <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500">
-              Exercícios programados:
+              {routine.items.length} {routine.items.length === 1 ? 'exercício' : 'exercícios'}:
             </span>
             {hasEditHandler && onEditRoutine && (
               <button
@@ -259,25 +262,79 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
                 className="text-[10px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
               >
                 <Pencil className="w-2.5 h-2.5" />
-                <span>Alterar exercícios</span>
+                <span>Alterar</span>
               </button>
             )}
           </div>
-          {routine.items.slice(0, 6).map((it, idx) => (
-            <div key={idx} className="text-xs text-slate-300 truncate flex items-center justify-between gap-1.5 py-0.5">
-              <div className="flex items-center gap-1.5 truncate">
-                <span className="text-slate-500 text-[10px]">•</span>
-                <span className="font-medium text-slate-200 truncate">{it.exercise.name}</span>
-              </div>
-              <span className="text-[11px] text-slate-400 font-mono shrink-0 font-bold tabular-nums">
-                {it.sets}s × {it.reps}
-              </span>
-            </div>
-          ))}
-          {routine.items.length > 6 && (
-            <div className="text-[11px] text-slate-500 italic pl-3">
-              + mais {routine.items.length - 6} exercício(s)...
-            </div>
+
+          <div className="space-y-1.5">
+            {(isExpanded ? routine.items : routine.items.slice(0, 4)).map((it, idx) => {
+              const isExOpen = expandedExIdx === idx;
+              return (
+                <div
+                  key={idx}
+                  className="rounded-xl bg-slate-900/60 border border-slate-800/60 transition-colors overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedExIdx(isExOpen ? null : idx)}
+                    aria-expanded={isExOpen}
+                    className="w-full text-left px-2.5 py-2 flex items-center justify-between gap-2 hover:bg-slate-900 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[11px] font-mono font-bold text-slate-500 w-4 text-center shrink-0 tabular-nums">
+                        {idx + 1}.
+                      </span>
+                      <span className="text-xs font-semibold text-slate-200 truncate">
+                        {it.exercise.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] text-slate-400 hidden sm:inline">
+                        {MUSCLE_NAMES[it.muscleKey] || it.muscleKey}
+                      </span>
+                      <span className="text-[11px] text-emerald-400 font-mono font-bold tabular-nums whitespace-nowrap">
+                        {it.sets}s × {it.reps}
+                      </span>
+                      {isExOpen ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      )}
+                    </div>
+                  </button>
+
+                  {isExOpen && (
+                    <div className="px-3 pb-2.5 pt-1.5 border-t border-slate-800/70 text-[11px] text-slate-300 space-y-1.5 bg-[#0b1220]/80">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-slate-400">
+                        <span className="text-emerald-300 font-semibold">{it.exercise.target}</span>
+                        <span aria-hidden="true" className="text-slate-600">·</span>
+                        <span>{it.exercise.profile}</span>
+                        <span aria-hidden="true" className="text-slate-600">·</span>
+                        <span>Estab. {it.exercise.stability}</span>
+                      </div>
+                      <p className="text-slate-400 leading-relaxed">
+                        {it.exercise.bio}
+                      </p>
+                      <p className="text-sky-300/90 leading-relaxed font-medium">
+                        Execução: {it.exercise.cue}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {routine.items.length > 4 && (
+            <button
+              type="button"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              className="w-full text-center py-1 mt-1 text-[11px] font-bold text-slate-400 hover:text-emerald-400 transition-colors flex items-center justify-center gap-1 cursor-pointer rounded-lg hover:bg-slate-800/40"
+            >
+              <span>{isExpanded ? 'Recolher exercícios' : `Ver todos os ${routine.items.length} exercícios`}</span>
+              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
           )}
         </div>
       </div>
