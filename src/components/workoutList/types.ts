@@ -22,6 +22,7 @@ export interface WorkoutListViewProps {
   onCreateManualWorkout?: () => void;
   onGenerateQuickWorkout?: () => void;
   onEditRoutine?: (routine: GeneratedWorkoutRoutine) => void;
+  onDuplicateRoutine?: (routine: GeneratedWorkoutRoutine) => GeneratedWorkoutRoutine | void;
   onDeleteRoutine?: (routineId: string) => void;
   onShareRoutine?: (routine: GeneratedWorkoutRoutine) => void;
   onReorderRoutines?: (fromIndex: number, toIndex: number) => void;
@@ -65,6 +66,7 @@ export interface RoutineCardProps {
   isDropTargetThis: boolean;
   canReorder: boolean;
   hasEditHandler: boolean;
+  hasDuplicateHandler: boolean;
   hasDeleteHandler: boolean;
   onToggleMenu: (routineId: string) => void;
   onCloseMenu: () => void;
@@ -72,6 +74,7 @@ export interface RoutineCardProps {
   onConfirmDelete: (routineId: string) => void;
   onStartWorkout: (routine: GeneratedWorkoutRoutine) => void;
   onEditRoutine?: (routine: GeneratedWorkoutRoutine) => void;
+  onDuplicateRoutine?: (routine: GeneratedWorkoutRoutine) => void;
   onShareRoutineClick: (routine: GeneratedWorkoutRoutine) => void;
   onPointerDownGrip: (visualIdx: number, e: React.PointerEvent<HTMLButtonElement>) => void;
   onCardDragStart: (visualIdx: number, e: React.DragEvent<HTMLDivElement>) => void;
@@ -94,6 +97,7 @@ export function areRoutineCardPropsEqual(prev: RoutineCardProps, next: RoutineCa
     prev.isDropTargetThis === next.isDropTargetThis &&
     prev.canReorder === next.canReorder &&
     prev.hasEditHandler === next.hasEditHandler &&
+    prev.hasDuplicateHandler === next.hasDuplicateHandler &&
     prev.hasDeleteHandler === next.hasDeleteHandler
   );
 }
@@ -109,6 +113,7 @@ export interface CarouselItemData {
   dropTargetIdx: number | null;
   canReorder: boolean;
   hasEditHandler: boolean;
+  hasDuplicateHandler: boolean;
   hasDeleteHandler: boolean;
   onToggleMenu: (routineId: string) => void;
   onCloseMenu: () => void;
@@ -116,6 +121,7 @@ export interface CarouselItemData {
   onConfirmDelete: (routineId: string) => void;
   onStartWorkout: (routine: GeneratedWorkoutRoutine) => void;
   onEditRoutine?: (routine: GeneratedWorkoutRoutine) => void;
+  onDuplicateRoutine?: (routine: GeneratedWorkoutRoutine) => void;
   onShareRoutineClick: (routine: GeneratedWorkoutRoutine) => void;
   onPointerDownGrip: (visualIdx: number, e: React.PointerEvent<HTMLButtonElement>) => void;
   onCardDragStart: (visualIdx: number, e: React.DragEvent<HTMLDivElement>) => void;

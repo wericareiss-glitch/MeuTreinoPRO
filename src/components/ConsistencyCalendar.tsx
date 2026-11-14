@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Calendar, Flame, Trophy, Dumbbell, Activity, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
+import { Calendar, Flame, Dumbbell, Activity } from 'lucide-react';
 import { WorkoutSessionSummary, CardioSession } from '../types/workout';
+import { useI18n } from '../utils/i18n';
 
 interface ConsistencyCalendarProps {
   sessions: WorkoutSessionSummary[];
@@ -29,6 +30,7 @@ export const ConsistencyCalendar: React.FC<ConsistencyCalendarProps> = ({
   cardioSessions = [],
   weeklyFrequencyGoal = 4,
 }) => {
+  const { t, dateLocale } = useI18n();
   const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
 
   // Mapeia os últimos 35 dias (5 semanas completas)
@@ -137,7 +139,7 @@ export const ConsistencyCalendar: React.FC<ConsistencyCalendarProps> = ({
     };
   }, [days, weeklyFrequencyGoal]);
 
-  const weekDayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const weekDayLabels = t.calendar.weekdaysShort;
 
   return (
     <div className="bg-[#0b1220]/80 rounded-2xl border border-slate-800 p-3 sm:p-4 shadow-xl">
@@ -149,11 +151,11 @@ export const ConsistencyCalendar: React.FC<ConsistencyCalendarProps> = ({
           </div>
           <div>
             <h3 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5">
-              <span>Calendário de Consistência</span>
-              <span className="text-[10px] font-bold text-slate-400 font-mono">(Últimos 35 dias)</span>
+              <span>{t.calendar.title}</span>
+              <span className="text-[10px] font-bold text-slate-400 font-mono">(35 {t.calendar.daysLabel})</span>
             </h3>
             <span className="text-[11px] text-slate-400">
-              Frequência e adesão ao seu plano de hipertrofia
+              {t.calendar.subtitle}
             </span>
           </div>
         </div>
@@ -161,7 +163,7 @@ export const ConsistencyCalendar: React.FC<ConsistencyCalendarProps> = ({
         {/* Badge Streak */}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300">
           <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400 animate-pulse" />
-          <span className="text-xs font-black font-mono">{stats.currentStreak} dias ativos</span>
+          <span className="text-xs font-black font-mono">{stats.currentStreak} {t.calendar.daysLabel}</span>
         </div>
       </div>
 
@@ -198,7 +200,7 @@ export const ConsistencyCalendar: React.FC<ConsistencyCalendarProps> = ({
                 className={`h-9 sm:h-10 rounded-xl flex flex-col items-center justify-center relative border transition-all cursor-pointer active:scale-95 ${bgClass} ${
                   isSelected ? 'ring-2 ring-white scale-105 z-10' : ''
                 }`}
-                title={`${day.dateStr}${hasWorkout ? ' · Musculação' : ''}${hasCardio ? ' · Cardio' : ''}`}
+                title={`${day.dateStr}${hasWorkout ? ` · ${t.calendar.legendStrength}` : ''}${hasCardio ? ` · ${t.calendar.legendCardio}` : ''}`}
               >
                 <span className="text-[11px] sm:text-xs font-mono">{day.dayOfMonth}</span>
                 <div className="flex items-center gap-0.5 mt-0.5">
@@ -216,20 +218,20 @@ export const ConsistencyCalendar: React.FC<ConsistencyCalendarProps> = ({
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-md bg-emerald-500" />
-            <span>Musculação</span>
+            <span>{t.calendar.legendStrength}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-md bg-sky-500" />
-            <span>Cardio</span>
+            <span>{t.calendar.legendCardio}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-md bg-gradient-to-r from-emerald-500 to-sky-500" />
-            <span>Ambos no dia</span>
+            <span>{t.calendar.legendCombined}</span>
           </div>
         </div>
 
         <span className="font-mono font-bold text-slate-300">
-          Adesão: <strong className="text-emerald-400">{stats.consistencyRate}%</strong>
+          {t.calendar.streakLabel}: <strong className="text-emerald-400">{stats.consistencyRate}%</strong>
         </span>
       </div>
 
@@ -238,19 +240,19 @@ export const ConsistencyCalendar: React.FC<ConsistencyCalendarProps> = ({
         <div className="mt-3 p-3 bg-slate-950 rounded-xl border border-sky-500/30 animate-fadeIn space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold text-white">
-              📅 {selectedDay.dateObj.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+              📅 {selectedDay.dateObj.toLocaleDateString(dateLocale, { weekday: 'long', day: '2-digit', month: 'long' })}
             </span>
             <button
               type="button"
               onClick={() => setSelectedDay(null)}
-              className="text-[10px] text-slate-400 hover:text-white"
+              className="text-[10px] text-slate-400 hover:text-white cursor-pointer"
             >
-              Fechar ✕
+              {t.common.close} ✕
             </button>
           </div>
 
           {selectedDay.workouts.length === 0 && selectedDay.cardios.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">Nenhum treino registrado neste dia (dia de descanso/recuperação).</p>
+            <p className="text-xs text-slate-400 italic">{t.calendar.noTrainingDay} {t.calendar.restDayHint}</p>
           ) : (
             <div className="space-y-1.5">
               {selectedDay.workouts.map((w, wIdx) => (
@@ -258,9 +260,9 @@ export const ConsistencyCalendar: React.FC<ConsistencyCalendarProps> = ({
                   <div className="flex items-center gap-2">
                     <Dumbbell className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <div>
-                      <span className="font-bold text-white">{w.splitName || 'Treino de Força'}</span>
+                      <span className="font-bold text-white">{w.splitName || t.calendar.legendStrength}</span>
                       <span className="text-[10px] text-slate-400 block font-mono">
-                        {w.totalSets} séries · {w.totalVolumeLoadKg.toLocaleString('pt-BR')} kg levantados
+                        {w.totalSets} {t.calendar.setsCountLabel} · {w.totalVolumeLoadKg.toLocaleString(dateLocale)} {t.calendar.kgLifted}
                       </span>
                     </div>
                   </div>
@@ -272,9 +274,9 @@ export const ConsistencyCalendar: React.FC<ConsistencyCalendarProps> = ({
                   <div className="flex items-center gap-2">
                     <Activity className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                     <div>
-                      <span className="font-bold text-white capitalize">{c.type || 'Cardio'}</span>
+                      <span className="font-bold text-white capitalize">{c.type || t.calendar.legendCardio}</span>
                       <span className="text-[10px] text-slate-400 block font-mono">
-                        {Math.round(c.durationSeconds / 60)} min · {c.distanceKm ? `${c.distanceKm} km · ` : ''}{c.calories || 0} kcal
+                        {Math.round(c.durationSeconds / 60)} {t.workout.minutesAbbr} · {c.distanceKm ? `${c.distanceKm} km · ` : ''}{c.calories || 0} kcal
                       </span>
                     </div>
                   </div>

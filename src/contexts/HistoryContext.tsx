@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { WorkoutSessionSummary, WorkoutLogs, BodyMeasurement, MuscleGroup } from '../types/workout';
 import { safeStorage } from '../utils/storage';
+import { recalculateSessionSummary, recomputeWeeklyVolumeFromSessions } from '../utils/sessionEditor';
 import { useAuth } from './AuthContext';
 import { syncSessionToCloud, syncMeasurementToCloud, deleteMeasurementFromCloud } from '../services/firebase';
 
@@ -24,6 +25,10 @@ export interface HistoryContextType {
   setIsMeasurementsOpen: (open: boolean) => void;
   summaryModalSession: WorkoutSessionSummary | null;
   setSummaryModalSession: (sess: WorkoutSessionSummary | null) => void;
+  summaryInitialEditMode: boolean;
+  openSessionSummary: (sess: WorkoutSessionSummary, editMode?: boolean) => void;
+  closeSessionSummary: () => void;
+  handleUpdateSession: (updatedSession: WorkoutSessionSummary) => void;
   handleSaveMeasurement: (item: BodyMeasurement) => void;
   handleDeleteMeasurement: (id: string) => void;
   handleOpenAnalytics: (exerciseName?: string) => void;
@@ -69,6 +74,7 @@ export const HistoryProvider: React.FC<{
   const [analyticsExerciseName, setAnalyticsExerciseName] = useState<string | undefined>(undefined);
   const [isMeasurementsOpen, setIsMeasurementsOpen] = useState(false);
   const [summaryModalSession, setSummaryModalSession] = useState<WorkoutSessionSummary | null>(null);
+  const [summaryInitialEditMode, setSummaryInitialEditMode] = useState(false);
 
   // Re-sync on user switch
   useEffect(() => {
@@ -177,12 +183,48 @@ export const HistoryProvider: React.FC<{
     setWeeklyCompletedSets(newWeeklyVolume);
     safeStorage.set(`alex_u_${uid}_weekly_volume`, newWeeklyVolume);
 
+    setSummaryInitialEditMode(false);
     setSummaryModalSession(newSession);
 
     if (currentUser && !currentUser.isVisitor) {
       syncSessionToCloud(uid, newSession).catch(() => {});
     }
   }, [uid, sessions, currentUser]);
+
+  const openSessionSummary = useCallback((sess: WorkoutSessionSummary, editMode = false) => {
+    setSummaryInitialEditMode(editMode);
+    setSummaryModalSession(sess);
+  }, []);
+
+  const closeSessionSummary = useCallback(() => {
+    setSummaryModalSession(null);
+    setSummaryInitialEditMode(false);
+  }, []);
+
+  const handleUpdateSession = useCallback((updatedSession: WorkoutSessionSummary) => {
+    if (!uid) return;
+    const normalized = recalculateSessionSummary(updatedSession);
+
+    setSessions((prev) => {
+      const nextSessions = prev.map((s) => (s.id === normalized.id ? normalized : s));
+      safeStorage.set(`alex_u_${uid}_sessions`, nextSessions);
+
+      const nextWeekly = recomputeWeeklyVolumeFromSessions(nextSessions);
+      setWeeklyCompletedSets(nextWeekly);
+      safeStorage.set(`alex_u_${uid}_weekly_volume`, nextWeekly);
+
+      return nextSessions;
+    });
+
+    setSummaryModalSession((curr) => (curr && curr.id === normalized.id ? normalized : curr));
+    setSummaryInitialEditMode(false);
+
+    if (currentUser && !currentUser.isVisitor) {
+      syncSessionToCloud(uid, normalized).catch(() => {});
+    }
+
+    onShowToast('Registro da sessão atualizado com sucesso!');
+  }, [uid, currentUser, onShowToast]);
 
   return (
     <HistoryContext.Provider
@@ -201,6 +243,10 @@ export const HistoryProvider: React.FC<{
         setIsMeasurementsOpen,
         summaryModalSession,
         setSummaryModalSession,
+        summaryInitialEditMode,
+        openSessionSummary,
+        closeSessionSummary,
+        handleUpdateSession,
         handleSaveMeasurement,
         handleDeleteMeasurement,
         handleOpenAnalytics,

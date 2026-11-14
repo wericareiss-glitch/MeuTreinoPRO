@@ -20,7 +20,8 @@ import {
 import { safeStorage, calculateVolumeLoad } from '../utils/storage';
 import { soundManager } from '../utils/audio';
 import { generateWeeklyRoutines, generateQuickWorkoutRoutine } from '../utils/routineGenerator';
-import { syncRoutinesToCloud } from '../services/firebase';
+import { duplicateWorkoutRoutine, insertDuplicatedRoutine } from '../utils/routineDuplication';
+import { syncRoutinesToCloud, syncRoutineToCloud } from '../services/firebase';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { useAuth } from './AuthContext';
 import { useHistory } from './HistoryContext';
@@ -101,6 +102,7 @@ export interface WorkoutContextType {
   handleGenerateQuickWorkout: () => void;
   handleShareRoutine: (routine: GeneratedWorkoutRoutine) => void;
   handleSaveManualRoutine: (routine: GeneratedWorkoutRoutine) => void;
+  handleDuplicateRoutine: (routine: GeneratedWorkoutRoutine) => GeneratedWorkoutRoutine;
   handleDeleteRoutine: (routineId: string) => void;
   handleOpenCreateManualRoutine: () => void;
   handleEditRoutine: (routine: GeneratedWorkoutRoutine) => void;
@@ -868,6 +870,28 @@ export const WorkoutProvider: React.FC<{
     setIsManualWorkoutOpen(true);
   }, []);
 
+  const handleDuplicateRoutine = useCallback((routine: GeneratedWorkoutRoutine): GeneratedWorkoutRoutine => {
+    const duplicated = duplicateWorkoutRoutine(routine, routines);
+    setRoutines((prev) => {
+      const freshDuplicate = duplicateWorkoutRoutine(routine, prev);
+      // Keep deterministic id/name when prev matches routines, else update via freshDuplicate
+      const toInsert = prev === routines ? duplicated : freshDuplicate;
+      const updated = insertDuplicatedRoutine(prev, routine.id, toInsert);
+      if (uid) {
+        safeStorage.set(`alex_u_${uid}_routines`, updated);
+        if (currentUser && !currentUser.isVisitor) {
+          syncRoutineToCloud(uid, toInsert).catch(() => {});
+        }
+      } else {
+        safeStorage.set('alex_guest_routines', updated);
+      }
+      return updated;
+    });
+    soundManager.vibrate(15);
+    onShowToast(`Treino "${duplicated.name}" duplicado com sucesso!`);
+    return duplicated;
+  }, [routines, uid, currentUser, onShowToast]);
+
   return (
     <WorkoutContext.Provider
       value={{
@@ -935,6 +959,7 @@ export const WorkoutProvider: React.FC<{
         handleGenerateQuickWorkout,
         handleShareRoutine,
         handleSaveManualRoutine,
+        handleDuplicateRoutine,
         handleDeleteRoutine,
         handleOpenCreateManualRoutine,
         handleEditRoutine,

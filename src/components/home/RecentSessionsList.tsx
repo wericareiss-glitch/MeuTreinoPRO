@@ -15,6 +15,7 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  Pencil,
 } from 'lucide-react';
 import { WorkoutSessionSummary } from '../../types/workout';
 import { useI18n } from '../../utils/i18n';
@@ -23,14 +24,16 @@ interface RecentSessionsListProps {
   sessions: WorkoutSessionSummary[];
   onGoToWorkout: () => void;
   onViewSummary: (session: WorkoutSessionSummary) => void;
+  onEditSession?: (session: WorkoutSessionSummary) => void;
 }
 
 export const RecentSessionsList: React.FC<RecentSessionsListProps> = ({
   sessions,
   onGoToWorkout,
   onViewSummary,
+  onEditSession,
 }) => {
-  const { t, language } = useI18n();
+  const { t, dateLocale } = useI18n();
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
 
@@ -48,13 +51,13 @@ export const RecentSessionsList: React.FC<RecentSessionsListProps> = ({
               {t.historySectionTitle}
             </h2>
             <p className="text-[11px] text-slate-400 truncate">
-              Toque em uma sessão para expandir exercícios e cargas
+              {t.home.tapSessionHint}
             </p>
           </div>
         </div>
 
         <span className="text-xs font-mono font-bold text-slate-300 tabular-nums shrink-0">
-          {sessions.length} {sessions.length === 1 ? 'treino' : 'treinos'}
+          {sessions.length} {sessions.length === 1 ? t.home.workoutSingular : t.home.workoutPlural}
         </span>
       </div>
 
@@ -88,7 +91,7 @@ export const RecentSessionsList: React.FC<RecentSessionsListProps> = ({
 
             const isExpanded = expandedSessionId === sess.id;
             const formattedDate = new Date(sess.date).toLocaleDateString(
-              language === 'en' ? 'en-US' : language === 'es' ? 'es-ES' : 'pt-BR',
+              dateLocale,
               {
                 day: '2-digit',
                 month: 'short',
@@ -129,11 +132,11 @@ export const RecentSessionsList: React.FC<RecentSessionsListProps> = ({
                       {sessionMax > 0 && (
                         <span className="text-amber-400 font-bold inline-flex items-center gap-1">
                           <Trophy className="w-3 h-3" />
-                          Máx {sessionMax}kg
+                          {t.home.maxAbbr} {sessionMax}kg
                         </span>
                       )}
                       <span className="text-slate-400 inline-flex items-center gap-0.5 font-sans">
-                        <span>{sess.completedExercises.length} exerc.</span>
+                        <span>{sess.completedExercises.length} {t.home.exAbbr}</span>
                         {isExpanded ? (
                           <ChevronUp className="w-3.5 h-3.5 text-sky-400" />
                         ) : (
@@ -143,15 +146,29 @@ export const RecentSessionsList: React.FC<RecentSessionsListProps> = ({
                     </div>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => onViewSummary(sess)}
-                    className="min-h-[38px] px-3 py-1.5 rounded-xl font-bold text-xs bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/35 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shrink-0 whitespace-nowrap"
-                    title={t.viewSummaryAndShare}
-                  >
-                    <Share2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{t.viewSummaryAndShare}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {onEditSession && (
+                      <button
+                        type="button"
+                        onClick={() => onEditSession(sess)}
+                        className="min-h-[38px] px-2.5 py-1.5 rounded-xl font-bold text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shrink-0 whitespace-nowrap"
+                        title={t.common.edit}
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{t.common.edit}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => onViewSummary(sess)}
+                      className="min-h-[38px] px-3 py-1.5 rounded-xl font-bold text-xs bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/35 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shrink-0 whitespace-nowrap"
+                      title={t.viewSummaryAndShare}
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{t.viewSummaryAndShare}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Detalhes expandidos sob demanda */}
@@ -206,8 +223,8 @@ export const RecentSessionsList: React.FC<RecentSessionsListProps> = ({
                 className="min-h-[40px] px-4 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer active:scale-95"
               >
                 {showAllSessions
-                  ? 'Mostrar apenas os 5 recentes'
-                  : `Ver todos os ${sessions.length} treinos`}
+                  ? t.home.showOnlyRecent5
+                  : `${t.home.viewAllSessionsPrefix} ${sessions.length} ${t.home.viewAllSessionsSuffix}`}
               </button>
             </div>
           )}

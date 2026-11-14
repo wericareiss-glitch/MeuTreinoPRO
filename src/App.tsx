@@ -88,7 +88,10 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
     isMeasurementsOpen,
     setIsMeasurementsOpen,
     summaryModalSession,
-    setSummaryModalSession,
+    summaryInitialEditMode,
+    openSessionSummary,
+    closeSessionSummary,
+    handleUpdateSession,
     handleSaveMeasurement,
     handleDeleteMeasurement,
     handleOpenAnalytics,
@@ -157,6 +160,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
     handleGenerateQuickWorkout,
     handleShareRoutine,
     handleSaveManualRoutine,
+    handleDuplicateRoutine,
     handleDeleteRoutine,
     handleOpenCreateManualRoutine,
     handleEditRoutine,
@@ -234,12 +238,12 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
     const text = buildExportText();
     if (typeof navigator !== 'undefined' && navigator.share) {
       navigator.share({
-        title: 'MeuTreino Pro — Treino Concluído',
+        title: t.common.shareTitle,
         text: text,
       }).catch(() => {});
     } else if (navigator.clipboard) {
       navigator.clipboard.writeText(text).then(() => {
-        showToast('Texto do treino copiado para a área de transferência!');
+        showToast(t.copiedToClipboard);
       });
     }
   };
@@ -273,7 +277,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
     document.body.appendChild(a);
     a.click();
     a.remove();
-    showToast('Backup completo do perfil exportado com sucesso!');
+    showToast(t.backupSuccess);
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -312,10 +316,10 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
         if (parsed.workoutNotes !== undefined) {
           safeStorage.set(`alex_u_${uid}_workout_notes`, parsed.workoutNotes);
         }
-        showToast('✅ Dados do backup restaurados e salvos com sucesso!');
+        showToast(t.backupRestored);
         window.location.reload();
       } catch {
-        showToast('⚠️ Arquivo de backup inválido ou corrompido.');
+        showToast(t.common.importInvalidError);
       } finally {
         e.target.value = '';
       }
@@ -378,14 +382,14 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[10px] font-mono font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 border border-amber-400/40">
-                    Treino em Andamento
+                    {t.home.activeWorkoutBannerTitle}
                   </span>
                   <span className="text-xs font-extrabold text-white truncate">
                     {activeRoutine.name}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-300 font-mono mt-0.5">
-                  {totalCompletedSetsInWorkout} de {totalSetsInWorkout} séries concluídas
+                  {totalCompletedSetsInWorkout} {t.home.microcycleOf} {totalSetsInWorkout} {t.home.activeWorkoutBannerSets}
                 </p>
               </div>
             </div>
@@ -395,7 +399,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
               onClick={() => setActiveTab('treino_ativo')}
               className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center gap-1.5 shrink-0 cursor-pointer shadow-md active:scale-95 transition-all"
             >
-              <span>Voltar ao Treino</span>
+              <span>{t.home.resumeNow}</span>
               <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
             </button>
           </div>
@@ -413,7 +417,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
           >
             {/* ABA 1: INÍCIO */}
             {activeTab === 'inicio' && (
-              <SectionErrorBoundary sectionName="Painel Principal">
+              <SectionErrorBoundary sectionName={t.tabHome}>
                 <HomeView
                   user={currentUser}
                   sessions={sessions}
@@ -430,7 +434,8 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
                       setActiveTab('treino');
                     }
                   }}
-                  onViewSummary={(sess) => setSummaryModalSession(sess)}
+                  onViewSummary={(sess) => openSessionSummary(sess, false)}
+                  onEditSession={(sess) => openSessionSummary(sess, true)}
                   onOpenAnalytics={() => handleOpenAnalytics()}
                   onOpenMeasurements={() => setIsMeasurementsOpen(true)}
                 />
@@ -441,13 +446,13 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
             <React.Suspense
               fallback={
                 <div className="py-16 text-center text-xs text-slate-400 animate-pulse">
-                  Carregando...
+                  {t.common.loading}
                 </div>
               }
             >
               {/* ABA 2: TREINO */}
               {activeTab === 'treino' && currentUser && (
-                <SectionErrorBoundary sectionName="Lista de Treinos">
+                <SectionErrorBoundary sectionName={t.tabWorkout}>
                   <WorkoutListView
                     user={currentUser}
                     routines={routines}
@@ -456,6 +461,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
                     onCreateManualWorkout={handleOpenCreateManualRoutine}
                     onGenerateQuickWorkout={handleGenerateQuickWorkout}
                     onEditRoutine={handleEditRoutine}
+                    onDuplicateRoutine={handleDuplicateRoutine}
                     onDeleteRoutine={handleDeleteRoutine}
                     onShareRoutine={handleShareRoutine}
                     onReorderRoutines={handleReorderRoutines}
@@ -482,7 +488,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
 
               {/* ABA 2.5: TREINO ATIVO */}
               {activeTab === 'treino_ativo' && activeRoutine && (
-                <SectionErrorBoundary sectionName="Treino Ativo">
+                <SectionErrorBoundary sectionName={t.tabActiveWorkout}>
                   <ActiveWorkoutView
                     routine={activeRoutine}
                     workoutItems={workoutItems}
@@ -524,7 +530,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
 
               {/* ABA: PERFIL */}
               {activeTab === 'perfil' && currentUser && (
-                <SectionErrorBoundary sectionName="Perfil">
+                <SectionErrorBoundary sectionName={t.tabProfile}>
                   <ProfileView
                     user={currentUser}
                     sessions={sessions}
@@ -533,7 +539,7 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
                     onOpenVolumeBudget={() => setIsBudgetOpen(true)}
                     onExportBackup={handleExportBackup}
                     onImportBackup={handleImportBackup}
-                    onViewSummary={(sess) => setSummaryModalSession(sess)}
+                    onViewSummary={(sess) => openSessionSummary(sess, false)}
                     onClearHistory={clearHistory}
                   />
                 </SectionErrorBoundary>
@@ -604,7 +610,11 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
             sessions={sessions}
             onViewSummary={(sess) => {
               setIsHistoryOpen(false);
-              setSummaryModalSession(sess);
+              openSessionSummary(sess, false);
+            }}
+            onEditSession={(sess) => {
+              setIsHistoryOpen(false);
+              openSessionSummary(sess, true);
             }}
             onClearHistory={clearHistory}
           />
@@ -625,10 +635,12 @@ function AppContent({ toastMessage, showToast }: AppContentProps) {
         {summaryModalSession !== null && (
           <WorkoutSummaryModal
             isOpen={summaryModalSession !== null}
-            onClose={() => setSummaryModalSession(null)}
+            onClose={closeSessionSummary}
             session={summaryModalSession}
             athleteName={currentUser?.name || 'Atleta'}
             previousSessions={sessions}
+            onUpdateSession={handleUpdateSession}
+            initialEditMode={summaryInitialEditMode}
           />
         )}
 

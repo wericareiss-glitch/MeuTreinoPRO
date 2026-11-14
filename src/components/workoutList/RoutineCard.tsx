@@ -17,7 +17,8 @@ import {
   GripVertical,
   Dumbbell,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Copy
 } from 'lucide-react';
 import { MUSCLE_NAMES } from '../../data/exerciseDatabase';
 import { ActionSheet, ActionSheetItem } from '../common/ActionSheet';
@@ -38,6 +39,7 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
   isDropTargetThis,
   canReorder,
   hasEditHandler,
+  hasDuplicateHandler,
   hasDeleteHandler,
   onToggleMenu,
   onCloseMenu,
@@ -45,6 +47,7 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
   onConfirmDelete,
   onStartWorkout,
   onEditRoutine,
+  onDuplicateRoutine,
   onShareRoutineClick,
   onPointerDownGrip,
   onCardDragStart,
@@ -167,6 +170,18 @@ export const RoutineCard = React.memo<RoutineCardProps>(({
                   icon={<Pencil className="w-5 h-5" />}
                   title="Editar / Alterar Exercícios"
                   description="Adicionar, trocar ou reorganizar exercícios da ficha"
+                />
+              )}
+
+              {hasDuplicateHandler && onDuplicateRoutine && (
+                <ActionSheetItem
+                  onClick={() => {
+                    onCloseMenu();
+                    onDuplicateRoutine(routine);
+                  }}
+                  icon={<Copy className="w-5 h-5" />}
+                  title="Duplicar Treino"
+                  description="Criar uma cópia pronta para adaptar ou variar a ficha"
                 />
               )}
 
@@ -389,6 +404,7 @@ export const HorizontalRoutineSlot = React.memo(({ index, style, data }: ListChi
         isDropTargetThis={data.dropTargetIdx === entry.visualIdx && data.draggingIdx !== entry.visualIdx}
         canReorder={data.canReorder}
         hasEditHandler={data.hasEditHandler}
+        hasDuplicateHandler={data.hasDuplicateHandler}
         hasDeleteHandler={data.hasDeleteHandler}
         onToggleMenu={data.onToggleMenu}
         onCloseMenu={data.onCloseMenu}
@@ -396,6 +412,7 @@ export const HorizontalRoutineSlot = React.memo(({ index, style, data }: ListChi
         onConfirmDelete={data.onConfirmDelete}
         onStartWorkout={data.onStartWorkout}
         onEditRoutine={data.onEditRoutine}
+        onDuplicateRoutine={data.onDuplicateRoutine}
         onShareRoutineClick={data.onShareRoutineClick}
         onPointerDownGrip={data.onPointerDownGrip}
         onCardDragStart={data.onCardDragStart}

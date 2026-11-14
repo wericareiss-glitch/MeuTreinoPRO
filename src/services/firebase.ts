@@ -423,6 +423,7 @@ export async function syncSessionToCloud(userId: string, session: WorkoutSession
   try {
     const sanitized = deepCleanForFirestore({
       ...session,
+      notes: session.notes ?? '',
       userId: currentUid,
       updatedAt: new Date().toISOString(),
     });

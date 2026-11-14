@@ -111,7 +111,7 @@ export const Header: React.FC<HeaderProps> = ({
             onSelectTab('inicio');
           }}
           className="flex items-center gap-2 sm:gap-2.5 shrink-0 cursor-pointer group"
-          title="Ir para o Início"
+          title={t.nav.goHomeTitle}
         >
           <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-transparent border border-emerald-500/35 hover:bg-emerald-500/10 flex items-center justify-center text-emerald-400 font-black shadow-sm group-hover:scale-105 transition-all">
             <Dumbbell className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 stroke-[2.5]" />
@@ -121,7 +121,7 @@ export const Header: React.FC<HeaderProps> = ({
               {t.appTitle}
             </span>
             <p className="text-[10px] text-slate-400 hidden xl:block leading-none mt-0.5">
-              Hipertrofia & Sobrecarga Científica
+              {t.nav.scientificSubtitle}
             </p>
           </div>
         </div>
@@ -162,7 +162,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer relative animate-pulse text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
               >
                 <Zap className="w-3.5 h-3.5 fill-amber-400" />
-                <span>Treino Ativo</span>
+                <span>{t.tabActiveWorkout}</span>
                 {activeSetsCount > 0 && (
                   <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full font-extrabold bg-amber-400 text-slate-950">
                     {completedSetsCount}/{activeSetsCount}
@@ -193,8 +193,8 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-1.5 sm:gap-2">
               <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-300 text-[11px] sm:text-xs font-mono font-bold">
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                <span className="hidden xs:inline">Modo Foco</span>
-                <span className="xs:hidden">Foco</span>
+                <span className="hidden xs:inline">{t.nav.focusMode}</span>
+                <span className="xs:hidden">{t.nav.focusShort}</span>
               </div>
 
               {/* Botão de Som Rápido */}
@@ -206,8 +206,8 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
                     : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
                 }`}
-                title={isMuted ? 'Ativar avisos sonoros' : 'Silenciar avisos sonoros'}
-                aria-label={isMuted ? 'Ativar som' : 'Silenciar som'}
+                title={isMuted ? t.nav.enableSounds : t.nav.muteSounds}
+                aria-label={isMuted ? t.nav.enableSounds : t.nav.muteSounds}
               >
                 {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
               </button>
@@ -220,10 +220,10 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={() => onSelectTab('treino')}
                 className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer active:scale-95"
-                title="Pausar treino e voltar à lista"
+                title={t.nav.pauseWorkoutTitle}
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Pausar</span>
+                <span className="hidden sm:inline">{t.nav.pauseWorkout}</span>
               </button>
             </div>
           ) : (
@@ -234,7 +234,7 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={() => onSelectTab('treino_ativo')}
                   className="py-1 px-2.5 rounded-xl bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1 animate-pulse shadow-md shadow-amber-400/20 cursor-pointer active:scale-95"
-                  title="Voltar ao Treino em Andamento"
+                  title={t.nav.returnToActiveTitle}
                 >
                   <Zap className="w-3.5 h-3.5 fill-slate-950" />
                   <span>{completedSetsCount}/{activeSetsCount}</span>
@@ -261,8 +261,8 @@ export const Header: React.FC<HeaderProps> = ({
                       ? 'bg-slate-700 text-white border-slate-500 shadow-md'
                       : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 hover:text-white border-slate-750'
                   }`}
-                  title="Menu do Perfil"
-                  aria-label="Menu do Perfil"
+                  title={t.nav.profileMenu}
+                  aria-label={t.nav.profileMenu}
                 >
                   <div className="w-5 h-5 rounded-lg bg-slate-700 text-slate-200 border border-slate-600 flex items-center justify-center font-black text-[10px] shrink-0">
                     {user.name.charAt(0).toUpperCase()}
@@ -299,37 +299,47 @@ export const Header: React.FC<HeaderProps> = ({
                     {/* Dados do Perfil */}
                     <div className="space-y-1.5">
                       <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider block">
-                        Dados do Perfil
+                        {t.nav.profileData}
                       </span>
                       <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                         <div className="p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle">
-                          <span className="text-[9px] text-theme-menu-muted block">Sexo Biológico</span>
+                          <span className="text-[9px] text-theme-menu-muted block">{t.nav.biologicalSex}</span>
                           <span className="font-bold text-theme-heading">
-                            {user.gender === 'male' ? '👨 Masculino' : '👩 Feminino'}
+                            {user.gender === 'male' ? `👨 ${t.nav.male}` : `👩 ${t.nav.female}`}
                           </span>
                         </div>
                         <div className="p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle">
-                          <span className="text-[9px] text-theme-menu-muted block">Nível</span>
+                          <span className="text-[9px] text-theme-menu-muted block">{t.nav.level}</span>
                           <span className="font-bold text-theme-heading capitalize">
-                            {user.level === 'beginner' ? 'Iniciante' : user.level === 'intermediate' ? 'Intermediário' : 'Avançado'}
+                            {user.level === 'beginner'
+                              ? t.nav.levelBeginner
+                              : user.level === 'intermediate'
+                              ? t.nav.levelIntermediate
+                              : t.nav.levelAdvanced}
                           </span>
                         </div>
                         <div className="p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle">
-                          <span className="text-[9px] text-theme-menu-muted block">Foco de Treino</span>
+                          <span className="text-[9px] text-theme-menu-muted block">{t.nav.trainingFocus}</span>
                           <span className="font-bold text-theme-heading truncate block">
-                            {user.focus === 'glutes' ? '🍑 Glúteos' : user.focus === 'strength' ? '🏋️ Força' : user.focus === 'v_taper' ? '🔱 Shape V' : '⚖️ Equilíbrio'}
+                            {user.focus === 'glutes'
+                              ? `🍑 ${t.nav.focusGlutes}`
+                              : user.focus === 'strength'
+                              ? `🏋️ ${t.nav.focusStrength}`
+                              : user.focus === 'v_taper'
+                              ? `🔱 ${t.nav.focusVTaper}`
+                              : `⚖️ ${t.nav.focusBalanced}`}
                           </span>
                         </div>
                         <div className="p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle">
-                          <span className="text-[9px] text-theme-menu-muted block">Frequência</span>
+                          <span className="text-[9px] text-theme-menu-muted block">{t.nav.frequency}</span>
                           <span className="font-bold text-theme-heading">
-                            {user.frequency || 4}x / semana
+                            {user.frequency || 4}x / {t.nav.perWeek}
                           </span>
                         </div>
                       </div>
 
                       <div className="flex items-center justify-between p-2 rounded-xl bg-theme-surface-secondary border border-theme-subtle text-xs">
-                        <span className="text-theme-menu-muted">Peso & Altura:</span>
+                        <span className="text-theme-menu-muted">{t.nav.weightAndHeight}</span>
                         <span className="font-mono font-bold text-theme-heading">
                           {user.weightKg} kg · {user.heightM > 3 ? Math.round(user.heightM) : Math.round(user.heightM * 100)} cm
                         </span>
@@ -348,7 +358,7 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <div className="flex items-center gap-2">
                           <User className="w-3.5 h-3.5 menu-item-icon" />
-                          <span>Ver Tela Completa do Perfil</span>
+                          <span>{t.nav.viewFullProfile}</span>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
@@ -363,7 +373,7 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <div className="flex items-center gap-2">
                           <Sliders className="w-3.5 h-3.5 menu-item-icon" />
-                          <span>Editar Dados do Perfil</span>
+                          <span>{t.nav.editProfileData}</span>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
@@ -378,7 +388,7 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <div className="flex items-center gap-2">
                           <Sparkles className="w-3.5 h-3.5 menu-item-icon" />
-                          <span>Metas de Séries ({user.weeklyBudget}s)</span>
+                          <span>{t.nav.setTargets} ({user.weeklyBudget}s)</span>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
@@ -398,11 +408,11 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-slate-700 text-white border-slate-500 shadow-md'
                     : 'bg-slate-800/90 text-slate-200 hover:text-white border-slate-700 hover:border-slate-600'
                 }`}
-                title="Menu de Ferramentas e Configurações"
-                aria-label="Menu de Ferramentas e Configurações"
+                title={t.nav.toolsAndFeatures}
+                aria-label={t.nav.toolsAndFeatures}
               >
                 <Sliders className="w-3.5 h-3.5 text-slate-400" />
-                <span>Ferramentas</span>
+                <span>{t.nav.toolsMenu}</span>
               </button>
 
               {toolsMenuOpen && (
@@ -411,7 +421,7 @@ export const Header: React.FC<HeaderProps> = ({
                   style={{ overscrollBehavior: 'contain' }}
                 >
                   <div className="px-2 py-1 border-b border-theme-menu-subtle flex items-center justify-between text-xs font-bold text-theme-menu-muted uppercase tracking-wider">
-                    <span>Ferramentas & Recursos</span>
+                    <span>{t.nav.toolsAndFeatures}</span>
                     <button
                       type="button"
                       onClick={() => setToolsMenuOpen(false)}
@@ -424,7 +434,7 @@ export const Header: React.FC<HeaderProps> = ({
                   {/* Análise & Acompanhamento */}
                   <div className="space-y-1">
                     <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider px-2">
-                      Análise & Acompanhamento
+                      {t.nav.analysisAndTracking}
                     </span>
 
                     {onOpenAnalytics && (
@@ -438,8 +448,8 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <TrendingUp className="w-4 h-4 menu-item-icon shrink-0" />
                         <div className="flex-1">
-                          <span className="block font-bold">Gráficos de Evolução</span>
-                          <span className="block text-[10px] text-theme-menu-muted">Progresso de cargas e 1RM</span>
+                          <span className="block font-bold">{t.nav.evolutionCharts}</span>
+                          <span className="block text-[10px] text-theme-menu-muted">{t.nav.evolutionChartsDesc}</span>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
@@ -456,8 +466,8 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <Activity className="w-4 h-4 menu-item-icon shrink-0" />
                         <div className="flex-1">
-                          <span className="block font-bold">Medições Corporais</span>
-                          <span className="block text-[10px] text-theme-menu-muted">Peso, dobras e circunferências</span>
+                          <span className="block font-bold">{t.nav.bodyMeasurements}</span>
+                          <span className="block text-[10px] text-theme-menu-muted">{t.nav.bodyMeasurementsDesc}</span>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
@@ -467,7 +477,7 @@ export const Header: React.FC<HeaderProps> = ({
                   {/* Treino & Utilitários */}
                   <div className="pt-1.5 border-t border-theme-menu-subtle space-y-1">
                     <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider px-2">
-                      Treino & Cargas
+                      {t.nav.workoutAndLoads}
                     </span>
 
                     {onOpenHistory && (
@@ -481,8 +491,8 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <Calendar className="w-4 h-4 menu-item-icon shrink-0" />
                         <div className="flex-1">
-                          <span className="block font-bold">Histórico de Treinos</span>
-                          <span className="block text-[10px] text-theme-menu-muted">Registros e anotações passadas</span>
+                          <span className="block font-bold">{t.nav.workoutHistory}</span>
+                          <span className="block text-[10px] text-theme-menu-muted">{t.nav.workoutHistoryDesc}</span>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                       </button>
@@ -492,7 +502,7 @@ export const Header: React.FC<HeaderProps> = ({
                   {/* Preferências */}
                   <div className="pt-1.5 border-t border-theme-menu-subtle space-y-1">
                     <span className="text-[10px] font-bold text-theme-menu-muted uppercase tracking-wider px-2">
-                      Preferências
+                      {t.nav.preferences}
                     </span>
 
                     <ThemeToggle variant="full" />
@@ -504,10 +514,10 @@ export const Header: React.FC<HeaderProps> = ({
                     >
                       <div className="flex items-center gap-2.5">
                         {isMuted ? <VolumeX className="w-4 h-4 menu-item-icon" /> : <Volume2 className="w-4 h-4 menu-item-icon" />}
-                        <span>Efeitos Sonoros</span>
+                        <span>{t.nav.soundEffects}</span>
                       </div>
                       <span className="text-[10px] font-mono font-bold text-theme-menu-muted">
-                        {isMuted ? 'Mudo' : 'Ligado'}
+                        {isMuted ? t.nav.offLabel : t.nav.onLabel}
                       </span>
                     </button>
 
@@ -520,7 +530,7 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold menu-item-btn text-left cursor-pointer group"
                     >
                       <Share2 className="w-4 h-4 menu-item-icon shrink-0" />
-                      <span>Compartilhar Aplicativo</span>
+                      <span>{t.nav.shareApp}</span>
                     </button>
                   </div>
 

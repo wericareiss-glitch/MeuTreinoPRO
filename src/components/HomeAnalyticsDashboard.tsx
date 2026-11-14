@@ -36,9 +36,10 @@ import {
   Legend, 
   CartesianGrid 
 } from 'recharts';
-import { WorkoutSessionSummary, Exercise } from '../types/workout';
-import { EXERCISE_DATABASE, MUSCLE_NAMES } from '../data/exerciseDatabase';
+import { WorkoutSessionSummary } from '../types/workout';
 import { calculate1RM } from '../utils/storage';
+import { useI18n } from '../utils/i18n';
+import { useTheme } from '../utils/theme';
 
 interface HomeAnalyticsDashboardProps {
   sessions: WorkoutSessionSummary[];
@@ -61,6 +62,8 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
   onGoToWorkout,
   onOpenAnalyticsModal,
 }) => {
+  const { t, dateLocale } = useI18n();
+  const { isLight } = useTheme();
   // Lista de todos os exercícios registrados em sessões concluídas
   const loggedExercises = useMemo(() => {
     const map = new Map<string, { count: number; lastDate: string }>();
@@ -160,7 +163,7 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
 
         points.push({
           date: `${day}/${month}`,
-          fullDate: d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }),
+          fullDate: d.toLocaleDateString(dateLocale, { day: '2-digit', month: 'short', year: 'numeric' }),
           rawDate: d.getTime(),
           maxWeight,
           max1RM,
@@ -171,7 +174,7 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
     });
 
     return points;
-  }, [sessions, selectedExercise, loggedExercises.length, showDemoData, demoProgressionData]);
+  }, [sessions, selectedExercise, loggedExercises.length, showDemoData, demoProgressionData, dateLocale]);
 
   // 2. Processamento do Volume Total Mensal (Agrupado por Ano/Mês)
   const monthlyData = useMemo(() => {
@@ -184,7 +187,7 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
     sessions.forEach((sess) => {
       const d = new Date(sess.date);
       const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-      const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+      const label = d.toLocaleDateString(dateLocale, { month: 'short', year: '2-digit' });
 
       // Busca volume deste exercício na sessão (ou volume total se o exercício estiver presente)
       const match = sess.completedExercises.find(
@@ -222,7 +225,7 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
       sets: item.sets,
       sessionsCount: item.sessionsCount,
     }));
-  }, [sessions, selectedExercise, loggedExercises.length, showDemoData, demoMonthlyData]);
+  }, [sessions, selectedExercise, loggedExercises.length, showDemoData, demoMonthlyData, dateLocale]);
 
   // 3. Algoritmo de Identificação de Estagnações & Métricas de Performance
   const diagnosis = useMemo(() => {
@@ -308,10 +311,10 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-extrabold text-white tracking-tight">
-                Evolução de Cargas & Força
+                {t.analytics.tonnageEvolutionTitle}
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Curva de 1RM estimado e volume mensal com detector de estagnações.
+                {t.analytics.tonnageEvolutionDesc}
               </p>
             </div>
           </div>
@@ -353,7 +356,7 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
         <div className="flex-1 sm:max-w-md">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
             <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Selecionar Exercício para Análise:</span>
+            <span>{t.modals.exerciseAnalyticsSelect}</span>
           </label>
           <div className="relative">
             <select
@@ -567,17 +570,17 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
               {activeChartType === 'progression' ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={progressionData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1f293d" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={isLight ? '#e2e8f0' : '#1f293d'} vertical={false} />
                     <XAxis 
                       dataKey="date" 
-                      stroke="#64748b" 
-                      tick={{ fill: '#94a3b8', fontSize: 11 }}
-                      tickLine={{ stroke: '#334155' }}
+                      stroke={isLight ? '#94a3b8' : '#64748b'} 
+                      tick={{ fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }}
+                      tickLine={{ stroke: isLight ? '#cbd5e1' : '#334155' }}
                     />
                     <YAxis 
-                      stroke="#64748b" 
-                      tick={{ fill: '#94a3b8', fontSize: 11 }}
-                      tickLine={{ stroke: '#334155' }}
+                      stroke={isLight ? '#94a3b8' : '#64748b'} 
+                      tick={{ fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }}
+                      tickLine={{ stroke: isLight ? '#cbd5e1' : '#334155' }}
                       domain={['auto', 'auto']}
                     />
                     <Tooltip
@@ -589,13 +592,13 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
                               <span className="text-slate-400 block mb-1 font-sans">{data.fullDate}</span>
                               <div className="space-y-1">
                                 <div className="text-emerald-400 font-bold">
-                                  Carga Máxima: {data.maxWeight} kg ({data.reps} reps)
+                                  {t.analytics.maxLoadLabel}: {data.maxWeight} kg ({data.reps} {t.common.repsShort})
                                 </div>
                                 <div className="text-sky-400 font-bold">
-                                  1RM Estimado: {data.max1RM} kg
+                                  {t.modals.exerciseAnalyticsEst1RM}: {data.max1RM} kg
                                 </div>
                                 <div className="text-teal-300">
-                                  Volume da Sessão: {data.volume.toLocaleString()} kg
+                                  {t.analytics.totalVolume}: {data.volume.toLocaleString(dateLocale)} kg
                                 </div>
                               </div>
                             </div>
@@ -610,21 +613,21 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
                     />
                     <Line
                       type="monotone"
-                      name="Carga Máxima (kg)"
+                      name={`${t.analytics.maxLoadLabel} (kg)`}
                       dataKey="maxWeight"
                       stroke="#10b981"
                       strokeWidth={3}
-                      dot={{ r: 4, fill: '#10b981', stroke: '#022c22', strokeWidth: 2 }}
+                      dot={{ r: 4, fill: '#10b981', stroke: isLight ? '#047857' : '#022c22', strokeWidth: 2 }}
                       activeDot={{ r: 6, fill: '#34d399' }}
                     />
                     <Line
                       type="monotone"
-                      name="1RM Estimado (kg)"
+                      name={`${t.modals.exerciseAnalyticsEst1RM} (kg)`}
                       dataKey="max1RM"
-                      stroke="#38bdf8"
+                      stroke={isLight ? '#0284c7' : '#38bdf8'}
                       strokeWidth={2.5}
                       strokeDasharray="4 4"
-                      dot={{ r: 3, fill: '#38bdf8', stroke: '#082f49', strokeWidth: 2 }}
+                      dot={{ r: 3, fill: isLight ? '#0284c7' : '#38bdf8', stroke: isLight ? '#0369a1' : '#082f49', strokeWidth: 2 }}
                       activeDot={{ r: 6, fill: '#7dd3fc' }}
                     />
                   </LineChart>
@@ -632,17 +635,17 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1f293d" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={isLight ? '#e2e8f0' : '#1f293d'} vertical={false} />
                     <XAxis 
                       dataKey="month" 
-                      stroke="#64748b" 
-                      tick={{ fill: '#94a3b8', fontSize: 11 }}
-                      tickLine={{ stroke: '#334155' }}
+                      stroke={isLight ? '#94a3b8' : '#64748b'} 
+                      tick={{ fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }}
+                      tickLine={{ stroke: isLight ? '#cbd5e1' : '#334155' }}
                     />
                     <YAxis 
-                      stroke="#64748b" 
-                      tick={{ fill: '#94a3b8', fontSize: 11 }}
-                      tickLine={{ stroke: '#334155' }}
+                      stroke={isLight ? '#94a3b8' : '#64748b'} 
+                      tick={{ fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }}
+                      tickLine={{ stroke: isLight ? '#cbd5e1' : '#334155' }}
                       domain={['auto', 'auto']}
                     />
                     <Tooltip
@@ -654,13 +657,13 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
                               <span className="text-slate-400 block mb-1 font-sans">{data.month}</span>
                               <div className="space-y-1">
                                 <div className="text-teal-400 font-bold">
-                                  Volume Total: {data.volume.toLocaleString()} kg
+                                  {t.analytics.totalVolume}: {data.volume.toLocaleString(dateLocale)} kg
                                 </div>
                                 <div className="text-slate-300">
-                                  Séries Executadas: {data.sets} séries
+                                  {t.analytics.setsSeriesLabel}: {data.sets}
                                 </div>
                                 <div className="text-sky-300">
-                                  Sessões no Mês: {data.sessionsCount} treinos
+                                  {t.analytics.sessionsSeriesLabel}: {data.sessionsCount}
                                 </div>
                               </div>
                             </div>
@@ -675,8 +678,8 @@ export const HomeAnalyticsDashboard: React.FC<HomeAnalyticsDashboardProps> = ({
                     />
                     <Bar 
                       dataKey="volume" 
-                      name="Volume Mensal (kg)" 
-                      fill="#14b8a6" 
+                      name={`${t.analytics.totalVolume} (kg)`} 
+                      fill={isLight ? '#0d9488' : '#14b8a6'} 
                       radius={[8, 8, 0, 0]} 
                     />
                   </BarChart>

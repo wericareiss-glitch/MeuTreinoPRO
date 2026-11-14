@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Virtuoso } from 'react-virtuoso';
-import { X, Calendar, Dumbbell, Trash2, Award, FileText, Share2, FileDown, Search } from 'lucide-react';
+import { X, Calendar, Dumbbell, Trash2, Award, FileText, Share2, FileDown, Search, Pencil } from 'lucide-react';
 import { WorkoutSessionSummary } from '../types/workout';
 import { exportCompletedSessionToPDF } from '../utils/pdfExport';
 import { authStorage } from '../utils/auth';
@@ -16,6 +16,7 @@ interface HistoryModalProps {
   sessions: WorkoutSessionSummary[];
   onClearHistory: () => void;
   onViewSummary?: (session: WorkoutSessionSummary) => void;
+  onEditSession?: (session: WorkoutSessionSummary) => void;
 }
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
@@ -24,6 +25,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   sessions,
   onClearHistory,
   onViewSummary,
+  onEditSession,
 }) => {
   const [confirmClear, setConfirmClear] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -148,6 +150,17 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                           <FileDown className="w-3 h-3 text-emerald-400" />
                           <span>PDF</span>
                         </button>
+                        {onEditSession && (
+                          <button
+                            type="button"
+                            onClick={() => onEditSession(sess)}
+                            className="px-2 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Editar cargas, séries ou notas"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span className="hidden sm:inline">Editar</span>
+                          </button>
+                        )}
                         {onViewSummary && (
                           <button
                             type="button"

@@ -57,6 +57,7 @@ interface HomeViewProps {
   onOpenVolumeBudget: () => void;
   onGoToWorkout: () => void;
   onViewSummary: (session: WorkoutSessionSummary) => void;
+  onEditSession?: (session: WorkoutSessionSummary) => void;
   onOpenAnalytics?: (exerciseName?: string) => void;
   onOpenMeasurements?: () => void;
 }
@@ -72,6 +73,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onOpenVolumeBudget,
   onGoToWorkout,
   onViewSummary,
+  onEditSession,
   onOpenAnalytics,
   onOpenMeasurements,
 }) => {
@@ -297,20 +299,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
     if (!user) return t.homeSubtitle;
     const levelLabel =
       user.level === 'beginner'
-        ? 'Iniciante'
+        ? t.nav.levelBeginner
         : user.level === 'intermediate'
-        ? 'Intermediário'
-        : 'Avançado';
+        ? t.nav.levelIntermediate
+        : t.nav.levelAdvanced;
     const focusLabel =
       user.focus === 'glutes'
-        ? 'Glúteos & Pernas'
+        ? t.nav.focusGlutes
         : user.focus === 'strength'
-        ? 'Força & Cargas'
+        ? t.nav.focusStrength
         : user.focus === 'v_taper'
-        ? 'Shape em V'
-        : 'Equilíbrio Total';
-    return `${levelLabel} · ${focusLabel} · ${user.frequency || 4}x/semana`;
-  }, [user, t.homeSubtitle]);
+        ? t.nav.focusVTaper
+        : t.nav.focusBalanced;
+    return `${levelLabel} · ${focusLabel} · ${user.frequency || 4}x/${t.nav.perWeek}`;
+  }, [user, t]);
 
   return (
     <div className="space-y-3.5 animate-fadeIn pb-[max(6.5rem,calc(5rem+env(safe-area-inset-bottom)))] sm:pb-16 w-full max-w-full min-w-0 touch-pan-y">
@@ -337,9 +339,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <span>
               {totalSetsInWorkout > 0
                 ? activeRoutineName
-                  ? `Continuar · ${totalCompletedSetsInWorkout}/${totalSetsInWorkout}`
-                  : `Continuar Treino (${totalCompletedSetsInWorkout}/${totalSetsInWorkout})`
-                : 'Treino de Hoje'}
+                  ? `${t.continueWorkoutCta} · ${totalCompletedSetsInWorkout}/${totalSetsInWorkout}`
+                  : `${t.continueWorkoutCta} (${totalCompletedSetsInWorkout}/${totalSetsInWorkout})`
+                : t.startWorkoutCta}
             </span>
             <ArrowRight className="w-4 h-4 shrink-0" />
           </button>
@@ -353,7 +355,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             className="min-h-[42px] px-2.5 rounded-xl bg-[#090f1d] hover:bg-[#111c33] border border-slate-800 hover:border-emerald-500/40 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-200 transition-colors cursor-pointer active:scale-[0.98] whitespace-nowrap"
           >
             <TrendingUp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span className="truncate">Evolução 1RM</span>
+            <span className="truncate">{t.home.exerciseAnalyticsBtn}</span>
           </button>
 
           <button
@@ -363,7 +365,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             className="min-h-[42px] px-2.5 rounded-xl bg-[#090f1d] hover:bg-[#111c33] border border-slate-800 hover:border-teal-500/40 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-200 transition-colors cursor-pointer active:scale-[0.98] whitespace-nowrap disabled:opacity-50"
           >
             <Camera className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-            <span className="truncate">Medições</span>
+            <span className="truncate">{t.home.bodyMeasurementsBtn}</span>
           </button>
 
           <button
@@ -377,14 +379,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           >
             <Bell className={`w-3.5 h-3.5 shrink-0 ${reminderConfig.enabled ? 'text-amber-400' : 'text-slate-400'}`} />
             <span className="truncate font-mono">
-              {reminderConfig.enabled ? configuredTimes[0] : 'Lembretes'}
+              {reminderConfig.enabled ? configuredTimes[0] : t.notifications.title}
             </span>
           </button>
         </div>
 
         {notifStatus === 'blocked' && (
           <p className="text-[11px] text-rose-400 font-medium">
-            Notificações bloqueadas no navegador. Habilite nas configurações do site para ativar os lembretes.
+            {t.notifications.blockedNotice}
           </p>
         )}
       </div>
@@ -422,7 +424,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               {sessions.length}
             </span>
             <span className="text-[11px] text-slate-400 truncate">
-              {sessions.length === 1 ? 'sessão' : 'sessões'}
+              {sessions.length === 1 ? t.home.workoutSingular : t.home.workoutPlural}
             </span>
           </div>
         </div>
@@ -489,14 +491,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <Calendar className="w-4 h-4 text-sky-400 shrink-0" />
             <span className="text-xs sm:text-sm font-extrabold text-white truncate">
-              Semana Atual: {microcycle.completedThisWeek}/{microcycle.targetFrequency} treinos ({microcycle.percentage}%)
+              {t.home.microcycleTitle}: {microcycle.completedThisWeek}/{microcycle.targetFrequency} {t.home.microcycleWorkouts} ({microcycle.percentage}%)
             </span>
           </div>
 
           {microcycle.consecutiveWeeksStreak > 0 && (
             <span className="text-[11px] font-mono font-bold text-amber-300 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
               <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-              {microcycle.consecutiveWeeksStreak} sem.
+              {microcycle.consecutiveWeeksStreak} {t.nav.perWeek.slice(0, 3)}.
             </span>
           )}
         </div>
@@ -515,15 +517,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {/* 4. Abas Internas Horizontais para Evitar Empilhamento Longo */}
       <div
         role="tablist"
-        aria-label="Seções do painel inicial"
+        aria-label={t.home.tabOverview}
         className="flex items-center gap-1.5 overflow-x-auto theme-scrollbar pb-0.5"
       >
         {(
           [
-            { id: 'historico', label: `Histórico (${sessions.length})`, icon: History },
-            { id: 'volume', label: 'Volume Semanal', icon: BarChart3 },
-            { id: 'analytics', label: 'Força & 1RM', icon: TrendingUp },
-            { id: 'consistencia', label: 'Consistência', icon: CalendarDays },
+            { id: 'historico', label: `${t.historyBtn} (${sessions.length})`, icon: History },
+            { id: 'volume', label: t.home.weeklyVolumeBtn, icon: BarChart3 },
+            { id: 'analytics', label: t.home.tabAnalytics, icon: TrendingUp },
+            { id: 'consistencia', label: t.home.tabCalendar, icon: CalendarDays },
           ] as const
         ).map((tab) => {
           const Icon = tab.icon;
@@ -555,6 +557,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             sessions={sessions}
             onGoToWorkout={onGoToWorkout}
             onViewSummary={onViewSummary}
+            onEditSession={onEditSession}
           />
         )}
 

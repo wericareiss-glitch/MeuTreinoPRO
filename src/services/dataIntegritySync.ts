@@ -201,7 +201,7 @@ export async function verifyAndMergeDatabase(
     status: 'healthy',
     summaryMessage: isGuest
       ? 'Modo visitante/local ativo. Dados mantidos com segurança no dispositivo.'
-      : 'Verificando integridade das chaves e dados no Firebase...',
+      : 'Verificando sincronização e integridade dos seus dados...',
     discrepanciesResolved: 0,
     hasLocalUpdates: false,
     details: {
@@ -214,7 +214,7 @@ export async function verifyAndMergeDatabase(
 
   if (!isOnline) {
     report.status = 'offline';
-    report.summaryMessage = 'Dispositivo offline. As chaves locais do safeStorage estão intactas.';
+    report.summaryMessage = 'Dispositivo offline. Seus dados salvos neste aparelho estão intactos.';
     return report;
   }
 
@@ -237,7 +237,7 @@ export async function verifyAndMergeDatabase(
 
   if (!report.firestoreConnected) {
     report.status = 'offline';
-    report.summaryMessage = 'Serviço do Firestore temporariamente offline. Os dados locais do safeStorage estão intactos.';
+    report.summaryMessage = 'Sincronização na nuvem temporariamente indisponível. Seus dados locais estão intactos.';
     return report;
   }
 
@@ -581,7 +581,7 @@ export async function verifyAndMergeDatabase(
       report.summaryMessage = `Sincronização concluída: ${totalDiscrepancies} item(ns) reconciliados entre seus dispositivos com base nos timestamps mais recentes.`;
     } else {
       report.status = 'healthy';
-      report.summaryMessage = 'Integridade 100% verificada: todos os dados locais do safeStorage estão alinhados com o servidor.';
+      report.summaryMessage = 'Tudo verificado: seus dados locais estão 100% alinhados com a nuvem.';
     }
 
     // ========================================================

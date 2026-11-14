@@ -20,12 +20,17 @@ import {
   FileSpreadsheet,
   FileDown,
   History,
-  Calendar
+  Calendar,
+  Pencil,
+  Plus,
+  Trash2,
+  Save
 } from 'lucide-react';
-import { WorkoutSessionSummary } from '../types/workout';
+import { MuscleGroup, WorkoutSessionSummary } from '../types/workout';
 import { generateWorkoutCardImage } from '../utils/generateWorkoutCardImage';
 import { extractSessionPRs, estimate1RM } from '../utils/prEngine';
 import { exportCompletedSessionToPDF } from '../utils/pdfExport';
+import { recalculateSessionSummary } from '../utils/sessionEditor';
 import { WorkoutPdfExportModal } from './WorkoutPdfExportModal';
 
 interface ExercisePerformanceHistoryEntry {
@@ -97,12 +102,21 @@ const VirtualizedExerciseHistoryRow = React.memo(
   }
 );
 
+interface EditableExerciseDraft {
+  name: string;
+  muscleKey?: MuscleGroup;
+  muscleGroup: string;
+  sets: { weight: string; reps: string }[];
+}
+
 interface WorkoutSummaryModalProps {
   isOpen: boolean;
   onClose: () => void;
   session: WorkoutSessionSummary | null;
   athleteName: string;
   previousSessions?: WorkoutSessionSummary[];
+  onUpdateSession?: (updated: WorkoutSessionSummary) => void;
+  initialEditMode?: boolean;
 }
 
 export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
@@ -111,6 +125,8 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   session,
   athleteName,
   previousSessions = [],
+  onUpdateSession,
+  initialEditMode = false,
 }) => {
   const [copied, setCopied] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
@@ -121,8 +137,48 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
   const [selectedExerciseName, setSelectedExerciseName] = useState<string>('');
+  const [isEditing, setIsEditing] = useState<boolean>(Boolean(initialEditMode && onUpdateSession));
+  const [draftNotes, setDraftNotes] = useState<string>('');
+  const [draftExercises, setDraftExercises] = useState<EditableExerciseDraft[]>([]);
+  const [editError, setEditError] = useState<string | null>(null);
   const historyContainerRef = useRef<HTMLDivElement | null>(null);
   const [historyListWidth, setHistoryListWidth] = useState<number>(460);
+
+  const hydrateEditDraft = useCallback((target: WorkoutSessionSummary | null) => {
+    if (!target) {
+      setDraftNotes('');
+      setDraftExercises([]);
+      setEditError(null);
+      return;
+    }
+    setDraftNotes(target.notes || '');
+    setDraftExercises(
+      (target.completedExercises || []).map((ex) => ({
+        name: ex.name,
+        muscleKey: ex.muscleKey,
+        muscleGroup: ex.muscleGroup,
+        sets: (ex.sets || []).map((st) => ({
+          weight: String(st.weight ?? 0),
+          reps: String(st.reps ?? 0),
+        })),
+      }))
+    );
+    setEditError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || !session) {
+      setIsEditing(false);
+      setEditError(null);
+      return;
+    }
+    hydrateEditDraft(session);
+    const shouldEdit = Boolean(initialEditMode && onUpdateSession);
+    setIsEditing(shouldEdit);
+    if (shouldEdit) {
+      setActiveTab('details');
+    }
+  }, [isOpen, session, initialEditMode, onUpdateSession, hydrateEditDraft]);
 
   // Seleciona automaticamente o primeiro exercício da sessão ao abrir o modal
   useEffect(() => {
@@ -234,6 +290,100 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   const handleSelectExercise = useCallback((name: string) => {
     setSelectedExerciseName(name);
   }, []);
+
+  const liveDraftSummary = useMemo(() => {
+    if (!session) return null;
+    return recalculateSessionSummary({
+      ...session,
+      notes: draftNotes,
+      completedExercises: draftExercises.map((ex) => ({
+        name: ex.name,
+        muscleKey: ex.muscleKey,
+        muscleGroup: ex.muscleGroup,
+        sets: ex.sets.map((st) => ({
+          weight: parseFloat(st.weight.replace(',', '.')) || 0,
+          reps: parseInt(st.reps, 10) || 0,
+        })),
+      })),
+    });
+  }, [session, draftNotes, draftExercises]);
+
+  const totalDraftSets = useMemo(
+    () => draftExercises.reduce((sum, ex) => sum + ex.sets.length, 0),
+    [draftExercises]
+  );
+
+  const handleEnterEditMode = useCallback(() => {
+    if (!session || !onUpdateSession) return;
+    hydrateEditDraft(session);
+    setActiveTab('details');
+    setIsEditing(true);
+  }, [session, onUpdateSession, hydrateEditDraft]);
+
+  const handleCancelEdit = useCallback(() => {
+    hydrateEditDraft(session);
+    setIsEditing(false);
+  }, [session, hydrateEditDraft]);
+
+  const handleUpdateDraftSet = useCallback(
+    (exIdx: number, setIdx: number, field: 'weight' | 'reps', value: string) => {
+      setEditError(null);
+      setDraftExercises((prev) =>
+        prev.map((ex, eI) => {
+          if (eI !== exIdx) return ex;
+          return {
+            ...ex,
+            sets: ex.sets.map((st, sI) => (sI === setIdx ? { ...st, [field]: value } : st)),
+          };
+        })
+      );
+    },
+    []
+  );
+
+  const handleAddDraftSet = useCallback((exIdx: number) => {
+    setEditError(null);
+    setDraftExercises((prev) =>
+      prev.map((ex, eI) => {
+        if (eI !== exIdx) return ex;
+        const last = ex.sets[ex.sets.length - 1] || { weight: '0', reps: '10' };
+        return {
+          ...ex,
+          sets: [...ex.sets, { weight: last.weight, reps: last.reps }],
+        };
+      })
+    );
+  }, []);
+
+  const handleRemoveDraftSet = useCallback((exIdx: number, setIdx: number) => {
+    setDraftExercises((prev) => {
+      const currentTotal = prev.reduce((sum, ex) => sum + ex.sets.length, 0);
+      if (currentTotal <= 1) {
+        setEditError('A sessão precisa manter pelo menos 1 série registrada.');
+        return prev;
+      }
+      setEditError(null);
+      return prev.map((ex, eI) => {
+        if (eI !== exIdx) return ex;
+        return {
+          ...ex,
+          sets: ex.sets.filter((_, sI) => sI !== setIdx),
+        };
+      });
+    });
+  }, []);
+
+  const handleSaveEditedSession = useCallback(() => {
+    if (!onUpdateSession || !liveDraftSummary) return;
+    if (liveDraftSummary.totalSets <= 0) {
+      setEditError('Adicione pelo menos 1 série antes de salvar.');
+      return;
+    }
+    onUpdateSession(liveDraftSummary);
+    setIsEditing(false);
+    setShareFeedback('Alterações salvas com sucesso!');
+    setTimeout(() => setShareFeedback(null), 3000);
+  }, [onUpdateSession, liveDraftSummary]);
 
   // Extrai recordes pessoais batidos nesta sessão
   const sessionPRs = useMemo(() => {
@@ -504,13 +654,16 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             </span>
           </p>
 
-          {/* Tabs: Detalhes vs Cartão Imagem */}
-          <div className="flex items-center justify-center gap-2 mt-3">
+          {/* Tabs: Detalhes vs Cartão Imagem vs Editar Registro */}
+          <div className="flex items-center justify-center flex-wrap gap-2 mt-3">
             <button
               type="button"
-              onClick={() => setActiveTab('details')}
+              onClick={() => {
+                if (isEditing) handleCancelEdit();
+                setActiveTab('details');
+              }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'details'
+                !isEditing && activeTab === 'details'
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
                   : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
@@ -521,9 +674,12 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
             <button
               type="button"
-              onClick={() => setActiveTab('image_card')}
+              onClick={() => {
+                if (isEditing) handleCancelEdit();
+                setActiveTab('image_card');
+              }}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'image_card'
+                !isEditing && activeTab === 'image_card'
                   ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40 shadow-sm'
                   : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
@@ -536,11 +692,173 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               )}
             </button>
+
+            {onUpdateSession && (
+              <button
+                type="button"
+                onClick={isEditing ? handleCancelEdit : handleEnterEditMode}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  isEditing
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                    : 'bg-slate-800/60 text-amber-300 hover:bg-amber-500/15 border border-amber-500/25'
+                }`}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>{isEditing ? 'Editando Registro' : 'Editar Sessão'}</span>
+              </button>
+            )}
           </div>
         </div>
 
+        {/* Modo Edição de Sessão Concluída */}
+        {isEditing && liveDraftSummary && (
+          <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+            {/* Prévia em tempo real das métricas recalculadas */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="bg-[#0b1220] p-3 rounded-2xl border border-emerald-500/30 text-center">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                  Tonelagem Recalculada
+                </span>
+                <div className="text-lg font-black font-mono text-white mt-0.5">
+                  {liveDraftSummary.totalVolumeLoadKg.toLocaleString('pt-BR')}{' '}
+                  <span className="text-[10px] font-normal text-slate-400">kg</span>
+                </div>
+              </div>
+              <div className="bg-[#0b1220] p-3 rounded-2xl border border-sky-500/30 text-center">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 block">
+                  Séries Válidas
+                </span>
+                <div className="text-lg font-black font-mono text-sky-400 mt-0.5">
+                  {liveDraftSummary.totalSets}
+                </div>
+              </div>
+            </div>
+
+            {editError && (
+              <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/35 text-rose-300 text-xs font-semibold text-center">
+                {editError}
+              </div>
+            )}
+
+            {/* Notas da Sessão */}
+            <div className="bg-[#0b1220] border border-slate-800 rounded-2xl p-3 space-y-1.5">
+              <label
+                htmlFor="edit-session-notes"
+                className="text-[10px] font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Notas da Sessão</span>
+              </label>
+              <textarea
+                id="edit-session-notes"
+                value={draftNotes}
+                onChange={(e) => setDraftNotes(e.target.value)}
+                rows={2}
+                placeholder="Ex.: Boa execução, carga controlada, aumentar 2kg na próxima..."
+                className="w-full bg-[#070b14] border border-slate-800 focus:border-emerald-500 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none resize-none"
+              />
+            </div>
+
+            {/* Lista de Exercícios e Séries Editáveis */}
+            <div className="space-y-3">
+              {draftExercises.map((ex, exIdx) => (
+                <div
+                  key={`${ex.name}_${exIdx}`}
+                  className="bg-[#0b1220] border border-slate-800/90 rounded-2xl p-3 space-y-2.5"
+                >
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-sky-400 block">
+                        {ex.muscleGroup}
+                      </span>
+                      <h4 className="text-xs sm:text-sm font-extrabold text-white truncate">
+                        {ex.name}
+                      </h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAddDraftSet(exIdx)}
+                      className="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/35 text-[11px] font-bold flex items-center gap-1 shrink-0 cursor-pointer active:scale-95 transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Série</span>
+                    </button>
+                  </div>
+
+                  {ex.sets.length === 0 ? (
+                    <p className="text-[11px] text-slate-500 italic py-1">
+                      Nenhuma série restante (este exercício será removido ao salvar).
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {ex.sets.map((st, sIdx) => (
+                        <div
+                          key={sIdx}
+                          className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2 bg-[#070b14] border border-slate-800/80 rounded-xl p-2"
+                        >
+                          <span className="text-[11px] font-mono font-black text-slate-400 px-1.5">
+                            S{sIdx + 1}
+                          </span>
+                          <div>
+                            <label className="text-[9px] font-bold uppercase text-slate-500 block mb-0.5">
+                              Carga (kg)
+                            </label>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              step="0.5"
+                              min="0"
+                              value={st.weight}
+                              onChange={(e) =>
+                                handleUpdateDraftSet(exIdx, sIdx, 'weight', e.target.value)
+                              }
+                              aria-label={`Carga da série ${sIdx + 1} de ${ex.name}`}
+                              className="w-full bg-[#0f172a] border border-slate-700 focus:border-emerald-500 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-white focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-bold uppercase text-slate-500 block mb-0.5">
+                              Reps
+                            </label>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              step="1"
+                              min="0"
+                              value={st.reps}
+                              onChange={(e) =>
+                                handleUpdateDraftSet(exIdx, sIdx, 'reps', e.target.value)
+                              }
+                              aria-label={`Repetições da série ${sIdx + 1} de ${ex.name}`}
+                              className="w-full bg-[#0f172a] border border-slate-700 focus:border-sky-500 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-white focus:outline-none"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDraftSet(exIdx, sIdx)}
+                            disabled={totalDraftSets <= 1}
+                            title={
+                              totalDraftSets <= 1
+                                ? 'A sessão precisa de pelo menos 1 série'
+                                : 'Remover esta série'
+                            }
+                            aria-label={`Remover série ${sIdx + 1} de ${ex.name}`}
+                            className="p-2 rounded-lg text-rose-400 hover:bg-rose-500/15 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer self-end"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Tab 1: Detailed Interactive View */}
-        {activeTab === 'details' && (
+        {!isEditing && activeTab === 'details' && (
           <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
             {/* Key KPI Stats Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -777,7 +1095,7 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         )}
 
         {/* Tab 2: Visual Image Card Preview */}
-        {activeTab === 'image_card' && (
+        {!isEditing && activeTab === 'image_card' && (
           <div className="p-4 sm:p-5 overflow-y-auto space-y-3 flex-1 flex flex-col items-center">
             {/* Format Selector: Story do Instagram (9:16) vs Feed */}
             <div className="flex items-center gap-1.5 bg-[#0b1220] p-1 rounded-xl border border-slate-800">
@@ -884,101 +1202,122 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         )}
 
         {/* Modal Footer: Action Buttons */}
-        <div className="p-4 sm:p-5 border-t border-slate-800 bg-[#0d1424] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 flex-1">
+        {isEditing ? (
+          <div className="p-4 sm:p-5 border-t border-slate-800 bg-[#0d1424] flex items-center justify-between gap-2.5">
             <button
               type="button"
-              onClick={handleShare}
-              disabled={isGenerating}
-              className="flex-1 py-3 px-4 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              onClick={handleCancelEdit}
+              className="py-3 px-4 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
             >
-              <Share2 className="w-4 h-4 stroke-[2.5]" />
-              <span>Compartilhar Treino + Imagem</span>
+              Cancelar
             </button>
 
             <button
               type="button"
-              onClick={handleDownloadImage}
-              disabled={!cardImage}
-              className="py-3 px-3 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-sky-400 border border-slate-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-              title="Baixar Cartão em PNG"
+              onClick={handleSaveEditedSession}
+              className="flex-1 py-3 px-5 rounded-xl font-black text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
             >
-              <Download className="w-4 h-4" />
-              <span className="hidden xs:inline">Baixar Card</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleWhatsAppShare}
-              className="py-3 px-3 rounded-xl font-bold text-xs bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-500/40 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
-              title="Compartilhar no WhatsApp com formatação"
-            >
-              <MessageCircle className="w-4 h-4 fill-white text-emerald-600" />
-              <span className="hidden xs:inline">WhatsApp</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                exportCompletedSessionToPDF(session, athleteName);
-                setShareFeedback('Relatório em PDF baixado com sucesso!');
-                setTimeout(() => setShareFeedback(null), 3000);
-              }}
-              className="py-3 px-3 rounded-xl font-bold text-xs bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
-              title="Baixar relatório completo da sessão concluída em PDF A4"
-            >
-              <FileDown className="w-4 h-4 text-sky-400" />
-              <span>PDF</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsPdfPreviewOpen(true)}
-              className="py-3 px-2.5 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors flex items-center justify-center gap-1 shrink-0 cursor-pointer"
-              title="Visualizar e imprimir folha A4"
-            >
-              <Eye className="w-4 h-4 text-sky-400" />
-              <span className="hidden md:inline">Ver A4</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExportSessionCSV}
-              className="py-3 px-3 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-              title="Exportar dados desta sessão em CSV"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span className="hidden xs:inline">CSV</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="py-3 px-3 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-              title="Copiar texto para colar"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span className="text-emerald-400">Copiado!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  <span className="hidden xs:inline">Texto</span>
-                </>
-              )}
+              <Save className="w-4 h-4 stroke-[2.5]" />
+              <span>Salvar Alterações da Sessão</span>
             </button>
           </div>
+        ) : (
+          <div className="p-4 sm:p-5 border-t border-slate-800 bg-[#0d1424] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2 flex-1">
+              <button
+                type="button"
+                onClick={handleShare}
+                disabled={isGenerating}
+                className="flex-1 py-3 px-4 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Share2 className="w-4 h-4 stroke-[2.5]" />
+                <span>Compartilhar Treino + Imagem</span>
+              </button>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="py-3 px-5 rounded-xl font-bold text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-          >
-            Fechar
-          </button>
-        </div>
+              <button
+                type="button"
+                onClick={handleDownloadImage}
+                disabled={!cardImage}
+                className="py-3 px-3 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-sky-400 border border-slate-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                title="Baixar Cartão em PNG"
+              >
+                <Download className="w-4 h-4" />
+                <span className="hidden xs:inline">Baixar Card</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleWhatsAppShare}
+                className="py-3 px-3 rounded-xl font-bold text-xs bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-500/40 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+                title="Compartilhar no WhatsApp com formatação"
+              >
+                <MessageCircle className="w-4 h-4 fill-white text-emerald-600" />
+                <span className="hidden xs:inline">WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  exportCompletedSessionToPDF(session, athleteName);
+                  setShareFeedback('Relatório em PDF baixado com sucesso!');
+                  setTimeout(() => setShareFeedback(null), 3000);
+                }}
+                className="py-3 px-3 rounded-xl font-bold text-xs bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+                title="Baixar relatório completo da sessão concluída em PDF A4"
+              >
+                <FileDown className="w-4 h-4 text-sky-400" />
+                <span>PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPdfPreviewOpen(true)}
+                className="py-3 px-2.5 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+                title="Visualizar e imprimir folha A4"
+              >
+                <Eye className="w-4 h-4 text-sky-400" />
+                <span className="hidden md:inline">Ver A4</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportSessionCSV}
+                className="py-3 px-3 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                title="Exportar dados desta sessão em CSV"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                <span className="hidden xs:inline">CSV</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="py-3 px-3 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                title="Copiar texto para colar"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-400" />
+                    <span className="text-emerald-400">Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span className="hidden xs:inline">Texto</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-3 px-5 rounded-xl font-bold text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Modal de Pré-visualização e Impressão A4 da Sessão Concluída */}

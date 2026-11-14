@@ -107,7 +107,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
         { id: 'treino' as TabType, label: t.tabWorkout, icon: Dumbbell, badge: null },
         {
           id: 'treino_ativo' as TabType,
-          label: 'Treino Ativo',
+          label: t.tabActiveWorkout,
           icon: Zap,
           badge: activeSetsCount > 0 ? `${completedSetsCount}/${activeSetsCount}` : null,
           isHighlight: true,
@@ -193,8 +193,8 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
               <span className={`w-2 h-2 rounded-full ${hasActiveWorkout ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
               <span className="font-medium text-slate-300">
                 {activeTab === 'inicio' && t.historySectionSubtitle}
-                {activeTab === 'treino' && 'Selecione um treino para iniciar'}
-                {activeTab === 'perfil' && 'Personalizar treinos e metas'}
+                {activeTab === 'treino' && t.nav.selectWorkoutPrompt}
+                {activeTab === 'perfil' && t.nav.customizePrompt}
               </span>
             </span>
           </div>
@@ -203,7 +203,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
 
       {/* Mobile Sticky Bottom Navigation Dock (Native App Style, Thumb-Optimized) */}
       <nav
-        aria-label="Navegação Principal Mobile"
+        aria-label={t.nav.mobileNavAria}
         className="md:hidden fixed bottom-0 left-0 right-0 z-40 max-w-full overflow-x-clip bg-[#090f1d]/95 backdrop-blur-xl border-t border-[#1d2942] pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1.5 px-2 shadow-2xl touch-manipulation"
       >
         <div className={`grid ${hasActiveWorkout ? 'grid-cols-4' : 'grid-cols-3'} gap-1 max-w-md mx-auto`}>
@@ -299,13 +299,13 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
       <ActionSheet
         isOpen={showLogoutConfirm}
         onClose={() => setShowLogoutConfirm(false)}
-        title="Desconectar da Conta"
-        subtitle="Sair da sessão deste dispositivo"
+        title={t.nav.logoutSheetTitle}
+        subtitle={t.nav.logoutSheetSubtitle}
         icon={<LogOut className="w-5 h-5 text-rose-400" />}
       >
         <div className="p-4 sm:p-5 space-y-4">
           <p className="text-xs text-slate-300 leading-relaxed">
-            Deseja realmente sair da sua sessão neste dispositivo? Seus dados e treinos concluídos continuam salvos com segurança.
+            {t.nav.logoutSheetConfirmText}
           </p>
 
           <div className="flex items-center gap-2.5 pt-1">
@@ -314,7 +314,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
               onClick={() => setShowLogoutConfirm(false)}
               className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
             >
-              Cancelar
+              {t.common.cancel}
             </button>
             <button
               type="button"
@@ -325,7 +325,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
               className="flex-1 py-2.5 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-500 text-white transition-colors cursor-pointer shadow-lg shadow-rose-600/30 flex items-center justify-center gap-1.5"
             >
               <LogOut className="w-4 h-4" />
-              <span>Desconectar</span>
+              <span>{t.nav.logoutConfirmBtn}</span>
             </button>
           </div>
         </div>

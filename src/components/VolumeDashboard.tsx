@@ -28,6 +28,8 @@ import {
 import { MuscleGroup } from '../types/workout';
 import { MUSCLE_NAMES } from '../data/exerciseDatabase';
 import { getVolumeLandmarks, evaluateVolumeZone } from '../utils/volumeEngine';
+import { useI18n } from '../utils/i18n';
+import { useTheme } from '../utils/theme';
 
 interface VolumeDashboardProps {
   completedSetsByMuscle: Record<MuscleGroup, number>;
@@ -70,6 +72,8 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
   totalWeeklyBudget,
   onOpenVolumeBudget,
 }) => {
+  const { t } = useI18n();
+  const { isLight } = useTheme();
   const [viewMode, setViewMode] = useState<'chart' | 'grid'>('chart');
 
   // Global calculations across all muscle groups based on user's custom budget
@@ -114,7 +118,7 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (globalPercentage / 100) * circumference;
 
-  // Format dataset for Recharts with user's specific muscle budget & physiological volume landmarks (MRV/MEV)
+  // Dataset with user's specific muscle budget & physiological volume landmarks
   const chartData = useMemo(() => {
     return ALL_MUSCLES.map((muscle) => {
       const sets = completedSetsByMuscle[muscle] || 0;
@@ -122,11 +126,12 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
       const isActive = activeWorkoutMuscles.includes(muscle);
       const landmarks = getVolumeLandmarks(muscle, 'intermediate');
       const zone = evaluateVolumeZone(sets, landmarks);
+      const translatedFullName = t.muscles[muscle] || MUSCLE_NAMES[muscle];
 
       return {
         key: muscle,
-        name: SHORT_NAMES[muscle],
-        fullName: MUSCLE_NAMES[muscle],
+        name: translatedFullName.length > 10 ? SHORT_NAMES[muscle] : translatedFullName,
+        fullName: translatedFullName,
         sets: sets,
         target: muscleTarget,
         isActive,
@@ -135,7 +140,7 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
         statusLabel: zone.badge,
       };
     });
-  }, [completedSetsByMuscle, muscleBudgets, activeWorkoutMuscles]);
+  }, [completedSetsByMuscle, muscleBudgets, activeWorkoutMuscles, t.muscles]);
 
   return (
     <div className="bg-[#101828] border border-[#1e2c45] rounded-2xl p-4 sm:p-5 shadow-xl shadow-black/20 mb-6 transition-all">
@@ -277,7 +282,7 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
         </div>
       </div>
 
-      {/* Top Header & View Mode Switch */}
+        {/* Header & View Mode Switch */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
@@ -285,10 +290,10 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
           </div>
           <div>
             <h2 className="text-xs sm:text-sm font-bold text-white tracking-wider uppercase flex items-center gap-2">
-              <span>Volume Semanal por Grupamento</span>
+              <span>{t.volume.dashboardTitle}</span>
             </h2>
             <p className="text-[11px] text-slate-400">
-              Distribuição anatômica das séries efetivas no microciclo
+              {t.volume.dashboardSubtitle}
             </p>
           </div>
         </div>
@@ -298,26 +303,26 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
           <button
             type="button"
             onClick={() => setViewMode('chart')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               viewMode === 'chart'
                 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
-            <span>Gráfico de Barras</span>
+            <span>{t.home.tabAnalytics}</span>
           </button>
           <button
             type="button"
             onClick={() => setViewMode('grid')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               viewMode === 'grid'
                 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
-            <span>Grade Detalhada</span>
+            <span>{t.active.viewModeList}</span>
           </button>
         </div>
       </div>
@@ -334,21 +339,21 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke="#1e293b"
+                  stroke={isLight ? '#e2e8f0' : '#1e293b'}
                   vertical={false}
                 />
                 <XAxis
                   dataKey="name"
-                  stroke="#64748b"
-                  tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                  stroke={isLight ? '#94a3b8' : '#64748b'}
+                  tick={{ fill: isLight ? '#475569' : '#94a3b8', fontSize: 11, fontWeight: 600 }}
                   interval={0}
                   angle={-25}
                   textAnchor="end"
                   tickLine={false}
                 />
                 <YAxis
-                  stroke="#64748b"
-                  tick={{ fill: '#94a3b8', fontSize: 11 }}
+                  stroke={isLight ? '#94a3b8' : '#64748b'}
+                  tick={{ fill: isLight ? '#475569' : '#94a3b8', fontSize: 11 }}
                   tickLine={false}
                   axisLine={false}
                   domain={[0, (dataMax: number) => Math.max(18, dataMax + 2)]}
@@ -418,7 +423,7 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
                   animationDuration={600}
                 >
                   {chartData.map((entry) => {
-                    let fillColor = '#334155'; // 0 sets
+                    let fillColor = isLight ? '#cbd5e1' : '#334155'; // 0 sets
                     if (entry.zone.zone === 'over_mrv') {
                       fillColor = '#f43f5e'; // Rose (Over MRV)
                     } else if (entry.zone.zone === 'mav_mrv') {
@@ -434,7 +439,7 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
                         key={`cell-${entry.key}`}
                         fill={fillColor}
                         opacity={entry.isActive ? 1 : 0.85}
-                        stroke={entry.isActive ? '#e0f2fe' : 'transparent'}
+                        stroke={entry.isActive ? (isLight ? '#0284c7' : '#e0f2fe') : 'transparent'}
                         strokeWidth={entry.isActive ? 1.5 : 0}
                       />
                     );
@@ -449,19 +454,15 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
             <div className="flex items-center gap-3.5 flex-wrap font-medium">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-sm bg-[#38bdf8]" />
-                <span className="text-slate-300">Sub-MEV (&lt; Mínimo)</span>
+                <span className="text-slate-300">{t.volume.statusBelow}</span>
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-sm bg-[#10b981]" />
-                <span className="text-slate-300">Faixa Ótima (MEV - MAV)</span>
+                <span className="text-slate-300">{t.volume.statusOptimal}</span>
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-sm bg-[#f59e0b]" />
-                <span className="text-slate-300">Pico (MAV - MRV)</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-[#f43f5e]" />
-                <span className="text-rose-300 font-semibold">&gt; MRV (Sobretreino)</span>
+                <span className="text-slate-300">{t.volume.statusAbove}</span>
               </span>
             </div>
             {onOpenVolumeBudget && (
@@ -470,7 +471,7 @@ export const VolumeDashboard: React.FC<VolumeDashboardProps> = ({
                 onClick={onOpenVolumeBudget}
                 className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2 flex items-center gap-1 cursor-pointer"
               >
-                Personalizar Séries
+                {t.volume.clickToEditTarget}
               </button>
             )}
           </div>

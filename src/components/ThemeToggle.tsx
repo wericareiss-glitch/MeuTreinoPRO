@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Sun, Moon, Monitor, CheckCircle2, Lock, Sparkles, Palette } from 'lucide-react';
 import { useTheme, ACCENT_PALETTES, AccentColor, Theme } from '../utils/theme';
+import { useI18n } from '../utils/i18n';
 
 interface ThemeToggleProps {
   variant?: 'compact' | 'full' | 'segmented' | 'profile-card';
@@ -16,6 +17,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   variant = 'compact',
   className = '',
 }) => {
+  const { t } = useI18n();
   const {
     theme,
     accentColor,
@@ -69,27 +71,25 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-sm sm:text-base font-black text-white">
                   {isOled
-                    ? 'Modo Escuro Intenso (Economia de Bateria)'
+                    ? t.theme.modeOledActive
                     : isDark
-                    ? 'Modo Escuro Ativo'
-                    : 'Modo Claro Ativo'}
+                    ? t.theme.modeDarkActive
+                    : t.theme.modeLightActive}
                 </h3>
                 {isAutoDetectDisabled ? (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                     <Lock className="w-3 h-3" />
-                    <span>Tema Fixado</span>
+                    <span>{t.theme.fixedBadge}</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-400 border border-sky-500/30">
                     <Monitor className="w-3 h-3" />
-                    <span>Automático</span>
+                    <span>{t.theme.autoBadge}</span>
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                {isAutoDetectDisabled
-                  ? 'Sua preferência de cor está fixa e salva neste aparelho.'
-                  : 'Segue automaticamente o tema do seu celular ou computador. Clique ao lado para fixar sua cor preferida.'}
+                {isAutoDetectDisabled ? t.theme.fixedDesc : t.theme.autoDesc}
               </p>
             </div>
           </div>
@@ -104,17 +104,17 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
                   ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-500/20'
                   : 'bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-sky-500/20'
               }`}
-              title="Alternar entre modo escuro e modo claro"
+              title={t.theme.toggleTitle}
             >
               {isDark ? (
                 <>
                   <Sun className="w-4 h-4 stroke-[2.5]" />
-                  <span>Mudar para Modo Claro</span>
+                  <span>{t.theme.switchToLight}</span>
                 </>
               ) : (
                 <>
                   <Moon className="w-4 h-4 stroke-[2.5]" />
-                  <span>Mudar para Modo Escuro</span>
+                  <span>{t.theme.switchToDark}</span>
                 </>
               )}
             </button>
@@ -138,13 +138,13 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
                 <Moon className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <span className="text-xs font-black block text-white truncate">Modo Escuro</span>
-                <span className="text-[10px] text-slate-400 block truncate">Alto contraste clássico</span>
+                <span className="text-xs font-black block text-white truncate">{t.theme.darkLabel}</span>
+                <span className="text-[10px] text-slate-400 block truncate">{t.theme.darkSub}</span>
               </div>
             </div>
             {!isSystem && theme === 'dark' && (
               <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-sky-500 text-slate-950 shrink-0">
-                ATIVO
+                {t.theme.activeBadge}
               </span>
             )}
           </button>
@@ -160,17 +160,23 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
             }`}
           >
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className={`p-2 rounded-xl shrink-0 ${!isSystem && theme === 'oled' ? 'bg-emerald-500 text-slate-950' : 'bg-black border border-slate-700 text-emerald-400'}`}>
+              <div
+                className={`p-2 rounded-xl shrink-0 ${
+                  !isSystem && theme === 'oled'
+                    ? 'bg-emerald-500 text-slate-950'
+                    : 'bg-black border border-slate-700 text-emerald-400 theme-preserve-dark-swatch'
+                }`}
+              >
                 <Sparkles className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <span className="text-xs font-black block text-white truncate">Escuro Intenso</span>
-                <span className="text-[10px] text-slate-400 block truncate">Preto profundo • Poupa bateria</span>
+                <span className="text-xs font-black block text-white truncate">{t.theme.oledLabel}</span>
+                <span className="text-[10px] text-slate-400 block truncate">{t.theme.oledSub}</span>
               </div>
             </div>
             {!isSystem && theme === 'oled' && (
               <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 shrink-0">
-                ATIVO
+                {t.theme.activeBadge}
               </span>
             )}
           </button>
@@ -190,13 +196,13 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
                 <Sun className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <span className="text-xs font-black block text-white truncate">Modo Claro (Light)</span>
-                <span className="text-[10px] text-slate-400 block truncate">Alta legibilidade diurna</span>
+                <span className="text-xs font-black block text-white truncate">{t.theme.lightLabel}</span>
+                <span className="text-[10px] text-slate-400 block truncate">{t.theme.lightSub}</span>
               </div>
             </div>
             {!isSystem && theme === 'light' && (
               <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 shrink-0">
-                FIXADO
+                {t.theme.pinnedBadge}
               </span>
             )}
           </button>
@@ -204,21 +210,22 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
 
         {/* Paletas de Destaque Personalizadas */}
         <div className="bg-[#0a101d] p-4 rounded-2xl border border-slate-800 space-y-2.5">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <Palette className="w-4 h-4 text-emerald-400" />
               <span className="text-xs font-black uppercase tracking-wider text-white">
-                Paleta de Destaque (Identidade Visual)
+                {t.theme.paletteTitle}
               </span>
             </div>
             <span className="text-[10px] font-mono text-slate-400">
-              Personalize os botões e indicadores
+              {t.theme.paletteHint}
             </span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {ACCENT_PALETTES.map((pal) => {
               const isSelected = accentColor === pal.id;
+              const translatedPal = t.theme.palettes[pal.id];
               return (
                 <button
                   key={pal.id}
@@ -236,10 +243,10 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
                   />
                   <div className="min-w-0">
                     <span className="text-xs font-black block text-white truncate">
-                      {pal.label}
+                      {translatedPal?.label || pal.label}
                     </span>
                     <span className="text-[10px] text-slate-400 block truncate">
-                      {pal.subtitle}
+                      {translatedPal?.subtitle || pal.subtitle}
                     </span>
                   </div>
                 </button>
@@ -248,17 +255,25 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
           </div>
         </div>
 
-
         {/* Rodapé informativo e opção secundária de sistema */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-xs">
           {justSaved ? (
             <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>Preferência de tema salva com sucesso!</span>
+              <span>{t.theme.savedToast}</span>
             </div>
           ) : (
             <span className="text-[11px] text-slate-400">
-              Modo atual: <strong className="text-white">{isAutoDetectDisabled ? (isOled ? 'Escuro Intenso' : isDark ? 'Escuro' : 'Claro') : 'Automático pelo aparelho'}</strong>
+              {t.theme.currentModeLabel}{' '}
+              <strong className="text-white">
+                {isAutoDetectDisabled
+                  ? isOled
+                    ? t.theme.modeOledName
+                    : isDark
+                    ? t.theme.modeDarkName
+                    : t.theme.modeLightName
+                  : t.theme.modeAutoDevice}
+              </strong>
             </span>
           )}
 
@@ -268,7 +283,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
               onClick={setSystemTheme}
               className="text-[11px] font-semibold text-slate-400 hover:text-emerald-400 underline underline-offset-2 self-start sm:self-auto cursor-pointer transition-colors"
             >
-              Reativar detecção automática do sistema
+              {t.theme.restoreAutoBtn}
             </button>
           )}
         </div>
@@ -278,10 +293,10 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
 
   if (variant === 'segmented') {
     return (
-      <div 
+      <div
         className={`flex items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800 transition-colors ${className}`}
         role="group"
-        aria-label="Selecionar tema visual"
+        aria-label={t.theme.fullTitle}
       >
         <button
           type="button"
@@ -292,10 +307,10 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
               : 'text-slate-400 hover:text-slate-200'
           }`}
           aria-pressed={!isSystem && isDark}
-          title="Usar modo escuro"
+          title={t.theme.switchToDark}
         >
           <Moon className={`w-3.5 h-3.5 ${!isSystem && isDark ? 'text-slate-950' : 'text-sky-400'}`} />
-          <span>Dark (Escuro)</span>
+          <span>{t.theme.segmentedDark}</span>
         </button>
         <button
           type="button"
@@ -306,10 +321,10 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
               : 'text-slate-400 hover:text-slate-200'
           }`}
           aria-pressed={!isSystem && !isDark}
-          title="Usar modo claro"
+          title={t.theme.switchToLight}
         >
           <Sun className={`w-3.5 h-3.5 ${!isSystem && !isDark ? 'text-slate-950' : 'text-amber-500'}`} />
-          <span>Light (Claro)</span>
+          <span>{t.theme.segmentedLight}</span>
         </button>
         <button
           type="button"
@@ -320,10 +335,10 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
               : 'text-slate-400 hover:text-slate-200'
           }`}
           aria-pressed={isSystem}
-          title="Sincronizar automaticamente com o tema do sistema operacional"
+          title={t.theme.restoreAutoBtn}
         >
           <Monitor className={`w-3.5 h-3.5 ${isSystem ? 'text-emerald-400' : 'text-slate-400'}`} />
-          <span>Auto</span>
+          <span>{t.theme.segmentedAuto}</span>
         </button>
       </div>
     );
@@ -336,8 +351,8 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
           type="button"
           onClick={handleToggleForce}
           className="flex items-center gap-2.5 flex-1 text-left cursor-pointer"
-          aria-label={isDark ? 'Forçar Modo Claro (Light)' : 'Forçar Modo Escuro (Dark)'}
-          title={isDark ? 'Alternar e forçar Modo Claro' : 'Alternar e forçar Modo Escuro'}
+          aria-label={isDark ? t.theme.switchToLight : t.theme.switchToDark}
+          title={isDark ? t.theme.switchToLight : t.theme.switchToDark}
         >
           {isDark ? (
             <Moon className="w-4 h-4 text-sky-400 shrink-0" />
@@ -345,10 +360,10 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
             <Sun className="w-4 h-4 text-amber-500 shrink-0" />
           )}
           <div>
-            <span className="block font-bold text-white">Tema Visual (Dark / Light)</span>
+            <span className="block font-bold text-white">{t.theme.fullTitle}</span>
             <span className="block text-[10px] text-slate-400">
-              {isDark ? 'Modo Escuro (Dark)' : 'Modo Claro (Light)'}
-              {isSystem ? ' • Auto (Sistema)' : ' • Forçado (Salvo)'}
+              {isDark ? t.theme.fullSubDark : t.theme.fullSubLight}
+              {isSystem ? ` • ${t.theme.fullAutoSuffix}` : ` • ${t.theme.fullFixedSuffix}`}
             </span>
           </div>
         </button>
@@ -358,9 +373,9 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
               type="button"
               onClick={setSystemTheme}
               className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md border bg-slate-800/80 text-slate-400 hover:text-emerald-400 border-slate-700 cursor-pointer transition-colors"
-              title="Restaurar detecção automática do sistema"
+              title={t.theme.restoreAutoBtn}
             >
-              Auto
+              {t.theme.segmentedAuto}
             </button>
           )}
           <button
@@ -368,7 +383,11 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
             onClick={handleToggleForce}
             className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border bg-slate-800 text-slate-300 border-slate-700 cursor-pointer"
           >
-            {isSystem ? `Auto (${isDark ? 'Dark' : 'Light'})` : isDark ? 'Dark Fixo' : 'Light Fixo'}
+            {isSystem
+              ? `${t.theme.segmentedAuto} (${isDark ? t.theme.segmentedDark : t.theme.segmentedLight})`
+              : isDark
+              ? t.theme.darkFixedChip
+              : t.theme.lightFixedChip}
           </button>
         </div>
       </div>
@@ -385,13 +404,15 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
           ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700 hover:border-slate-600'
           : 'bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-300 shadow-sm'
       } ${className}`}
-      aria-label={isDark ? 'Forçar Modo Claro (Light)' : 'Forçar Modo Escuro (Dark)'}
+      aria-label={isDark ? t.theme.switchToLight : t.theme.switchToDark}
       title={
         isSystem
-          ? `Tema sincronizado com o sistema (${isDark ? 'Escuro' : 'Claro'}) — Clique para forçar modo e desativar detecção automática`
+          ? isDark
+            ? t.theme.compactTitleAutoDark
+            : t.theme.compactTitleAutoLight
           : isDark
-          ? 'Modo Escuro Forçado — Clique para mudar para Modo Claro (Light)'
-          : 'Modo Claro Forçado — Clique para mudar para Modo Escuro (Dark)'
+          ? t.theme.compactTitleFixedDark
+          : t.theme.compactTitleFixedLight
       }
     >
       {isDark ? (

@@ -36,6 +36,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
   onCreateManualWorkout,
   onGenerateQuickWorkout,
   onEditRoutine,
+  onDuplicateRoutine,
   onDeleteRoutine,
   onShareRoutine,
   onReorderRoutines,
@@ -541,8 +542,20 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
     setDropTargetIdx(null);
   }, []);
 
+  const handleDuplicateClick = useCallback(
+    (routine: GeneratedWorkoutRoutine) => {
+      if (!onDuplicateRoutine) return;
+      const created = onDuplicateRoutine(routine);
+      if (created && typeof created === 'object' && 'id' in created) {
+        setSelectedRoutineTab(created.id);
+      }
+    },
+    [onDuplicateRoutine]
+  );
+
   const canReorder = Boolean(onReorderRoutines) && routines.length > 1;
   const hasEditHandler = Boolean(onEditRoutine);
+  const hasDuplicateHandler = Boolean(onDuplicateRoutine);
   const hasDeleteHandler = Boolean(onDeleteRoutine);
 
   const carouselItemData = useMemo<CarouselItemData>(
@@ -557,6 +570,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
       dropTargetIdx,
       canReorder,
       hasEditHandler,
+      hasDuplicateHandler,
       hasDeleteHandler,
       onToggleMenu: handleToggleMenu,
       onCloseMenu: handleCloseMenu,
@@ -564,6 +578,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
       onConfirmDelete: handleConfirmDelete,
       onStartWorkout,
       onEditRoutine,
+      onDuplicateRoutine: handleDuplicateClick,
       onShareRoutineClick: handleShareClick,
       onPointerDownGrip: handlePointerDownRoutineHandle,
       onCardDragStart: handleCardDragStart,
@@ -582,12 +597,14 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
       dropTargetIdx,
       canReorder,
       hasEditHandler,
+      hasDuplicateHandler,
       hasDeleteHandler,
       handleToggleMenu,
       handleCloseMenu,
       handleConfirmDelete,
       onStartWorkout,
       onEditRoutine,
+      handleDuplicateClick,
       handleShareClick,
       handlePointerDownRoutineHandle,
       handleCardDragStart,
@@ -760,6 +777,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                 isDropTargetThis={dropTargetIdx === entry.visualIdx && draggingIdx !== entry.visualIdx}
                 canReorder={canReorder && displayedEntries.length > 1}
                 hasEditHandler={hasEditHandler}
+                hasDuplicateHandler={hasDuplicateHandler}
                 hasDeleteHandler={hasDeleteHandler}
                 onToggleMenu={handleToggleMenu}
                 onCloseMenu={handleCloseMenu}
@@ -767,6 +785,7 @@ export const WorkoutListView: React.FC<WorkoutListViewProps> = ({
                 onConfirmDelete={handleConfirmDelete}
                 onStartWorkout={onStartWorkout}
                 onEditRoutine={onEditRoutine}
+                onDuplicateRoutine={handleDuplicateClick}
                 onShareRoutineClick={handleShareClick}
                 onPointerDownGrip={handlePointerDownRoutineHandle}
                 onCardDragStart={handleCardDragStart}

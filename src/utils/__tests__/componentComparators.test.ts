@@ -71,6 +71,7 @@ describe('Component Comparators & Memoization Audit', () => {
       isDropTargetThis: false,
       canReorder: true,
       hasEditHandler: true,
+      hasDuplicateHandler: true,
       hasDeleteHandler: true,
       onToggleMenu: () => {},
       onCloseMenu: () => {},
@@ -100,6 +101,10 @@ describe('Component Comparators & Memoization Audit', () => {
     it('returns false when drag or drop target status changes', () => {
       expect(areRoutineCardPropsEqual(baseProps, { ...baseProps, isDraggingThis: true })).toBe(false);
       expect(areRoutineCardPropsEqual(baseProps, { ...baseProps, isDropTargetThis: true })).toBe(false);
+    });
+
+    it('returns false when hasDuplicateHandler changes', () => {
+      expect(areRoutineCardPropsEqual(baseProps, { ...baseProps, hasDuplicateHandler: false })).toBe(false);
     });
   });
 
